@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.routes.auth import router as auth_router
 from app.routes.upload import router as upload_router
 from app.api.processing import router as processing_router
+from app.api.ocr import router as ocr_router
 
 
 app = FastAPI()
@@ -43,6 +44,9 @@ app.include_router(
     processing_router
 )
 
+app.include_router(
+    ocr_router
+)
 
 # =========================================================
 # UPLOADS DIRECTORY
