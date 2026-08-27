@@ -1,5 +1,13 @@
+import os
+
 import cv2
 import numpy as np
+
+from app.core.exceptions import (
+    CorruptedImageError,
+    ImageTooLargeError,
+    InvalidImageError
+)
 
 
 class ImageProcessingPipeline:
@@ -45,14 +53,26 @@ class ImageProcessingPipeline:
 
     def load_image(self, input_path):
         """
-        Load image from disk.
+        Load an image from disk.
+
+        Raises a specific error when the file cannot
+        be found or decoded.
         """
 
-        image = cv2.imread(input_path)
+        if not input_path or not os.path.isfile(
+            input_path
+        ):
+            raise InvalidImageError(
+                "Unable to process image."
+            )
+
+        image = cv2.imread(
+            input_path
+        )
 
         if image is None:
-            raise ValueError(
-                f"Unable to load image: {input_path}"
+            raise CorruptedImageError(
+                "This image appears to be corrupted."
             )
 
         return image
@@ -63,29 +83,43 @@ class ImageProcessingPipeline:
 
     def validate_image(self, image):
         """
-        Validate loaded image.
+        Validate image dimensions and resolution.
+
+        Raises a specific error when the image is invalid
+        or exceeds the maximum allowed resolution.
         """
 
         if image is None:
-            raise ValueError(
-                "Image is empty."
+            raise InvalidImageError(
+                "Unable to process image."
             )
 
         if image.size == 0:
-            raise ValueError(
-                "Image contains no data."
+            raise InvalidImageError(
+                "Unable to process image."
             )
 
         if len(image.shape) < 2:
-            raise ValueError(
-                "Invalid image dimensions."
+            raise InvalidImageError(
+                "Unable to process image."
             )
 
         height, width = image.shape[:2]
 
         if height < 10 or width < 10:
-            raise ValueError(
-                "Image dimensions are too small."
+            raise InvalidImageError(
+                "Unable to process image."
+            )
+
+        # ---------------------------------------------
+        # Maximum image resolution
+        # ---------------------------------------------
+
+        max_pixels = 40_000_000
+
+        if height * width > max_pixels:
+            raise ImageTooLargeError(
+                "Image resolution is too large."
             )
 
         return image
