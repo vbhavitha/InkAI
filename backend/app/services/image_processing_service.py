@@ -26,6 +26,10 @@ from app.schemas.processing_schema import (
     ProcessingOptions
 )
 
+from app.processing.ocr_readiness import (
+    OCRReadinessAnalyzer
+)
+
 
 # =========================================================
 # DIRECTORIES
@@ -450,6 +454,25 @@ def process_uploaded_file(
         )
 
         # =================================================
+        # OCR READINESS ANALYSIS
+        # =================================================
+
+        original_image = cv2.imread(
+            original_path
+        )
+
+        if original_image is None:
+            raise InvalidImageError(
+                "Unable to analyze the uploaded image."
+            )
+
+        readiness_analyzer = OCRReadinessAnalyzer()
+
+        ocr_readiness = readiness_analyzer.analyze(
+            original_image
+        )
+
+        # =================================================
         # CREATE DIRECTORIES
         # =================================================
 
@@ -616,6 +639,8 @@ def process_uploaded_file(
             "file_id": file_id,
 
             "preset": preset,
+
+            "ocr_readiness": ocr_readiness,
 
             "original": {
                 "filename": original_filename,
