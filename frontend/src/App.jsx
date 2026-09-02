@@ -6,6 +6,7 @@ import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import UploadPage from "./pages/UploadPage";
+import OCRResultsPage from "./pages/OCRResultsPage";
 
 function App() {
   return (
@@ -22,6 +23,9 @@ function App() {
         <Route path="/profile" element={<Profile />} />
 
         <Route path="/upload" element={<UploadPage />} />
+
+        <Route path="/ocr-results" element={<OCRResultsPage />}
+/>
       </Routes>
     </BrowserRouter>
   );

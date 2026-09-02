@@ -92,3 +92,9 @@ class User(Base):
         DateTime(timezone=True),
         nullable=True
     )
+
+    ocr_results = relationship(
+        "OCRResultModel",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )

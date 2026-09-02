@@ -16,7 +16,6 @@ BASE_DIR = os.path.dirname(
     )
 )
 
-
 PROCESSED_FOLDER = os.path.join(
     BASE_DIR,
     "uploads",
@@ -33,13 +32,6 @@ def find_processed_file(
 ) -> str:
     """
     Find the processed image associated with a file ID.
-
-    The original uploaded file begins with:
-
-        {file_id}_...
-
-    The processed file is generated from that original
-    filename and is stored in uploads/processed/.
     """
 
     if not os.path.exists(
@@ -82,7 +74,8 @@ def find_processed_file(
 # =========================================================
 
 def process_ocr(
-    file_id: str
+    file_id: str,
+    language: str = "en"
 ) -> OCRResult:
     """
     Coordinate the InkAI OCR workflow.
@@ -93,11 +86,13 @@ def process_ocr(
            ↓
         Locate processed image
            ↓
+        Validate OCR language
+           ↓
         OCR Orchestrator
            ↓
-        OCR Engine
+        OCR Engines
            ↓
-        Standard OCRResult
+        Structured OCRResult
     """
 
     # -----------------------------------------------------
@@ -114,7 +109,9 @@ def process_ocr(
 
     try:
 
-        orchestrator = OCROrchestrator()
+        orchestrator = OCROrchestrator(
+            language=language
+        )
 
         result = orchestrator.process_image(
             image_path=processed_path

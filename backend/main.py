@@ -9,6 +9,9 @@ from app.routes.upload import router as upload_router
 from app.api.processing import router as processing_router
 from app.api.ocr import router as ocr_router
 
+from app.models.user import User
+from app.models.ocr_result import OCRResultModel
+
 
 app = FastAPI()
 
