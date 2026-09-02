@@ -14,6 +14,7 @@ from app.schemas.ocr_schema import (
 from app.ocr.confidence_calculator import (
     OCRConfidenceCalculator
 )
+from app.ocr.word_highlighter import OCRWordHighlighter
 
 
 class OCROrchestrator:
@@ -255,6 +256,16 @@ class OCROrchestrator:
                 final_words.append(
                     easyocr_word
                 )
+
+        # -------------------------------------------------
+        # ADD WORD-LEVEL REVIEW METADATA
+        # -------------------------------------------------
+
+        final_words = (
+            OCRWordHighlighter.add_highlighting_metadata(
+                final_words
+            )
+        )
 
         # -------------------------------------------------
         # BUILD FINAL TEXT

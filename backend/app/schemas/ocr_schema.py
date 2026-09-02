@@ -5,18 +5,35 @@ from pydantic import BaseModel, Field
 
 class OCRWord(BaseModel):
     """
-    Represents a single word detected by an OCR engine.
+    Represents one OCR-detected text region.
+
+    The bounding box is preserved so the frontend can
+    highlight the corresponding word on the image.
     """
 
     text: str
 
-    confidence: float = Field(
-        ...,
+    confidence: Optional[float] = Field(
+        default=None,
         ge=0.0,
         le=1.0
     )
 
     bounding_box: List[List[float]]
+
+    # -------------------------------------------------
+    # WORD REVIEW INFORMATION
+    # -------------------------------------------------
+
+    confidence_level: Optional[str] = None
+
+    needs_review: bool = False
+
+    original_text: Optional[str] = None
+
+    suggested_alternatives: List[str] = Field(
+        default_factory=list
+    )
 
 
 class OCRParagraph(BaseModel):
@@ -54,6 +71,8 @@ class OCRResult(BaseModel):
         le=1.0
     )
 
+    confidence_label: Optional[str] = None
+
     words: List[OCRWord] = Field(
         default_factory=list
     )
@@ -68,5 +87,3 @@ class OCRResult(BaseModel):
         ...,
         ge=0.0
     )
-
-    confidence_label: Optional[str] = None

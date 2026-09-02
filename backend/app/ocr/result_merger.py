@@ -99,7 +99,12 @@ class OCRResultMerger:
             return OCRWord(
                 text=cleaned_trocr_text,
                 confidence=easyocr_word.confidence,
-                bounding_box=easyocr_word.bounding_box
+                bounding_box=easyocr_word.bounding_box,
+                original_text=easyocr_word.text,
+                suggested_alternatives=[
+                    easyocr_word.text,
+                    cleaned_trocr_text
+                ]
             )
 
         # Fallback to EasyOCR
