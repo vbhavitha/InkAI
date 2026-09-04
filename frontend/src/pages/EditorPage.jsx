@@ -4,12 +4,19 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
+
 import CustomImage from "../components/editor/CustomImage";
 import { TableKit } from "@tiptap/extension-table";
 
 import PageBreakExtension from "../components/editor/PageBreakExtension";
+
 import useAutoSave from "../hooks/useAutoSave";
 import useKeyboardShortcuts from "../hooks/useKeyboardShortcuts";
+
+import {
+  createDocument,
+  updateDocument,
+} from "../services/documentService";
 
 import {
   Save,
@@ -35,6 +42,7 @@ import AutosaveIndicator from "../components/editor/AutosaveIndicator";
 function EditorPage() {
   const location = useLocation();
   const navigate = useNavigate();
+
 
   /*
    * =========================================================
@@ -91,14 +99,18 @@ function EditorPage() {
 
   const editor = useEditor({
     extensions: [
+
       /*
        * Basic editor functionality
        */
+
       StarterKit,
+
 
       /*
        * Text alignment
        */
+
       TextAlign.configure({
         types: [
           "heading",
@@ -106,9 +118,11 @@ function EditorPage() {
         ],
       }),
 
+
       /*
        * Images
        */
+
       CustomImage.configure({
         allowBase64: true,
 
@@ -130,31 +144,39 @@ function EditorPage() {
         },
       }),
 
+
       /*
        * Tables
        */
+
       TableKit.configure({
         table: {
           resizable: true,
         },
       }),
 
+
       /*
        * Page breaks
        */
+
       PageBreakExtension,
     ],
+
 
     /*
      * Initial OCR text
      */
+
     content: initialText
       ? createInitialContent(initialText)
       : "<p></p>",
 
+
     /*
      * Editor configuration
      */
+
     editorProps: {
       attributes: {
         class:
@@ -163,6 +185,7 @@ function EditorPage() {
         /*
          * Browser/native spell checking
          */
+
         spellcheck: "true",
       },
     },
@@ -172,6 +195,10 @@ function EditorPage() {
   /*
    * =========================================================
    * AUTO SAVE
+   *
+   * This remains local draft protection.
+   *
+   * It does NOT create backend document versions.
    * =========================================================
    */
 
@@ -183,16 +210,29 @@ function EditorPage() {
     editor,
 
     documentId:
-      location.state?.fileId ||
-      ocrResult?.file_id ||
-      "default",
+      location.state?.documentId ||
+      "draft",
 
     documentTitle,
   });
+
+
+  /*
+   * =========================================================
+   * KEYBOARD SHORTCUTS
+   * =========================================================
+   */
+
   useKeyboardShortcuts({
     editor,
-    onFind: () => setFindReplaceOpen(true),
-    onSave: () => saveNow(),
+
+    onFind: () => {
+      setFindReplaceOpen(true);
+    },
+
+    onSave: () => {
+      saveNow();
+    },
   });
 
 
@@ -219,7 +259,9 @@ function EditorPage() {
 
   /*
    * =========================================================
-   * MANUAL SAVE
+   * MANUAL LOCAL SAVE
+   *
+   * This saves the current draft locally.
    * =========================================================
    */
 
@@ -229,6 +271,176 @@ function EditorPage() {
     }
 
     saveNow();
+  };
+
+
+  /*
+   * =========================================================
+   * BACKEND DOCUMENT SAVE
+   *
+   * This is the real document save.
+   *
+   * Existing document:
+   *     PUT /api/documents/{id}
+   *
+   * New document:
+   *     POST /api/documents
+   *
+   * The complete TipTap JSON is preserved.
+   * =========================================================
+   */
+
+  const handleSaveDocument = async () => {
+    if (!editor) {
+      return null;
+    }
+
+    const content = editor.getJSON();
+
+    const text = editor.getText();
+
+    const wordCount = text
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .length;
+
+    const characterCount = text.length;
+
+
+    /*
+     * Existing backend document ID.
+     *
+     * IMPORTANT:
+     * fileId is NOT automatically used as documentId.
+     */
+
+    const documentId =
+      location.state?.documentId || null;
+
+
+    /*
+     * Payload sent to the backend.
+     */
+
+    const payload = {
+      title:
+        documentTitle.trim() ||
+        "Untitled Document",
+
+      content,
+
+      source_file_id:
+        location.state?.fileId ||
+        ocrResult?.file_id ||
+        null,
+
+      word_count: wordCount,
+
+      character_count: characterCount,
+    };
+
+
+    try {
+      let savedDocument;
+
+
+      /*
+       * Existing document
+       */
+
+      if (documentId) {
+        savedDocument = await updateDocument(
+          documentId,
+          payload
+        );
+      }
+
+
+      /*
+       * New document
+       */
+
+      else {
+        savedDocument = await createDocument(
+          payload
+        );
+      }
+
+
+      return savedDocument;
+    } catch (error) {
+      console.error(
+        "Document save failed:",
+        error
+      );
+
+      return null;
+    }
+  };
+
+
+  /*
+   * =========================================================
+   * SAVE DOCUMENT → GENERATE HANDWRITING
+   *
+   * Phase 6 → Phase 7
+   * =========================================================
+   */
+
+  const handleSaveAndGenerate = async () => {
+    if (!editor) {
+      return;
+    }
+
+
+    try {
+
+      /*
+       * Save the complete structured document
+       * to the backend first.
+       */
+
+      const savedDocument =
+        await handleSaveDocument();
+
+
+      /*
+       * Stop if backend save failed.
+       */
+
+      if (!savedDocument) {
+        alert(
+          "Unable to save the document."
+        );
+
+        return;
+      }
+
+
+      /*
+       * Navigate to Phase 7.
+       *
+       * The complete saved document is passed,
+       * including TipTap JSON content.
+       */
+
+      navigate("/handwriting", {
+        state: {
+          document: savedDocument,
+        },
+      });
+
+    } catch (error) {
+      console.error(
+        "Failed to save document and generate handwriting:",
+        error
+      );
+
+      alert(
+        "Could not save the document for handwriting generation."
+      );
+    }
   };
 
 
@@ -252,9 +464,11 @@ function EditorPage() {
    */
 
   const renderSaveStatus = () => {
+
     if (saveStatus === "saving") {
       return (
         <div className="flex items-center gap-2 text-sm text-slate-400">
+
           <span
             className="
               w-2
@@ -268,13 +482,16 @@ function EditorPage() {
           <span>
             Saving...
           </span>
+
         </div>
       );
     }
 
+
     if (saveStatus === "offline") {
       return (
         <div className="flex items-center gap-2 text-sm text-slate-400">
+
           <span className="text-yellow-400">
             ⚠
           </span>
@@ -282,13 +499,16 @@ function EditorPage() {
           <span>
             Changes saved locally
           </span>
+
         </div>
       );
     }
 
+
     if (saveStatus === "error") {
       return (
         <div className="flex items-center gap-2 text-sm text-red-400">
+
           <span>
             ⚠
           </span>
@@ -296,12 +516,15 @@ function EditorPage() {
           <span>
             Save failed
           </span>
+
         </div>
       );
     }
 
+
     return (
       <div className="flex items-center gap-2 text-sm text-slate-400">
+
         <span className="text-green-400">
           ✓
         </span>
@@ -309,6 +532,7 @@ function EditorPage() {
         <span>
           Saved
         </span>
+
       </div>
     );
   };
@@ -322,6 +546,7 @@ function EditorPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+
 
       {/* =====================================================
           NAVBAR
@@ -339,6 +564,7 @@ function EditorPage() {
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6">
 
           <div className="h-16 flex items-center justify-between">
+
 
             {/* =================================================
                 LEFT
@@ -358,11 +584,13 @@ function EditorPage() {
                   transition
                 "
               >
+
                 <FileText size={20} />
 
                 <span className="font-semibold">
                   InkAI
                 </span>
+
               </button>
 
 
@@ -394,6 +622,7 @@ function EditorPage() {
 
             </div>
 
+
             <AutosaveIndicator
               status={saveStatus}
               lastSavedAt={lastSavedAt}
@@ -405,6 +634,7 @@ function EditorPage() {
             ================================================== */}
 
             <div className="flex items-center gap-3">
+
 
               {/* SAVE STATUS */}
 
@@ -434,9 +664,11 @@ function EditorPage() {
                   transition
                 "
               >
+
                 <Save size={16} />
 
                 Save
+
               </button>
 
 
@@ -454,7 +686,9 @@ function EditorPage() {
                 "
                 title="More options"
               >
+
                 <MoreHorizontal size={20} />
+
               </button>
 
             </div>
@@ -594,10 +828,11 @@ function EditorPage() {
             max-w-[1600px]
             mx-auto
             px-6
-            h-10
+            min-h-12
             flex
             items-center
             justify-between
+            gap-4
             text-xs
             text-slate-400
           "
@@ -610,7 +845,7 @@ function EditorPage() {
           />
 
 
-          {/* DOCUMENT INFO */}
+          {/* DOCUMENT INFO + ACTIONS */}
 
           <div className="flex items-center gap-5">
 
@@ -625,6 +860,72 @@ function EditorPage() {
             <span>
               English
             </span>
+
+
+            {/* SAVE DOCUMENT */}
+
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!editor}
+              className="
+                flex
+                items-center
+                gap-2
+                px-4
+                py-2
+                rounded-lg
+                border
+                border-slate-700
+                bg-slate-900
+                hover:bg-slate-800
+                disabled:opacity-50
+                disabled:cursor-not-allowed
+                text-slate-200
+                text-sm
+                font-medium
+                transition
+              "
+            >
+
+              <Save size={15} />
+
+              Save Document
+
+            </button>
+
+
+            {/* GENERATE HANDWRITING */}
+
+            <button
+              type="button"
+              onClick={handleSaveAndGenerate}
+              disabled={!editor}
+              className="
+                flex
+                items-center
+                gap-2
+                px-4
+                py-2
+                rounded-lg
+                bg-indigo-600
+                hover:bg-indigo-500
+                disabled:opacity-50
+                disabled:cursor-not-allowed
+                text-white
+                text-sm
+                font-medium
+                transition
+              "
+            >
+
+              Generate Handwriting
+
+              <span>
+                →
+              </span>
+
+            </button>
 
           </div>
 
@@ -671,6 +972,7 @@ function EditorMenuButton({
         transition
       "
     >
+
       {icon}
 
       <span>
@@ -678,6 +980,7 @@ function EditorMenuButton({
       </span>
 
       <ChevronDown size={13} />
+
     </button>
   );
 }
