@@ -9,6 +9,7 @@ from sqlalchemy import (
     BigInteger,
     Text
 )
+from sqlalchemy.orm import relationship
 
 from sqlalchemy.dialects.postgresql import UUID
 

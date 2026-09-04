@@ -6,6 +6,8 @@ import {
     Loader2,
     AlertCircle,
     FileText,
+    RefreshCw,
+    Upload,
 } from "lucide-react";
 
 import Navbar from "../components/Navbar";
@@ -47,7 +49,7 @@ function OCRPage() {
 
 
     // ==========================================
-    // FILES RECEIVED FROM UPLOAD PAGE
+    // FILES FROM UPLOAD PAGE
     // ==========================================
 
     const uploadedFiles =
@@ -55,53 +57,49 @@ function OCRPage() {
 
 
     // ==========================================
-    // CURRENT FILE
+    // STATE
     // ==========================================
 
     const [currentFileIndex, setCurrentFileIndex] =
         useState(0);
 
-
-    // ==========================================
-    // PROCESSING STATE
-    // ==========================================
-
     const [currentStep, setCurrentStep] =
         useState(0);
-
 
     const [processing, setProcessing] =
         useState(true);
 
-
     const [error, setError] =
         useState(null);
 
+    const [retryKey, setRetryKey] = 
+        useState(0);
+
 
     // ==========================================
-    // PROCESSING FUNCTION
+    // RUN OCR
     // ==========================================
 
     useEffect(() => {
 
         let cancelled = false;
 
-        let timers = [];
-
 
         const runOCR = async () => {
 
             // --------------------------------------
-            // NO FILES
+            // NO FILE
             // --------------------------------------
 
             if (!uploadedFiles.length) {
 
                 setProcessing(false);
 
-                setError(
-                    "No uploaded document was found."
-                );
+                setError({
+                    type: "no-file",
+                    message:
+                        "No uploaded document was found.",
+                });
 
                 return;
             }
@@ -111,13 +109,19 @@ function OCRPage() {
                 uploadedFiles[currentFileIndex];
 
 
+            // --------------------------------------
+            // MISSING FILE ID
+            // --------------------------------------
+
             if (!file?.id) {
 
                 setProcessing(false);
 
-                setError(
-                    "The uploaded file ID is missing."
-                );
+                setError({
+                    type: "failure",
+                    message:
+                        "The uploaded file could not be identified.",
+                });
 
                 return;
             }
@@ -139,7 +143,6 @@ function OCRPage() {
 
                 setCurrentStep(0);
 
-
                 await wait(700);
 
 
@@ -154,7 +157,6 @@ function OCRPage() {
                 // ==================================
 
                 setCurrentStep(1);
-
 
                 await wait(800);
 
@@ -172,14 +174,6 @@ function OCRPage() {
                 setCurrentStep(2);
 
 
-                /*
-                 * The actual backend OCR request
-                 * happens here.
-                 *
-                 * This can take several seconds because
-                 * EasyOCR and TrOCR may both be used.
-                 */
-
                 const response =
                     await fetch(
                         `${API_BASE_URL}/api/ocr/process/${file.id}?language=en`,
@@ -194,30 +188,85 @@ function OCRPage() {
                 }
 
 
+                // ==================================
+                // HTTP ERROR
+                // ==================================
+
                 if (!response.ok) {
 
-                    let message =
-                        "OCR processing failed.";
+                    let errorMessage =
+                        "Something went wrong while reading this document.";
+
+                    let errorType =
+                        "failure";
+
 
                     try {
 
                         const errorData =
                             await response.json();
 
-                        if (errorData?.detail) {
-                            message =
-                                errorData.detail;
+
+                        const detail =
+                            errorData?.detail;
+
+
+                        if (typeof detail === "string") {
+
+                            errorMessage =
+                                detail;
+
+                        }
+                        else if (
+                            Array.isArray(detail)
+                        ) {
+
+                            errorMessage =
+                                detail
+                                    .map(
+                                        (item) =>
+                                            item?.msg
+                                    )
+                                    .filter(Boolean)
+                                    .join(", ");
+
                         }
 
                     }
                     catch {
-                        // Ignore invalid error JSON
+                        // Ignore invalid JSON
                     }
 
 
-                    throw new Error(message);
+                    /*
+                     * Detect common "no processed image"
+                     * situations.
+                     */
+
+                    if (
+                        errorMessage
+                            .toLowerCase()
+                            .includes(
+                                "processed image not found"
+                            )
+                    ) {
+
+                        errorType =
+                            "processing";
+
+                    }
+
+
+                    throw new OCROperationError(
+                        errorMessage,
+                        errorType
+                    );
                 }
 
+
+                // ==================================
+                // GET OCR RESULT
+                // ==================================
 
                 const result =
                     await response.json();
@@ -229,12 +278,44 @@ function OCRPage() {
 
 
                 // ==================================
+                // CHECK NO TEXT DETECTED
+                // ==================================
+
+                const words =
+                    Array.isArray(result?.words)
+                        ? result.words
+                        : [];
+
+
+                const fullText =
+                    typeof result?.full_text === "string"
+                        ? result.full_text.trim()
+                        : "";
+
+
+                if (
+                    words.length === 0 &&
+                    !fullText
+                ) {
+
+                    setProcessing(false);
+
+                    setError({
+                        type: "no-text",
+                        message:
+                            "We couldn't detect readable text on this page.",
+                    });
+
+                    return;
+                }
+
+
+                // ==================================
                 // STEP 4
                 // Analyzing structure
                 // ==================================
 
                 setCurrentStep(3);
-
 
                 await wait(500);
 
@@ -251,7 +332,6 @@ function OCRPage() {
 
                 setCurrentStep(4);
 
-
                 await wait(500);
 
 
@@ -267,30 +347,26 @@ function OCRPage() {
                 setProcessing(false);
 
 
-                /*
-                 * Navigate to OCR Results.
-                 *
-                 * We pass:
-                 *
-                 * - OCR result
-                 * - file ID
-                 * - file name
-                 *
-                 * The Results page can use these
-                 * values later.
-                 */
+                // ==================================
+                // NAVIGATE TO RESULTS
+                // ==================================
 
                 navigate(
                     "/ocr-results",
                     {
                         state: {
-                            ocrResult: result,
 
-                            fileId: file.id,
+                            ocrResult:
+                                result,
 
-                            fileName: file.name,
+                            fileId:
+                                file.id,
 
-                            imageUrl: null,
+                            fileName:
+                                file.name,
+
+                            imageUrl:
+                                null,
                         },
                     }
                 );
@@ -311,10 +387,38 @@ function OCRPage() {
 
                 setProcessing(false);
 
-                setError(
-                    err.message ||
-                    "Unable to process this document."
-                );
+
+                // ==================================
+                // KNOWN OCR ERROR
+                // ==================================
+
+                if (
+                    err instanceof OCROperationError
+                ) {
+
+                    setError({
+                        type:
+                            err.type ||
+                            "failure",
+
+                        message:
+                            err.message,
+                    });
+
+                    return;
+                }
+
+
+                // ==================================
+                // NETWORK / UNKNOWN ERROR
+                // ==================================
+
+                setError({
+                    type: "failure",
+
+                    message:
+                        "Something went wrong while reading this document. Please try again.",
+                });
             }
         };
 
@@ -322,30 +426,21 @@ function OCRPage() {
         runOCR();
 
 
-        // ==========================================
-        // CLEANUP
-        // ==========================================
-
         return () => {
 
             cancelled = true;
-
-            timers.forEach(
-                (timer) =>
-                    clearTimeout(timer)
-            );
 
         };
 
     }, [
         currentFileIndex,
         navigate,
-        uploadedFiles,
+        retryKey,
     ]);
 
 
     // ==========================================
-    // RETRY
+    // RETRY OCR
     // ==========================================
 
     const handleRetry = () => {
@@ -356,16 +451,44 @@ function OCRPage() {
 
         setProcessing(true);
 
+        setRetryKey((value) => value + 1);
+
+    };
+
+
+    // ==========================================
+    // RETRY HELPER
+    // ==========================================
+
+    function runRetry() {
+
         /*
-         * Changing currentFileIndex temporarily
-         * forces the OCR effect to run again.
+         * A small state change forces the effect
+         * to execute again.
          */
 
-        setCurrentFileIndex(
-            (index) => index
+        setCurrentStep(
+            (step) => step === 0 ? 1 : 0
         );
 
-        window.location.reload();
+        setTimeout(() => {
+
+            setCurrentStep(0);
+
+            setProcessing(true);
+
+        }, 50);
+    }
+
+
+    // ==========================================
+    // GO TO UPLOAD
+    // ==========================================
+
+    const handleGoToUpload = () => {
+
+        navigate("/upload");
+
     };
 
 
@@ -380,6 +503,7 @@ function OCRPage() {
         }
 
         navigate("/upload");
+
     };
 
 
@@ -390,78 +514,272 @@ function OCRPage() {
     if (error) {
 
         return (
-            <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+
+            <div
+                className="
+                    min-h-screen
+                    bg-slate-950
+                    text-white
+                    flex
+                    flex-col
+                "
+            >
 
                 <Navbar />
 
 
-                <main className="flex-1 flex items-center justify-center px-6">
+                <main
+                    className="
+                        flex-1
+                        flex
+                        items-center
+                        justify-center
+                        px-6
+                        py-12
+                    "
+                >
 
-                    <div className="w-full max-w-md text-center">
+                    <div
+                        className="
+                            w-full
+                            max-w-lg
+                            text-center
+                        "
+                    >
+
+                        {/* ==================================
+                            ICON
+                        ================================== */}
 
                         <div
-                            className="
-                                w-16
-                                h-16
+                            className={`
+                                w-20
+                                h-20
                                 mx-auto
                                 rounded-2xl
-                                bg-red-500/10
-                                border
-                                border-red-500/20
                                 flex
                                 items-center
                                 justify-center
                                 mb-6
-                            "
+
+                                ${
+                                    error.type === "no-text"
+                                        ? "bg-amber-500/10 border border-amber-500/20"
+                                        : "bg-red-500/10 border border-red-500/20"
+                                }
+                            `}
                         >
 
-                            <AlertCircle
-                                className="
-                                    w-8
-                                    h-8
-                                    text-red-400
-                                "
-                            />
+                            {error.type === "no-text" ? (
+
+                                <FileText
+                                    className="
+                                        w-10
+                                        h-10
+                                        text-amber-400
+                                    "
+                                />
+
+                            ) : (
+
+                                <AlertCircle
+                                    className="
+                                        w-10
+                                        h-10
+                                        text-red-400
+                                    "
+                                />
+
+                            )}
 
                         </div>
 
 
+                        {/* ==================================
+                            TITLE
+                        ================================== */}
+
                         <h1
                             className="
                                 text-2xl
+                                md:text-3xl
                                 font-bold
-                                text-white
                             "
                         >
-                            OCR Processing Failed
+
+                            {error.type === "no-text"
+                                ? "No readable text detected"
+                                : error.type === "processing"
+                                ? "Document processing failed"
+                                : error.type === "no-file"
+                                ? "No document found"
+                                : "OCR Processing Failed"}
+
                         </h1>
 
+
+                        {/* ==================================
+                            DESCRIPTION
+                        ================================== */}
 
                         <p
                             className="
                                 text-slate-400
-                                mt-3
-                                leading-6
+                                mt-4
+                                leading-7
                             "
                         >
-                            {error}
+
+                            {error.type === "no-text" ? (
+
+                                <>
+                                    We couldn't detect readable
+                                    text on this page.
+                                    <br />
+
+                                    Try improving the image or
+                                    using Auto Enhance.
+                                </>
+
+                            ) : error.type === "processing" ? (
+
+                                <>
+                                    The document could not be
+                                    prepared for OCR.
+                                    <br />
+
+                                    Please process the image again
+                                    and retry.
+                                </>
+
+                            ) : error.type === "no-file" ? (
+
+                                <>
+                                    No uploaded document is
+                                    available for OCR.
+                                    <br />
+
+                                    Please upload a document first.
+                                </>
+
+                            ) : (
+
+                                <>
+                                    Something went wrong while
+                                    reading this document.
+                                    <br />
+
+                                    Please try again.
+                                </>
+
+                            )}
+
                         </p>
 
+
+                        {/* ==================================
+                            TECHNICAL ERROR
+                        ================================== */}
+
+                        {error.message &&
+                            error.message !==
+                                "Something went wrong while reading this document." &&
+                            error.message !==
+                                "No uploaded document was found." && (
+
+                                <details
+                                    className="
+                                        mt-5
+                                        text-left
+                                        rounded-xl
+                                        bg-slate-900
+                                        border
+                                        border-slate-800
+                                        p-4
+                                    "
+                                >
+
+                                    <summary
+                                        className="
+                                            text-xs
+                                            text-slate-500
+                                            cursor-pointer
+                                        "
+                                    >
+                                        Technical details
+                                    </summary>
+
+
+                                    <p
+                                        className="
+                                            text-xs
+                                            text-slate-500
+                                            mt-3
+                                            break-words
+                                        "
+                                    >
+                                        {error.message}
+                                    </p>
+
+                                </details>
+                            )}
+
+
+                        {/* ==================================
+                            ACTIONS
+                        ================================== */}
 
                         <div
                             className="
                                 flex
+                                flex-col
+                                sm:flex-row
                                 justify-center
                                 gap-3
                                 mt-8
                             "
                         >
 
+                            {error.type !== "no-file" && (
+
+                                <button
+                                    onClick={handleRetry}
+                                    className="
+                                        flex
+                                        items-center
+                                        justify-center
+                                        gap-2
+                                        px-5
+                                        py-3
+                                        rounded-xl
+                                        bg-indigo-600
+                                        hover:bg-indigo-500
+                                        transition
+                                        font-medium
+                                    "
+                                >
+
+                                    <RefreshCw
+                                        className="
+                                            w-4
+                                            h-4
+                                        "
+                                    />
+
+                                    Try Again
+
+                                </button>
+
+                            )}
+
+
                             <button
-                                onClick={() =>
-                                    navigate("/upload")
-                                }
+                                onClick={handleGoToUpload}
                                 className="
+                                    flex
+                                    items-center
+                                    justify-center
+                                    gap-2
                                     px-5
                                     py-3
                                     rounded-xl
@@ -471,26 +789,84 @@ function OCRPage() {
                                     font-medium
                                 "
                             >
-                                Back to Upload
-                            </button>
 
+                                <Upload
+                                    className="
+                                        w-4
+                                        h-4
+                                    "
+                                />
 
-                            <button
-                                onClick={handleRetry}
-                                className="
-                                    px-5
-                                    py-3
-                                    rounded-xl
-                                    bg-indigo-600
-                                    hover:bg-indigo-500
-                                    transition
-                                    font-medium
-                                "
-                            >
-                                Retry OCR
+                                Upload Another Image
+
                             </button>
 
                         </div>
+
+
+                        {/* ==================================
+                            IMAGE QUALITY SUGGESTION
+                        ================================== */}
+
+                        {error.type === "no-text" && (
+
+                            <div
+                                className="
+                                    mt-8
+                                    p-4
+                                    rounded-xl
+                                    bg-slate-900
+                                    border
+                                    border-slate-800
+                                    text-left
+                                "
+                            >
+
+                                <p
+                                    className="
+                                        text-sm
+                                        font-medium
+                                        text-white
+                                    "
+                                >
+                                    Tips for better OCR
+                                </p>
+
+
+                                <ul
+                                    className="
+                                        mt-3
+                                        space-y-2
+                                        text-sm
+                                        text-slate-400
+                                    "
+                                >
+
+                                    <li>
+                                        • Use a clear,
+                                        well-lit image.
+                                    </li>
+
+                                    <li>
+                                        • Keep the handwriting
+                                        in focus.
+                                    </li>
+
+                                    <li>
+                                        • Try Auto Enhance
+                                        before running OCR.
+                                    </li>
+
+                                    <li>
+                                        • Avoid heavily tilted
+                                        or blurry images.
+                                    </li>
+
+                                </ul>
+
+                            </div>
+
+                        )}
 
                     </div>
 
@@ -505,7 +881,7 @@ function OCRPage() {
 
 
     // ==========================================
-    // MAIN PROCESSING SCREEN
+    // PROCESSING SCREEN
     // ==========================================
 
     return (
@@ -542,10 +918,15 @@ function OCRPage() {
                 >
 
                     {/* ==================================
-                        TOP
+                        HEADER
                     ================================== */}
 
-                    <div className="text-center mb-8">
+                    <div
+                        className="
+                            text-center
+                            mb-8
+                        "
+                    >
 
                         <div
                             className="
@@ -599,7 +980,7 @@ function OCRPage() {
 
 
                     {/* ==================================
-                        FILE INFORMATION
+                        FILE
                     ================================== */}
 
                     {uploadedFiles.length > 0 && (
@@ -642,7 +1023,11 @@ function OCRPage() {
                             </div>
 
 
-                            <div className="min-w-0">
+                            <div
+                                className="
+                                    min-w-0
+                                "
+                            >
 
                                 <p
                                     className="
@@ -681,7 +1066,7 @@ function OCRPage() {
 
 
                     {/* ==================================
-                        PROGRESS CARD
+                        PROCESSING CARD
                     ================================== */}
 
                     <div
@@ -695,7 +1080,11 @@ function OCRPage() {
                         "
                     >
 
-                        <div className="space-y-6">
+                        <div
+                            className="
+                                space-y-6
+                            "
+                        >
 
                             {PROCESSING_STEPS.map(
                                 (step, index) => {
@@ -708,6 +1097,7 @@ function OCRPage() {
                                         index ===
                                         currentStep;
 
+
                                     return (
 
                                         <div
@@ -719,8 +1109,6 @@ function OCRPage() {
                                             "
                                         >
 
-                                            {/* STATUS ICON */}
-
                                             <div
                                                 className={`
                                                     w-9
@@ -730,15 +1118,13 @@ function OCRPage() {
                                                     items-center
                                                     justify-center
                                                     shrink-0
-                                                    transition-all
-                                                    duration-300
 
                                                     ${
                                                         completed
                                                             ? "bg-emerald-500/15 text-emerald-400"
                                                             : active
-                                                                ? "bg-indigo-500/15 text-indigo-400"
-                                                                : "bg-slate-800 text-slate-600"
+                                                            ? "bg-indigo-500/15 text-indigo-400"
+                                                            : "bg-slate-800 text-slate-600"
                                                     }
                                                 `}
                                             >
@@ -778,20 +1164,17 @@ function OCRPage() {
                                             </div>
 
 
-                                            {/* LABEL */}
-
                                             <span
                                                 className={`
                                                     text-sm
                                                     md:text-base
-                                                    transition-colors
 
                                                     ${
                                                         completed
                                                             ? "text-emerald-400"
                                                             : active
-                                                                ? "text-white font-medium"
-                                                                : "text-slate-500"
+                                                            ? "text-white font-medium"
+                                                            : "text-slate-500"
                                                     }
                                                 `}
                                             >
@@ -808,10 +1191,14 @@ function OCRPage() {
 
 
                         {/* ==================================
-                            PROGRESS BAR
+                            PROGRESS
                         ================================== */}
 
-                        <div className="mt-8">
+                        <div
+                            className="
+                                mt-8
+                            "
+                        >
 
                             <div
                                 className="
@@ -832,11 +1219,16 @@ function OCRPage() {
                                         duration-500
                                     "
                                     style={{
-                                        width: `${
-                                            ((currentStep + 1) /
-                                                PROCESSING_STEPS.length) *
-                                            100
-                                        }%`,
+                                        width:
+                                            `${
+                                                (
+                                                    (
+                                                        currentStep + 1
+                                                    ) /
+                                                    PROCESSING_STEPS.length
+                                                ) *
+                                                100
+                                            }%`,
                                     }}
                                 />
 
@@ -857,12 +1249,19 @@ function OCRPage() {
                                     Processing
                                 </span>
 
+
                                 <span>
-                                    {Math.round(
-                                        ((currentStep + 1) /
-                                            PROCESSING_STEPS.length) *
-                                        100
-                                    )}
+                                    {
+                                        Math.round(
+                                            (
+                                                (
+                                                    currentStep + 1
+                                                ) /
+                                                PROCESSING_STEPS.length
+                                            ) *
+                                            100
+                                        )
+                                    }
                                     %
                                 </span>
 
@@ -874,7 +1273,7 @@ function OCRPage() {
 
 
                     {/* ==================================
-                        INFORMATION
+                        NOTICE
                     ================================== */}
 
                     <p
@@ -885,8 +1284,8 @@ function OCRPage() {
                             mt-6
                         "
                     >
-                        Handwriting recognition may take a
-                        little longer for detailed documents.
+                        Handwriting recognition may take
+                        a little longer for detailed documents.
                     </p>
 
                 </div>
@@ -898,6 +1297,25 @@ function OCRPage() {
 
         </div>
     );
+}
+
+
+// ==========================================
+// ERROR CLASS
+// ==========================================
+
+class OCROperationError extends Error {
+
+    constructor(message, type = "failure") {
+
+        super(message);
+
+        this.name =
+            "OCROperationError";
+
+        this.type =
+            type;
+    }
 }
 
 
