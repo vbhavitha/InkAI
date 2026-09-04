@@ -12,6 +12,10 @@ import {
   Search,
 } from "lucide-react";
 
+import AITools from "./AITools";
+import ImageInsert from "./ImageInsert";
+import TableInsert from "./TableInsert";
+import PageBreak from "./PageBreak";
 
 function EditorToolbar({
   editor,
@@ -21,7 +25,6 @@ function EditorToolbar({
 
   const [headingMenuOpen, setHeadingMenuOpen] =
     useState(false);
-
 
   /*
    * =========================================================
@@ -47,13 +50,17 @@ function EditorToolbar({
     };
   }, [editor]);
 
+  /*
+   * =========================================================
+   * EDITOR CHECK
+   * =========================================================
+   */
 
   if (!editor) {
     return (
       <div className="h-12 bg-slate-900" />
     );
   }
-
 
   /*
    * =========================================================
@@ -89,7 +96,6 @@ function EditorToolbar({
     return "Normal";
   };
 
-
   const setNormal = (event) => {
     event.preventDefault();
 
@@ -101,7 +107,6 @@ function EditorToolbar({
 
     setHeadingMenuOpen(false);
   };
-
 
   const setHeading = (level, event) => {
     event.preventDefault();
@@ -117,10 +122,9 @@ function EditorToolbar({
     setHeadingMenuOpen(false);
   };
 
-
   /*
    * =========================================================
-   * BOLD / ITALIC / UNDERLINE
+   * BOLD
    * =========================================================
    */
 
@@ -134,6 +138,11 @@ function EditorToolbar({
       .run();
   };
 
+  /*
+   * =========================================================
+   * ITALIC
+   * =========================================================
+   */
 
   const handleItalic = (event) => {
     event.preventDefault();
@@ -145,6 +154,11 @@ function EditorToolbar({
       .run();
   };
 
+  /*
+   * =========================================================
+   * UNDERLINE
+   * =========================================================
+   */
 
   const handleUnderline = (event) => {
     event.preventDefault();
@@ -155,7 +169,6 @@ function EditorToolbar({
       .toggleUnderline()
       .run();
   };
-
 
   /*
    * =========================================================
@@ -173,7 +186,6 @@ function EditorToolbar({
       .run();
   };
 
-
   /*
    * =========================================================
    * NUMBERED LIST
@@ -190,10 +202,9 @@ function EditorToolbar({
       .run();
   };
 
-
   /*
    * =========================================================
-   * UNDO / REDO
+   * UNDO
    * =========================================================
    */
 
@@ -207,6 +218,11 @@ function EditorToolbar({
       .run();
   };
 
+  /*
+   * =========================================================
+   * REDO
+   * =========================================================
+   */
 
   const handleRedo = (event) => {
     event.preventDefault();
@@ -218,10 +234,14 @@ function EditorToolbar({
       .run();
   };
 
+  /*
+   * =========================================================
+   * RENDER
+   * =========================================================
+   */
 
   return (
     <div className="flex items-center gap-1 p-2 bg-slate-900">
-
 
       {/* =====================================================
           HEADING DROPDOWN
@@ -260,7 +280,6 @@ function EditorToolbar({
           <ChevronDown size={14} />
         </button>
 
-
         {headingMenuOpen && (
           <div
             className="
@@ -278,6 +297,8 @@ function EditorToolbar({
               overflow-hidden
             "
           >
+
+            {/* NORMAL */}
 
             <button
               type="button"
@@ -297,6 +318,7 @@ function EditorToolbar({
               Normal
             </button>
 
+            {/* HEADING 1 */}
 
             <button
               type="button"
@@ -318,6 +340,7 @@ function EditorToolbar({
               Heading 1
             </button>
 
+            {/* HEADING 2 */}
 
             <button
               type="button"
@@ -339,6 +362,7 @@ function EditorToolbar({
               Heading 2
             </button>
 
+            {/* HEADING 3 */}
 
             <button
               type="button"
@@ -365,11 +389,9 @@ function EditorToolbar({
 
       </div>
 
-
       {/* SEPARATOR */}
 
       <div className="w-px h-6 bg-slate-700 mx-1" />
-
 
       {/* =====================================================
           BOLD
@@ -397,7 +419,6 @@ function EditorToolbar({
         <Bold size={18} />
       </button>
 
-
       {/* =====================================================
           ITALIC
       ====================================================== */}
@@ -423,7 +444,6 @@ function EditorToolbar({
       >
         <Italic size={18} />
       </button>
-
 
       {/* =====================================================
           UNDERLINE
@@ -451,11 +471,9 @@ function EditorToolbar({
         <Underline size={18} />
       </button>
 
-
       {/* SEPARATOR */}
 
       <div className="w-px h-6 bg-slate-700 mx-2" />
-
 
       {/* =====================================================
           BULLET LIST
@@ -483,7 +501,6 @@ function EditorToolbar({
         <List size={18} />
       </button>
 
-
       {/* =====================================================
           NUMBERED LIST
       ====================================================== */}
@@ -510,11 +527,9 @@ function EditorToolbar({
         <ListOrdered size={18} />
       </button>
 
-
       {/* SEPARATOR */}
 
       <div className="w-px h-6 bg-slate-700 mx-2" />
-
 
       {/* =====================================================
           UNDO
@@ -542,7 +557,6 @@ function EditorToolbar({
         <Undo2 size={18} />
       </button>
 
-
       {/* =====================================================
           REDO
       ====================================================== */}
@@ -569,11 +583,9 @@ function EditorToolbar({
         <Redo2 size={18} />
       </button>
 
-
       {/* SEPARATOR */}
 
       <div className="w-px h-6 bg-slate-700 mx-2" />
-
 
       {/* =====================================================
           FIND & REPLACE
@@ -604,9 +616,34 @@ function EditorToolbar({
         <Search size={18} />
       </button>
 
+      {/* SEPARATOR */}
+
+      <div className="w-px h-6 bg-slate-700 mx-2" />
+
+      {/* =====================================================
+          INSERT IMAGE
+      ====================================================== */}
+
+      <ImageInsert editor={editor} />
+
+      {/* =====================================================
+          INSERT TABLE
+      ====================================================== */}
+
+      <TableInsert editor={editor} />
+
+      {/* PAGE BREAK */}
+
+      <PageBreak editor={editor} />
+
+      {/* =====================================================
+          AI TOOLS
+      ====================================================== */}
+
+      <AITools editor={editor} />
+
     </div>
   );
 }
-
 
 export default EditorToolbar;

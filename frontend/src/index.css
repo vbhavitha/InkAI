@@ -1,1 +1,351 @@
 @import "tailwindcss";
+/* =========================================================
+   INKAI EDITOR TABLES
+   ========================================================= */
+
+.ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin: 16px 0;
+}
+
+.ProseMirror th,
+.ProseMirror td {
+  border: 1px solid #cbd5e1;
+  padding: 8px 12px;
+  min-width: 80px;
+  vertical-align: top;
+}
+
+.ProseMirror th {
+  font-weight: 600;
+  background: #f1f5f9;
+}
+
+.ProseMirror td p,
+.ProseMirror th p {
+  margin: 0;
+}
+
+.ProseMirror .selectedCell {
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+}
+
+.ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid #6366f1;
+  border-radius: 4px;
+}
+
+/* =========================================================
+   INKAI IMAGE RESIZE
+   ========================================================= */
+
+.ProseMirror [data-resize-handle] {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #6366f1;
+  background: white;
+  border-radius: 50%;
+  z-index: 20;
+}
+
+.ProseMirror [data-resize-handle="bottom-right"] {
+  right: -5px;
+  bottom: -5px;
+}
+
+.ProseMirror [data-resize-handle="bottom-left"] {
+  left: -5px;
+  bottom: -5px;
+}
+
+.ProseMirror [data-resize-handle="top-right"] {
+  right: -5px;
+  top: -5px;
+}
+
+.ProseMirror [data-resize-handle="top-left"] {
+  left: -5px;
+  top: -5px;
+}
+
+/* =========================================================
+   INKAI PAGE BREAK
+   ========================================================= */
+
+.inkai-page-break {
+  position: relative;
+
+  width: 100%;
+
+  height: 40px;
+
+  margin: 24px 0;
+
+  border-top: 2px dashed #94a3b8;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  user-select: none;
+}
+
+.inkai-page-break::after {
+  content: "PAGE BREAK";
+
+  position: absolute;
+
+  top: -11px;
+
+  left: 50%;
+
+  transform: translateX(-50%);
+
+  padding: 2px 12px;
+
+  background: white;
+
+  color: #64748b;
+
+  font-size: 11px;
+
+  font-weight: 600;
+
+  letter-spacing: 0.08em;
+
+  white-space: nowrap;
+}
+
+.inkai-page-break.ProseMirror-selectednode {
+  border-top-color: #6366f1;
+}
+
+.inkai-page-break.ProseMirror-selectednode::after {
+  color: #6366f1;
+}
+
+/* =========================================================
+   INKAI A4 EDITOR
+   ========================================================= */
+
+.inkai-editor-container {
+  width: 100%;
+
+  min-height: calc(100vh - 180px);
+
+  padding: 40px 20px;
+
+  background: #e2e8f0;
+
+  display: flex;
+
+  justify-content: center;
+
+  align-items: flex-start;
+
+  overflow-x: auto;
+}
+
+
+/* =========================================================
+   A4 PAGE
+   ========================================================= */
+
+.inkai-a4-page {
+  width: 210mm;
+
+  min-height: 297mm;
+
+  box-sizing: border-box;
+
+  padding: 20mm;
+
+  background: white;
+
+  box-shadow:
+    0 10px 30px rgba(15, 23, 42, 0.15);
+
+  flex-shrink: 0;
+}
+
+
+/* =========================================================
+   EDITOR CONTENT
+   ========================================================= */
+
+.inkai-a4-page .ProseMirror {
+  width: 100%;
+
+  min-height: calc(297mm - 40mm);
+
+  outline: none;
+
+  color: #0f172a;
+
+  font-size: 16px;
+
+  line-height: 1.75;
+}
+
+
+/* =========================================================
+   PARAGRAPHS
+   ========================================================= */
+
+.inkai-a4-page .ProseMirror p {
+  margin-top: 0;
+
+  margin-bottom: 12px;
+}
+
+
+/* =========================================================
+   HEADINGS
+   ========================================================= */
+
+.inkai-a4-page .ProseMirror h1 {
+  font-size: 28px;
+
+  line-height: 1.25;
+
+  font-weight: 700;
+
+  margin-top: 0;
+
+  margin-bottom: 20px;
+}
+
+.inkai-a4-page .ProseMirror h2 {
+  font-size: 23px;
+
+  line-height: 1.3;
+
+  font-weight: 700;
+
+  margin-top: 24px;
+
+  margin-bottom: 14px;
+}
+
+.inkai-a4-page .ProseMirror h3 {
+  font-size: 19px;
+
+  line-height: 1.4;
+
+  font-weight: 600;
+
+  margin-top: 20px;
+
+  margin-bottom: 12px;
+}
+
+
+/* =========================================================
+   LISTS
+   ========================================================= */
+
+.inkai-a4-page .ProseMirror ul {
+  padding-left: 28px;
+
+  margin-top: 8px;
+
+  margin-bottom: 12px;
+
+  list-style-type: disc;
+}
+
+.inkai-a4-page .ProseMirror ol {
+  padding-left: 28px;
+
+  margin-top: 8px;
+
+  margin-bottom: 12px;
+
+  list-style-type: decimal;
+}
+
+.inkai-a4-page .ProseMirror li {
+  margin-bottom: 4px;
+}
+
+
+/* =========================================================
+   IMAGES
+   ========================================================= */
+
+.inkai-a4-page .ProseMirror img {
+  max-width: 100%;
+
+  height: auto;
+
+  display: block;
+}
+
+
+/* =========================================================
+   TABLES
+   ========================================================= */
+
+.inkai-a4-page .ProseMirror table {
+  width: 100%;
+
+  border-collapse: collapse;
+
+  table-layout: fixed;
+
+  margin: 18px 0;
+}
+
+.inkai-a4-page .ProseMirror th,
+.inkai-a4-page .ProseMirror td {
+  border: 1px solid #cbd5e1;
+
+  padding: 8px 12px;
+
+  min-width: 80px;
+
+  vertical-align: top;
+}
+
+.inkai-a4-page .ProseMirror th {
+  font-weight: 600;
+
+  background: #f1f5f9;
+}
+
+
+/* =========================================================
+   PAGE BREAK
+   ========================================================= */
+
+.inkai-a4-page .inkai-page-break {
+  page-break-after: always;
+
+  break-after: page;
+}
+
+/* =========================================================
+   RESPONSIVE A4
+   ========================================================= */
+
+@media (max-width: 900px) {
+  .inkai-editor-container {
+    padding: 20px 10px;
+  }
+
+  .inkai-a4-page {
+    width: 210mm;
+
+    min-height: 297mm;
+  }
+}

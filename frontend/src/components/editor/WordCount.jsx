@@ -1,45 +1,110 @@
 import { useEffect, useState } from "react";
 
 function WordCount({ editor }) {
-  const [words, setWords] = useState(0);
-  const [characters, setCharacters] = useState(0);
+  const [wordCount, setWordCount] = useState(0);
+  const [characterCount, setCharacterCount] = useState(0);
+  const [characterCountNoSpaces, setCharacterCountNoSpaces] =
+    useState(0);
 
   useEffect(() => {
     if (!editor) {
       return;
     }
 
-    const updateCount = () => {
+    const updateCounts = () => {
       const text = editor.state.doc.textContent || "";
 
-      const trimmed = text.trim();
+      /*
+       * ============================================
+       * WORD COUNT
+       * ============================================
+       */
 
-      const wordCount = trimmed
-        ? trimmed.split(/\s+/).length
+      const trimmedText = text.trim();
+
+      const words = trimmedText
+        ? trimmedText.split(/\s+/).length
         : 0;
 
-      setWords(wordCount);
-      setCharacters(text.length);
+
+      /*
+       * ============================================
+       * CHARACTER COUNT
+       * ============================================
+       */
+
+      const characters = text.length;
+
+
+      /*
+       * ============================================
+       * CHARACTER COUNT WITHOUT SPACES
+       * ============================================
+       *
+       * Removes:
+       * - spaces
+       * - tabs
+       * - line breaks
+       */
+
+      const charactersWithoutSpaces =
+        text.replace(/\s/g, "").length;
+
+
+      /*
+       * Update React state
+       */
+
+      setWordCount(words);
+      setCharacterCount(characters);
+      setCharacterCountNoSpaces(
+        charactersWithoutSpaces
+      );
     };
 
-    updateCount();
 
-    editor.on("update", updateCount);
+    /*
+     * Calculate immediately when editor loads.
+     */
+
+    updateCounts();
+
+
+    /*
+     * Recalculate automatically whenever
+     * the document changes.
+     */
+
+    editor.on("update", updateCounts);
+
+
+    /*
+     * Cleanup listener when component
+     * is removed.
+     */
 
     return () => {
-      editor.off("update", updateCount);
+      editor.off("update", updateCounts);
     };
   }, [editor]);
 
+
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex items-center gap-5">
+
       <span>
-        Words: {words}
+        Words: {wordCount}
       </span>
 
       <span>
-        Characters: {characters}
+        Characters: {characterCount}
       </span>
+
+      <span>
+        Characters excluding spaces:{" "}
+        {characterCountNoSpaces}
+      </span>
+
     </div>
   );
 }

@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import {
-  useEditor,
-} from "@tiptap/react";
-
+import { useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
+import CustomImage from "../components/editor/CustomImage";
+import { TableKit } from "@tiptap/extension-table";
+
+import PageBreakExtension from "../components/editor/PageBreakExtension";
+import useAutoSave from "../hooks/useAutoSave";
 
 import {
   Save,
@@ -53,56 +55,134 @@ function EditorPage() {
    */
 
   const [documentTitle, setDocumentTitle] = useState(
-    location.state?.fileName || "Untitled Document"
+    location.state?.fileName ||
+      "Untitled Document"
   );
 
 
   /*
    * =========================================================
-   * SAVE STATUS
+   * FIND & REPLACE
    * =========================================================
    */
 
-  const [saveStatus, setSaveStatus] = useState("Saved");
-
-  const [findReplaceOpen, setFindReplaceOpen] = useState(false);
+  const [findReplaceOpen, setFindReplaceOpen] =
+    useState(false);
 
 
   /*
    * =========================================================
    * TIPTAP EDITOR
    *
-   * IMPORTANT:
-   * The editor is created HERE instead of inside
-   * RichTextEditor.
+   * The editor is created here so that:
    *
-   * This means Toolbar, Editor and WordCount all receive
-   * the exact same editor instance.
+   * EditorToolbar
+   * RichTextEditor
+   * WordCount
+   * AutoSave
+   *
+   * all use the same editor instance.
    * =========================================================
    */
 
   const editor = useEditor({
     extensions: [
+      /*
+       * Basic editor functionality
+       */
       StarterKit,
 
+      /*
+       * Text alignment
+       */
       TextAlign.configure({
         types: [
           "heading",
           "paragraph",
         ],
       }),
+
+      /*
+       * Images
+       */
+      CustomImage.configure({
+        allowBase64: true,
+
+        resize: {
+          enabled: true,
+
+          directions: [
+            "top",
+            "bottom",
+            "left",
+            "right",
+          ],
+
+          minWidth: 50,
+
+          minHeight: 50,
+
+          alwaysPreserveAspectRatio: true,
+        },
+      }),
+
+      /*
+       * Tables
+       */
+      TableKit.configure({
+        table: {
+          resizable: true,
+        },
+      }),
+
+      /*
+       * Page breaks
+       */
+      PageBreakExtension,
     ],
 
+    /*
+     * Initial OCR text
+     */
     content: initialText
       ? createInitialContent(initialText)
       : "<p></p>",
 
+    /*
+     * Editor configuration
+     */
     editorProps: {
       attributes: {
         class:
-          "min-h-[297mm] px-[20mm] py-[20mm] outline-none text-slate-900 text-base leading-7",
+          "inkai-editor-content outline-none text-slate-900 text-base leading-7",
+
+        /*
+         * Browser/native spell checking
+         */
+        spellcheck: "true",
       },
     },
+  });
+
+
+  /*
+   * =========================================================
+   * AUTO SAVE
+   * =========================================================
+   */
+
+  const {
+    saveStatus,
+    saveNow,
+  } = useAutoSave({
+    editor,
+
+    documentId:
+      location.state?.fileId ||
+      ocrResult?.file_id ||
+      "default",
+
+    documentTitle,
   });
 
 
@@ -113,17 +193,23 @@ function EditorPage() {
    */
 
   useEffect(() => {
-    if (!ocrResult && !location.state?.text) {
+    if (
+      !ocrResult &&
+      !location.state?.text
+    ) {
       console.warn(
         "No OCR document data was provided."
       );
     }
-  }, [ocrResult, location.state]);
+  }, [
+    ocrResult,
+    location.state,
+  ]);
 
 
   /*
    * =========================================================
-   * SAVE
+   * MANUAL SAVE
    * =========================================================
    */
 
@@ -132,18 +218,7 @@ function EditorPage() {
       return;
     }
 
-    setSaveStatus("Saving...");
-
-    const documentContent = editor.getJSON();
-
-    console.log("Document to save:", {
-      title: documentTitle,
-      content: documentContent,
-    });
-
-    setTimeout(() => {
-      setSaveStatus("Saved");
-    }, 800);
+    saveNow();
   };
 
 
@@ -160,8 +235,87 @@ function EditorPage() {
   };
 
 
+  /*
+   * =========================================================
+   * SAVE STATUS UI
+   * =========================================================
+   */
+
+  const renderSaveStatus = () => {
+    if (saveStatus === "saving") {
+      return (
+        <div className="flex items-center gap-2 text-sm text-slate-400">
+          <span
+            className="
+              w-2
+              h-2
+              rounded-full
+              bg-yellow-400
+              animate-pulse
+            "
+          />
+
+          <span>
+            Saving...
+          </span>
+        </div>
+      );
+    }
+
+    if (saveStatus === "offline") {
+      return (
+        <div className="flex items-center gap-2 text-sm text-slate-400">
+          <span className="text-yellow-400">
+            ⚠
+          </span>
+
+          <span>
+            Changes saved locally
+          </span>
+        </div>
+      );
+    }
+
+    if (saveStatus === "error") {
+      return (
+        <div className="flex items-center gap-2 text-sm text-red-400">
+          <span>
+            ⚠
+          </span>
+
+          <span>
+            Save failed
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-2 text-sm text-slate-400">
+        <span className="text-green-400">
+          ✓
+        </span>
+
+        <span>
+          Saved
+        </span>
+      </div>
+    );
+  };
+
+
+  /*
+   * =========================================================
+   * RENDER
+   * =========================================================
+   */
+
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+
+      {/* =====================================================
+          NAVBAR
+      ====================================================== */}
 
       <Navbar />
 
@@ -176,7 +330,9 @@ function EditorPage() {
 
           <div className="h-16 flex items-center justify-between">
 
-            {/* LEFT */}
+            {/* =================================================
+                LEFT
+            ================================================== */}
 
             <div className="flex items-center gap-4">
 
@@ -203,11 +359,15 @@ function EditorPage() {
               <div className="h-6 w-px bg-slate-700" />
 
 
+              {/* DOCUMENT TITLE */}
+
               <input
                 type="text"
                 value={documentTitle}
                 onChange={(event) =>
-                  setDocumentTitle(event.target.value)
+                  setDocumentTitle(
+                    event.target.value
+                  )
                 }
                 className="
                   bg-transparent
@@ -225,35 +385,18 @@ function EditorPage() {
             </div>
 
 
-            {/* RIGHT */}
+            {/* =================================================
+                RIGHT
+            ================================================== */}
 
             <div className="flex items-center gap-3">
 
               {/* SAVE STATUS */}
 
-              <div className="flex items-center gap-2 text-sm text-slate-400">
-
-                <span
-                  className={`
-                    w-2
-                    h-2
-                    rounded-full
-                    ${
-                      saveStatus === "Saving..."
-                        ? "bg-yellow-400 animate-pulse"
-                        : "bg-green-400"
-                    }
-                  `}
-                />
-
-                <span>
-                  {saveStatus}
-                </span>
-
-              </div>
+              {renderSaveStatus()}
 
 
-              {/* SAVE */}
+              {/* MANUAL SAVE */}
 
               <button
                 type="button"
@@ -361,9 +504,14 @@ function EditorPage() {
           <EditorToolbar
             editor={editor}
             onFindReplace={() =>
-              setFindReplaceOpen((open) => !open)
+              setFindReplaceOpen(
+                (open) => !open
+              )
             }
           />
+
+
+          {/* FIND & REPLACE */}
 
           {findReplaceOpen && (
             <FindReplace
@@ -398,23 +546,19 @@ function EditorPage() {
           "
         >
 
-          {/* A4 PAGE */}
+          {/* =================================================
+              A4 PAGE
+          ================================================== */}
 
-          <div
-            className="
-              bg-white
-              text-slate-900
-              shadow-2xl
-              w-[210mm]
-              min-h-[297mm]
-              shrink-0
-              relative
-            "
-          >
+          <div className="inkai-editor-container">
 
-            <RichTextEditor
-              editor={editor}
-            />
+            <div className="inkai-a4-page">
+
+              <RichTextEditor
+                editor={editor}
+              />
+
+            </div>
 
           </div>
 
@@ -443,10 +587,14 @@ function EditorPage() {
           "
         >
 
+          {/* WORD COUNT */}
+
           <WordCount
             editor={editor}
           />
 
+
+          {/* DOCUMENT INFO */}
 
           <div className="flex items-center gap-5">
 
@@ -468,6 +616,10 @@ function EditorPage() {
 
       </div>
 
+
+      {/* =====================================================
+          FOOTER
+      ====================================================== */}
 
       <Footer />
 
@@ -526,7 +678,9 @@ function createInitialContent(text) {
 
   const paragraphs = safeText
     .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.trim())
+    .map((paragraph) =>
+      paragraph.trim()
+    )
     .filter(Boolean);
 
   if (paragraphs.length === 0) {
@@ -536,19 +690,43 @@ function createInitialContent(text) {
   return paragraphs
     .map(
       (paragraph) =>
-        `<p>${paragraph.replace(/\n/g, "<br>")}</p>`
+        `<p>${paragraph.replace(
+          /\n/g,
+          "<br>"
+        )}</p>`
     )
     .join("");
 }
 
 
+/*
+ * ============================================================
+ * HTML ESCAPE
+ * ============================================================
+ */
+
 function escapeHtml(text) {
   return String(text)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    .replace(
+      /&/g,
+      "&amp;"
+    )
+    .replace(
+      /</g,
+      "&lt;"
+    )
+    .replace(
+      />/g,
+      "&gt;"
+    )
+    .replace(
+      /"/g,
+      "&quot;"
+    )
+    .replace(
+      /'/g,
+      "&#039;"
+    );
 }
 
 
