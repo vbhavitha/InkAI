@@ -11,6 +11,9 @@ from app.api.ocr import router as ocr_router
 
 from app.models.user import User
 from app.models.ocr_result import OCRResultModel
+from app.models.document import Document
+from app.api.documents import router as documents_router
+from app.models.document_version import DocumentVersion
 
 
 app = FastAPI()
@@ -49,6 +52,10 @@ app.include_router(
 
 app.include_router(
     ocr_router
+)
+
+app.include_router(
+    documents_router
 )
 
 # =========================================================

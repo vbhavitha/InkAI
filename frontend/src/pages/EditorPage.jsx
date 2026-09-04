@@ -9,6 +9,7 @@ import { TableKit } from "@tiptap/extension-table";
 
 import PageBreakExtension from "../components/editor/PageBreakExtension";
 import useAutoSave from "../hooks/useAutoSave";
+import useKeyboardShortcuts from "../hooks/useKeyboardShortcuts";
 
 import {
   Save,
@@ -28,6 +29,7 @@ import RichTextEditor from "../components/editor/RichTextEditor";
 import EditorToolbar from "../components/editor/EditorToolbar";
 import WordCount from "../components/editor/WordCount";
 import FindReplace from "../components/editor/FindReplace";
+import AutosaveIndicator from "../components/editor/AutosaveIndicator";
 
 
 function EditorPage() {
@@ -41,6 +43,8 @@ function EditorPage() {
    */
 
   const ocrResult = location.state?.ocrResult;
+
+  const ocrWords = ocrResult?.words || [];
 
   const initialText =
     ocrResult?.full_text ||
@@ -173,6 +177,7 @@ function EditorPage() {
 
   const {
     saveStatus,
+    lastSavedAt,
     saveNow,
   } = useAutoSave({
     editor,
@@ -183,6 +188,11 @@ function EditorPage() {
       "default",
 
     documentTitle,
+  });
+  useKeyboardShortcuts({
+    editor,
+    onFind: () => setFindReplaceOpen(true),
+    onSave: () => saveNow(),
   });
 
 
@@ -384,6 +394,11 @@ function EditorPage() {
 
             </div>
 
+            <AutosaveIndicator
+              status={saveStatus}
+              lastSavedAt={lastSavedAt}
+            />
+
 
             {/* =================================================
                 RIGHT
@@ -503,6 +518,7 @@ function EditorPage() {
 
           <EditorToolbar
             editor={editor}
+            ocrWords={ocrWords}
             onFindReplace={() =>
               setFindReplaceOpen(
                 (open) => !open

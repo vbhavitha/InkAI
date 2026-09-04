@@ -349,3 +349,382 @@
     min-height: 297mm;
   }
 }
+
+/* =========================================================
+   AUTOSAVE INDICATOR
+   ========================================================= */
+
+.inkai-autosave-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.inkai-save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+
+  border: none;
+  background: transparent;
+
+  padding: 6px 9px;
+  border-radius: 7px;
+
+  font-size: 13px;
+  font-weight: 500;
+
+  cursor: pointer;
+
+  transition:
+    background-color 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.inkai-save-status:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+/* Dot */
+
+.inkai-save-dot {
+  width: 8px;
+  height: 8px;
+
+  border-radius: 50%;
+
+  display: inline-block;
+
+  flex-shrink: 0;
+}
+
+/* Saved */
+
+.inkai-save-status.saved {
+  color: #475569;
+}
+
+.inkai-save-status.saved .inkai-save-dot {
+  background: #22c55e;
+}
+
+/* Saving */
+
+.inkai-save-status.saving {
+  color: #475569;
+}
+
+.inkai-save-status.saving .inkai-save-dot {
+  background: #f59e0b;
+
+  animation: inkai-save-pulse 1s infinite;
+}
+
+/* Failed */
+
+.inkai-save-status.error {
+  color: #dc2626;
+}
+
+.inkai-save-status.error .inkai-save-dot {
+  background: #ef4444;
+}
+
+/* Offline */
+
+.inkai-save-status.offline {
+  color: #b45309;
+}
+
+.inkai-save-status.offline .inkai-save-dot {
+  background: #f59e0b;
+}
+
+/* Details popup */
+
+.inkai-save-details {
+  position: absolute;
+
+  top: calc(100% + 8px);
+  right: 0;
+
+  min-width: 170px;
+
+  padding: 12px 14px;
+
+  background: white;
+
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+
+  box-shadow:
+    0 8px 20px rgba(15, 23, 42, 0.12);
+
+  z-index: 100;
+}
+
+.inkai-save-details-title {
+  font-size: 12px;
+  color: #64748b;
+
+  margin-bottom: 3px;
+}
+
+.inkai-save-details-time {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+/* Saving animation */
+
+@keyframes inkai-save-pulse {
+  0% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+/* =========================================================
+   OCR CORRECTION MODE
+   ========================================================= */
+
+.inkai-ocr-correction-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inkai-ocr-count {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.inkai-toolbar-button.active {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.inkai-ocr-popup {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+
+  width: 270px;
+
+  padding: 14px;
+
+  background: white;
+
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+
+  box-shadow:
+    0 10px 30px rgba(15, 23, 42, 0.15);
+
+  z-index: 200;
+}
+
+.inkai-ocr-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.inkai-ocr-popup-header button {
+  border: none;
+  background: transparent;
+
+  font-size: 20px;
+  color: #64748b;
+
+  cursor: pointer;
+}
+
+.inkai-ocr-confidence {
+  margin-top: 8px;
+
+  font-size: 24px;
+  font-weight: 700;
+
+  color: #dc2626;
+}
+
+.inkai-ocr-original-label,
+.inkai-ocr-suggestions-label {
+  margin-top: 12px;
+
+  font-size: 11px;
+  font-weight: 600;
+
+  text-transform: uppercase;
+
+  color: #64748b;
+}
+
+.inkai-ocr-original {
+  margin-top: 5px;
+
+  padding: 8px;
+
+  background: #fef2f2;
+
+  border-radius: 6px;
+
+  font-family: monospace;
+  color: #991b1b;
+}
+
+.inkai-ocr-suggestions {
+  display: flex;
+  flex-direction: column;
+
+  gap: 5px;
+
+  margin-top: 6px;
+}
+
+.inkai-ocr-suggestion {
+  width: 100%;
+
+  padding: 8px 10px;
+
+  text-align: left;
+
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+
+  background: #f8fafc;
+
+  cursor: pointer;
+
+  transition: background 0.2s ease;
+}
+
+.inkai-ocr-suggestion:hover {
+  background: #f1f5f9;
+}
+
+.inkai-ocr-ignore {
+  width: 100%;
+
+  margin-top: 10px;
+
+  padding: 7px;
+
+  border: none;
+  border-radius: 6px;
+
+  background: #f1f5f9;
+
+  color: #475569;
+
+  cursor: pointer;
+}
+
+.inkai-ocr-no-suggestions {
+  margin-top: 6px;
+
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* =========================================================
+   EDITOR TOOLBAR
+   ========================================================= */
+
+.inkai-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  min-height: 46px;
+
+  padding: 7px 10px;
+
+  background: white;
+
+  border-bottom: 1px solid #e2e8f0;
+
+  overflow-x: auto;
+}
+
+.inkai-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+
+  padding-right: 7px;
+  margin-right: 3px;
+
+  border-right: 1px solid #e2e8f0;
+}
+
+.inkai-toolbar-group:last-child {
+  border-right: none;
+}
+
+.inkai-toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+
+  min-width: 32px;
+  height: 32px;
+
+  padding: 0 8px;
+
+  border: none;
+  border-radius: 6px;
+
+  background: transparent;
+
+  color: #475569;
+
+  font-size: 13px;
+  font-weight: 500;
+
+  cursor: pointer;
+
+  white-space: nowrap;
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.inkai-toolbar-button:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.inkai-toolbar-button.active {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.inkai-toolbar-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.inkai-toolbar-separator {
+  width: 1px;
+  height: 24px;
+
+  background: #e2e8f0;
+
+  margin: 0 3px;
+}

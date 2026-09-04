@@ -8,29 +8,17 @@ function useAutoSave({
   documentTitle = "Untitled Document",
 }) {
   const [saveStatus, setSaveStatus] = useState("saved");
+  const [lastSavedAt, setLastSavedAt] = useState(null);
 
   const timerRef = useRef(null);
-
-  /*
-   * Keep the latest document title available
-   * without recreating the save listener.
-   */
   const titleRef = useRef(documentTitle);
 
   useEffect(() => {
     titleRef.current = documentTitle;
   }, [documentTitle]);
 
-  /*
-   * =========================================================
-   * SAVE DOCUMENT
-   * =========================================================
-   */
-
   const saveDocument = useCallback(() => {
-    if (!editor) {
-      return false;
-    }
+    if (!editor) return false;
 
     try {
       const documentData = {
@@ -46,11 +34,10 @@ function useAutoSave({
         JSON.stringify(documentData)
       );
 
-      if (navigator.onLine) {
-        setSaveStatus("saved");
-      } else {
-        setSaveStatus("offline");
-      }
+      const savedTime = new Date();
+
+      setLastSavedAt(savedTime);
+      setSaveStatus(navigator.onLine ? "saved" : "offline");
 
       return true;
     } catch (error) {
@@ -63,32 +50,18 @@ function useAutoSave({
   }, [editor, documentId]);
 
   /*
-   * =========================================================
-   * DEBOUNCED AUTO SAVE
-   * =========================================================
+   * Autosave after the user stops typing.
    */
-
   useEffect(() => {
-    if (!editor) {
-      return;
-    }
+    if (!editor) return;
 
     const handleEditorUpdate = () => {
       setSaveStatus("saving");
 
-      /*
-       * Cancel the previous save timer.
-       */
       if (timerRef.current) {
         clearTimeout(timerRef.current);
       }
 
-      /*
-       * Start a new timer.
-       *
-       * The document is saved only after the user
-       * stops typing for 1.5 seconds.
-       */
       timerRef.current = setTimeout(() => {
         saveDocument();
       }, AUTO_SAVE_DELAY);
@@ -106,15 +79,10 @@ function useAutoSave({
   }, [editor, saveDocument]);
 
   /*
-   * =========================================================
-   * ONLINE / OFFLINE
-   * =========================================================
+   * Handle online/offline changes.
    */
-
   useEffect(() => {
-    if (!editor) {
-      return;
-    }
+    if (!editor) return;
 
     const handleOnline = () => {
       setSaveStatus("saving");
@@ -132,33 +100,16 @@ function useAutoSave({
       setSaveStatus("offline");
     };
 
-    window.addEventListener(
-      "online",
-      handleOnline
-    );
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
 
-    window.addEventListener(
-      "offline",
-      handleOffline
-    );
-
-    /*
-     * Show the correct initial state.
-     */
     if (!navigator.onLine) {
       setSaveStatus("offline");
     }
 
     return () => {
-      window.removeEventListener(
-        "online",
-        handleOnline
-      );
-
-      window.removeEventListener(
-        "offline",
-        handleOffline
-      );
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
 
       if (timerRef.current) {
         clearTimeout(timerRef.current);
@@ -166,14 +117,9 @@ function useAutoSave({
     };
   }, [editor, saveDocument]);
 
-  /*
-   * =========================================================
-   * RETURN
-   * =========================================================
-   */
-
   return {
     saveStatus,
+    lastSavedAt,
     saveNow: saveDocument,
   };
 }

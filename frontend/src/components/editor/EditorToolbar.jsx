@@ -16,10 +16,12 @@ import AITools from "./AITools";
 import ImageInsert from "./ImageInsert";
 import TableInsert from "./TableInsert";
 import PageBreak from "./PageBreak";
+import OCRCorrectionMode from "./OCRCorrectionMode";
 
 function EditorToolbar({
   editor,
   onFindReplace,
+  ocrWords = [],
 }) {
   const [, forceUpdate] = useState(0);
 
@@ -641,6 +643,8 @@ function EditorToolbar({
       ====================================================== */}
 
       <AITools editor={editor} />
+
+      <OCRCorrectionMode editor={editor} words={ocrWords} />
 
     </div>
   );
