@@ -1,33 +1,18 @@
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
+import { EditorContent } from "@tiptap/react";
 
-function RichTextEditor() {
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-    ],
-
-    content: `
-      <h2>InkAI Document</h2>
-      <p>Start editing your document here...</p>
-    `,
-
-    editorProps: {
-      attributes: {
-        class:
-          "min-h-[600px] p-8 focus:outline-none text-slate-900 bg-white",
-      },
-    },
-  });
-
+function RichTextEditor({ editor }) {
   if (!editor) {
-    return null;
+    return (
+      <div className="min-h-[297mm] px-[20mm] py-[20mm] text-slate-400">
+        Loading editor...
+      </div>
+    );
   }
 
   return (
-    <div className="rounded-xl overflow-hidden border border-slate-700 shadow-lg">
-      <EditorContent editor={editor} />
-    </div>
+    <EditorContent
+      editor={editor}
+    />
   );
 }
 
