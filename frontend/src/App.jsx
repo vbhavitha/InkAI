@@ -7,6 +7,7 @@ import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import UploadPage from "./pages/UploadPage";
 import OCRResultsPage from "./pages/OCRResultsPage";
+import EditorPage from "./pages/EditorPage";
 
 function App() {
   return (
@@ -24,8 +25,9 @@ function App() {
 
         <Route path="/upload" element={<UploadPage />} />
 
-        <Route path="/ocr-results" element={<OCRResultsPage />}
-/>
+        <Route path="/ocr-results" element={<OCRResultsPage />} />
+
+        <Route path="/editor" element={<EditorPage />} />
       </Routes>
     </BrowserRouter>
   );
