@@ -687,22 +687,27 @@ function UploadPage() {
     // ==========================================
 
     const handleContinue = () => {
-
-        const hasUploadedFile = files.some(
-            (file) => file.status === "uploaded"
+        const uploadedFiles = files.filter(
+            (file) => file.status === "uploaded" && file.id
         );
 
-        // No files selected
-        if (!hasUploadedFile) {
-
-            alert("Please upload at least one file before continuing to OCR.");
+        if (uploadedFiles.length === 0) {
+            alert(
+                "Please upload at least one file before continuing to OCR."
+            );
 
             return;
         }
 
-        // Files exist
-        navigate("/ocr");
-
+        navigate("/ocr", {
+            state: {
+                files: uploadedFiles.map((file) => ({
+                    id: file.id,
+                    name: file.file.name,
+                    type: file.file.type,
+                })),
+            },
+        });
     };
 
 
