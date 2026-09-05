@@ -14,9 +14,26 @@ from app.models.ocr_result import OCRResultModel
 from app.models.document import Document
 from app.api.documents import router as documents_router
 from app.models.document_version import DocumentVersion
+from app.api.handwriting import router as handwriting_router
+from fastapi.staticfiles import StaticFiles
 
 
 app = FastAPI()
+
+from pathlib import Path
+
+HANDWRITING_FONTS_DIR = (
+    Path(__file__).resolve().parent
+    / "app"
+    / "handwriting"
+    / "fonts"
+)
+
+app.mount(
+    "/fonts",
+    StaticFiles(directory=HANDWRITING_FONTS_DIR),
+    name="handwriting-fonts",
+)
 
 
 # =========================================================
@@ -38,25 +55,17 @@ app.add_middleware(
 # API ROUTES
 # =========================================================
 
-app.include_router(
-    auth_router
-)
+app.include_router(auth_router)
 
-app.include_router(
-    upload_router
-)
+app.include_router(upload_router)
 
-app.include_router(
-    processing_router
-)
+app.include_router(processing_router)
 
-app.include_router(
-    ocr_router
-)
+app.include_router(ocr_router)
 
-app.include_router(
-    documents_router
-)
+app.include_router(documents_router)
+
+app.include_router(handwriting_router)
 
 # =========================================================
 # UPLOADS DIRECTORY
