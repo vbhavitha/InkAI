@@ -11,6 +11,9 @@ import {
   convertDocumentToHandwritingDocument,
 } from "../services/handwritingDocumentService";
 
+import PaperSelector from "../components/handwriting/PaperSelector";
+import InkSelector from "../components/handwriting/InkSelector";
+
 
 function HandwritingGeneratorPage() {
   const location = useLocation();
@@ -31,6 +34,9 @@ function HandwritingGeneratorPage() {
 
   const [selectedPaper, setSelectedPaper] =
     useState("plain");
+
+  const [selectedInk, setSelectedInk] =
+    useState("blue");
 
 
   /*
@@ -168,6 +174,8 @@ function HandwritingGeneratorPage() {
                 setSelectedFont={setSelectedFont}
                 selectedPaper={selectedPaper}
                 setSelectedPaper={setSelectedPaper}
+                selectedInk={selectedInk}
+                setSelectedInk={setSelectedInk}
               />
 
             </div>
