@@ -9,6 +9,7 @@ import UploadPage from "./pages/UploadPage";
 import OCRResultsPage from "./pages/OCRResultsPage";
 import EditorPage from "./pages/EditorPage";
 import HandwritingGeneratorPage from "./pages/HandwritingGeneratorPage";
+import HandwritingGeneratorPage from "./pages/HandwritingGeneratorPage";
 
 function App() {
   return (
@@ -31,6 +32,8 @@ function App() {
         <Route path="/editor" element={<EditorPage />} />
 
         <Route path="/handwriting" element={<HandwritingGeneratorPage />} />
+
+        <Route path="/handwriting" element={<HandwritingGeneratorPage />}/>
 
       </Routes>
     </BrowserRouter>

@@ -728,3 +728,46 @@
 
   margin: 0 3px;
 }
+
+/* =========================================================
+   PHASE 7 — HANDWRITING PREVIEW
+   ========================================================= */
+
+.inkai-handwriting-preview {
+  font-family: cursive;
+  font-size: 18px;
+  line-height: 1.8;
+  color: #1e293b;
+}
+
+.inkai-handwriting-preview h2 {
+  font-size: 28px;
+  line-height: 1.5;
+}
+
+.inkai-paper-ruled {
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 31px,
+      rgba(148, 163, 184, 0.35) 32px
+    );
+}
+
+.inkai-paper-notebook {
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 31px,
+      rgba(148, 163, 184, 0.3) 32px
+    ),
+    linear-gradient(
+      to right,
+      transparent 0,
+      transparent 55px,
+      rgba(239, 68, 68, 0.25) 56px,
+      transparent 57px
+    );
+}
