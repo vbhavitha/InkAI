@@ -1,16 +1,21 @@
 import handwritingFonts from "../../data/handwritingFonts";
 import handwritingPaperStyles from "../../data/handwritingPaper";
+import InkSelector from "./InkSelector";
 
 function HandwritingSettings({
   selectedFont,
   setSelectedFont,
   selectedPaper,
   setSelectedPaper,
+  selectedInk,
+  setSelectedInk,
 }) {
   return (
     <div className="space-y-6">
 
-      {/* FONT */}
+      {/* =====================================================
+          FONT
+          ===================================================== */}
 
       <div>
         <label
@@ -37,7 +42,10 @@ function HandwritingSettings({
             py-2
             text-sm
             outline-none
+            transition
             focus:border-indigo-500
+            focus:ring-1
+            focus:ring-indigo-500
           "
         >
           {handwritingFonts.map((font) => (
@@ -52,7 +60,9 @@ function HandwritingSettings({
       </div>
 
 
-      {/* PAPER */}
+      {/* =====================================================
+          PAPER
+          ===================================================== */}
 
       <div>
         <label
@@ -79,20 +89,33 @@ function HandwritingSettings({
             py-2
             text-sm
             outline-none
+            transition
             focus:border-indigo-500
+            focus:ring-1
+            focus:ring-indigo-500
           "
         >
-          {handwritingPaperStyles.map(
-            (paper) => (
-              <option
-                key={paper.id}
-                value={paper.id}
-              >
-                {paper.name}
-              </option>
-            )
-          )}
+          {handwritingPaperStyles.map((paper) => (
+            <option
+              key={paper.id}
+              value={paper.id}
+            >
+              {paper.name}
+            </option>
+          ))}
         </select>
+      </div>
+
+
+      {/* =====================================================
+          INK
+          ===================================================== */}
+
+      <div>
+        <InkSelector
+          selectedInk={selectedInk}
+          onInkChange={setSelectedInk}
+        />
       </div>
 
     </div>

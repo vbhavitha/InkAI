@@ -6,13 +6,11 @@ import Footer from "../components/Footer";
 
 import HandwritingSettings from "../components/handwriting/HandwritingSettings";
 import HandwritingPreview from "../components/handwriting/HandwritingPreview";
+import HandwritingControls from "../components/handwriting/HandwritingControls";
 
 import {
   convertDocumentToHandwritingDocument,
 } from "../services/handwritingDocumentService";
-
-import PaperSelector from "../components/handwriting/PaperSelector";
-import InkSelector from "../components/handwriting/InkSelector";
 
 
 function HandwritingGeneratorPage() {
@@ -25,7 +23,7 @@ function HandwritingGeneratorPage() {
 
   /*
    * =========================================================
-   * HANDWRITING SETTINGS
+   * BASIC HANDWRITING SETTINGS
    * =========================================================
    */
 
@@ -41,20 +39,49 @@ function HandwritingGeneratorPage() {
 
   /*
    * =========================================================
-   * CONVERT PHASE 6 DOCUMENT
+   * HANDWRITING CONTROLS
+   * =========================================================
+   */
+
+  const [fontSize, setFontSize] =
+    useState(22);
+
+  const [letterSpacing, setLetterSpacing] =
+    useState(0);
+
+  const [lineSpacing, setLineSpacing] =
+    useState(1.5);
+
+  const [wordSpacing, setWordSpacing] =
+    useState(4);
+
+  const [inkOpacity, setInkOpacity] =
+    useState(0.9);
+
+  const [naturalVariation, setNaturalVariation] =
+    useState(true);
+
+
+  /*
+   * =========================================================
+   * CONVERT DOCUMENT
    * =========================================================
    */
 
   const handwritingDocument = useMemo(() => {
+
     if (!document) {
       return null;
     }
 
     try {
+
       return convertDocumentToHandwritingDocument(
         document
       );
+
     } catch (error) {
+
       console.error(
         "Failed to prepare handwriting document:",
         error
@@ -62,6 +89,7 @@ function HandwritingGeneratorPage() {
 
       return null;
     }
+
   }, [document]);
 
 
@@ -71,13 +99,25 @@ function HandwritingGeneratorPage() {
    * =========================================================
    */
 
-  if (!document || !handwritingDocument) {
+  if (
+    !document ||
+    !handwritingDocument
+  ) {
+
     return (
       <div className="min-h-screen bg-slate-100">
 
         <Navbar />
 
-        <main className="flex min-h-[70vh] items-center justify-center px-6">
+        <main
+          className="
+            flex
+            min-h-[70vh]
+            items-center
+            justify-center
+            px-6
+          "
+        >
 
           <div className="text-center">
 
@@ -103,6 +143,7 @@ function HandwritingGeneratorPage() {
                 text-sm
                 font-medium
                 text-white
+                transition
                 hover:bg-indigo-500
               "
             >
@@ -122,7 +163,7 @@ function HandwritingGeneratorPage() {
 
   /*
    * =========================================================
-   * RENDER
+   * MAIN PAGE
    * =========================================================
    */
 
@@ -132,19 +173,34 @@ function HandwritingGeneratorPage() {
       <Navbar />
 
 
-      {/* HEADER */}
+      {/* =====================================================
+          HEADER
+          ===================================================== */}
 
-      <header className="border-b border-slate-200 bg-white">
+      <header
+        className="
+          border-b
+          border-slate-200
+          bg-white
+        "
+      >
 
-        <div className="mx-auto max-w-[1600px] px-6 py-6">
+        <div
+          className="
+            mx-auto
+            max-w-[1600px]
+            px-6
+            py-6
+          "
+        >
 
           <h1 className="text-2xl font-bold text-slate-900">
             Generate Handwriting
           </h1>
 
           <p className="mt-1 text-sm text-slate-600">
-            Convert your saved document into
-            handwritten content.
+            Convert your saved document into handwritten
+            content.
           </p>
 
         </div>
@@ -152,48 +208,129 @@ function HandwritingGeneratorPage() {
       </header>
 
 
-      {/* MAIN */}
+      {/* =====================================================
+          MAIN
+          ===================================================== */}
 
-      <main className="mx-auto max-w-[1600px] px-6 py-8">
+      <main
+        className="
+          mx-auto
+          max-w-[1600px]
+          px-6
+          py-8
+        "
+      >
 
-        <div className="grid gap-8 lg:grid-cols-[320px_1fr]">
+        <div
+          className="
+            grid
+            gap-8
+            lg:grid-cols-[340px_1fr]
+          "
+        >
 
+          {/* =================================================
+              LEFT SIDEBAR
+              ================================================= */}
 
-          {/* SETTINGS */}
+          <aside className="h-fit space-y-6">
 
-          <aside className="h-fit rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            {/* BASIC SETTINGS */}
 
-            <h2 className="text-lg font-semibold text-slate-900">
-              Handwriting Settings
-            </h2>
+            <div
+              className="
+                rounded-xl
+                border
+                border-slate-200
+                bg-white
+                p-6
+                shadow-sm
+              "
+            >
 
-            <div className="mt-6">
+              <h2 className="text-lg font-semibold text-slate-900">
+                Handwriting Settings
+              </h2>
 
-              <HandwritingSettings
-                selectedFont={selectedFont}
-                setSelectedFont={setSelectedFont}
-                selectedPaper={selectedPaper}
-                setSelectedPaper={setSelectedPaper}
-                selectedInk={selectedInk}
-                setSelectedInk={setSelectedInk}
-              />
+              <div className="mt-6">
+
+                <HandwritingSettings
+                  selectedFont={selectedFont}
+                  setSelectedFont={setSelectedFont}
+
+                  selectedPaper={selectedPaper}
+                  setSelectedPaper={setSelectedPaper}
+
+                  selectedInk={selectedInk}
+                  setSelectedInk={setSelectedInk}
+                />
+
+              </div>
 
             </div>
 
 
-            {/* DOCUMENT INFO */}
+            {/* HANDWRITING CONTROLS */}
 
-            <div className="mt-8 border-t border-slate-200 pt-6">
+            <HandwritingControls
+              fontSize={fontSize}
+              setFontSize={setFontSize}
+
+              letterSpacing={letterSpacing}
+              setLetterSpacing={setLetterSpacing}
+
+              lineSpacing={lineSpacing}
+              setLineSpacing={setLineSpacing}
+
+              wordSpacing={wordSpacing}
+              setWordSpacing={setWordSpacing}
+
+              inkOpacity={inkOpacity}
+              setInkOpacity={setInkOpacity}
+
+              naturalVariation={naturalVariation}
+              setNaturalVariation={
+                setNaturalVariation
+              }
+            />
+
+
+            {/* DOCUMENT INFORMATION */}
+
+            <div
+              className="
+                rounded-xl
+                border
+                border-slate-200
+                bg-white
+                p-6
+                shadow-sm
+              "
+            >
 
               <h3 className="text-sm font-semibold text-slate-900">
                 Document
               </h3>
 
-              <p className="mt-2 text-sm text-slate-600">
+              <p
+                className="
+                  mt-2
+                  break-words
+                  text-sm
+                  text-slate-600
+                "
+              >
                 {handwritingDocument.title}
               </p>
 
-              <div className="mt-4 space-y-2 text-xs text-slate-500">
+              <div
+                className="
+                  mt-4
+                  space-y-2
+                  text-xs
+                  text-slate-500
+                "
+              >
 
                 <div>
                   Words:{" "}
@@ -217,11 +354,22 @@ function HandwritingGeneratorPage() {
           </aside>
 
 
-          {/* PREVIEW */}
+          {/* =================================================
+              RIGHT PREVIEW
+              ================================================= */}
 
-          <section>
+          <section className="min-w-0">
 
-            <div className="mb-4 flex items-center justify-between">
+            <div
+              className="
+                mb-4
+                flex
+                flex-wrap
+                items-center
+                justify-between
+                gap-4
+              "
+            >
 
               <div>
 
@@ -230,15 +378,18 @@ function HandwritingGeneratorPage() {
                 </h2>
 
                 <p className="text-sm text-slate-500">
-                  Your document structure is preserved.
+                  Adjust the controls to customize your
+                  handwriting.
                 </p>
 
               </div>
+
 
               <button
                 type="button"
                 disabled
                 className="
+                  cursor-not-allowed
                   rounded-lg
                   bg-indigo-600
                   px-5
@@ -247,7 +398,6 @@ function HandwritingGeneratorPage() {
                   font-medium
                   text-white
                   opacity-50
-                  cursor-not-allowed
                 "
               >
                 Generate PDF
@@ -255,10 +405,29 @@ function HandwritingGeneratorPage() {
 
             </div>
 
+
             <HandwritingPreview
               document={handwritingDocument}
+
               font={selectedFont}
+
               paper={selectedPaper}
+
+              ink={selectedInk}
+
+              fontSize={fontSize}
+
+              letterSpacing={letterSpacing}
+
+              lineSpacing={lineSpacing}
+
+              wordSpacing={wordSpacing}
+
+              inkOpacity={inkOpacity}
+
+              naturalVariation={
+                naturalVariation
+              }
             />
 
           </section>
@@ -273,5 +442,6 @@ function HandwritingGeneratorPage() {
     </div>
   );
 }
+
 
 export default HandwritingGeneratorPage;

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+
 import {
   ZoomIn,
   ZoomOut,
@@ -10,6 +11,12 @@ import {
   getStyleFontFamily,
 } from "../../utils/handwritingUtils";
 
+/*
+ * =========================================================
+ * A4 PAGE
+ * =========================================================
+ */
+
 const A4_WIDTH = 794;
 const A4_HEIGHT = 1123;
 
@@ -19,6 +26,12 @@ const DEFAULT_MARGIN = {
   bottom: 70,
   left: 70,
 };
+
+/*
+ * =========================================================
+ * INK STYLES
+ * =========================================================
+ */
 
 const INK_STYLES = {
   blue: {
@@ -69,11 +82,15 @@ function getInkConfiguration(inkStyle) {
   );
 }
 
-function drawPaperBackground(
-  context,
-  paperStyle
-) {
-  // Base paper
+/*
+ * =========================================================
+ * PAPER BACKGROUND
+ * =========================================================
+ */
+
+function drawPaperBackground(context, paperStyle) {
+  context.save();
+
   context.fillStyle = "#ffffff";
 
   context.fillRect(
@@ -84,6 +101,7 @@ function drawPaperBackground(
   );
 
   if (paperStyle === "plain") {
+    context.restore();
     return;
   }
 
@@ -100,14 +118,18 @@ function drawPaperBackground(
   if (paperStyle === "graph") {
     drawGraphPaper(context);
   }
+
+  context.restore();
 }
 
-function drawRuledPaper(
-  context,
-  paperStyle
-) {
-  const lineSpacing = 36;
+/*
+ * =========================================================
+ * RULED / NOTEBOOK PAPER
+ * =========================================================
+ */
 
+function drawRuledPaper(context, paperStyle) {
+  const lineSpacing = 36;
   const startY = 105;
 
   context.save();
@@ -134,7 +156,6 @@ function drawRuledPaper(
     context.stroke();
   }
 
-  // Notebook left margin
   if (paperStyle === "notebook") {
     context.strokeStyle =
       "rgba(190, 80, 80, 0.45)";
@@ -157,6 +178,12 @@ function drawRuledPaper(
 
   context.restore();
 }
+
+/*
+ * =========================================================
+ * GRAPH PAPER
+ * =========================================================
+ */
 
 function drawGraphPaper(context) {
   const gridSize = 25;
@@ -205,13 +232,13 @@ function drawGraphPaper(context) {
   context.restore();
 }
 
-function drawPaperTexture(context) {
-  /*
-   * Very subtle deterministic paper texture.
-   * This intentionally remains light so it does not
-   * interfere with handwritten text.
-   */
+/*
+ * =========================================================
+ * PAPER TEXTURE
+ * =========================================================
+ */
 
+function drawPaperTexture(context) {
   context.save();
 
   for (
@@ -231,7 +258,8 @@ function drawPaperTexture(context) {
         ) * 43758.5453;
 
       const fractional =
-        value - Math.floor(value);
+        value -
+        Math.floor(value);
 
       if (fractional > 0.72) {
         context.fillStyle =
@@ -250,13 +278,365 @@ function drawPaperTexture(context) {
   context.restore();
 }
 
+/*
+ * =========================================================
+ * DETERMINISTIC VARIATION
+ * =========================================================
+ *
+ * Generates repeatable pseudo-random values.
+ *
+ * IMPORTANT:
+ * The variation is intentionally subtle.
+ *
+ * Rotation:
+ * -2° to +2°
+ *
+ * Scale:
+ * 97% to 103%
+ *
+ * Vertical offset:
+ * -1px to +1px
+ *
+ * Horizontal offset:
+ * approximately -0.3px to +0.3px
+ *
+ * This keeps the handwriting natural instead
+ * of making every character look randomly distorted.
+ * =========================================================
+ */
+
+function deterministicVariation(
+  index,
+  amount = 1
+) {
+  const value =
+    Math.sin(
+      index * 12.9898
+    ) * 43758.5453;
+
+  const normalized =
+    value -
+    Math.floor(value);
+
+  return (
+    normalized - 0.5
+  ) * amount;
+}
+
+/*
+ * =========================================================
+ * MEASURE TEXT WITH SPACING
+ * =========================================================
+ */
+
+function measureTextWithSpacing(
+  context,
+  text,
+  letterSpacing = 0,
+  wordSpacing = 4
+) {
+  let width = 0;
+
+  for (
+    const character of text
+  ) {
+    width +=
+      context.measureText(
+        character
+      ).width;
+
+    if (character === " ") {
+      width += wordSpacing;
+    } else {
+      width += letterSpacing;
+    }
+  }
+
+  return width;
+}
+
+/*
+ * =========================================================
+ * DRAW INDIVIDUAL CHARACTERS
+ * =========================================================
+ *
+ * STEP 11 + STEP 12
+ *
+ * Each character receives very small
+ * independent transformations.
+ *
+ * The goal is NOT obvious randomness.
+ *
+ * The goal is subtle human-like inconsistency.
+ * =========================================================
+ */
+
+function drawTextWithVariation(
+  context,
+  text,
+  x,
+  y,
+  {
+    letterSpacing = 0,
+    wordSpacing = 4,
+    naturalVariation = true,
+    startIndex = 0,
+    baseFontSize = 22,
+    fontFamily,
+    inkVariations = [],
+  } = {}
+) {
+  let currentX = x;
+
+  for (
+    let index = 0;
+    index < text.length;
+    index++
+  ) {
+    const character =
+      text[index];
+
+    const characterIndex =
+      startIndex + index;
+
+    /*
+     * =======================================================
+     * SPACE
+     * =======================================================
+     */
+
+    if (character === " ") {
+      context.font =
+        `${baseFontSize}px "${fontFamily}"`;
+
+      currentX +=
+        context.measureText(" ").width +
+        wordSpacing;
+
+      continue;
+    }
+
+    /*
+     * =======================================================
+     * DEFAULT VALUES
+     * =======================================================
+     */
+
+    let rotation = 0;
+    let sizeMultiplier = 1;
+    let verticalOffset = 0;
+    let horizontalOffset = 0;
+    let spacingVariation = 0;
+
+    /*
+     * =======================================================
+     * NATURAL VARIATION
+     * =======================================================
+     *
+     * STEP 12
+     *
+     * Keep every value deliberately small.
+     * =======================================================
+     */
+
+    if (naturalVariation) {
+      /*
+       * Rotation:
+       *
+       * -2° to +2°
+       */
+
+      rotation =
+        deterministicVariation(
+          characterIndex * 3 + 1,
+          4
+        );
+
+      /*
+       * Scale:
+       *
+       * 97% to 103%
+       */
+
+      sizeMultiplier =
+        1 +
+        deterministicVariation(
+          characterIndex * 5 + 7,
+          0.06
+        );
+
+      /*
+       * Vertical offset:
+       *
+       * -1px to +1px
+       */
+
+      verticalOffset =
+        deterministicVariation(
+          characterIndex * 7 + 11,
+          2
+        );
+
+      /*
+       * Horizontal offset:
+       *
+       * approximately
+       * -0.3px to +0.3px
+       */
+
+      horizontalOffset =
+        deterministicVariation(
+          characterIndex * 11 + 17,
+          0.6
+        );
+
+      /*
+       * Letter spacing variation:
+       *
+       * approximately
+       * -0.2px to +0.2px
+       *
+       * This is intentionally tiny.
+       */
+
+      spacingVariation =
+        deterministicVariation(
+          characterIndex * 13 + 29,
+          0.4
+        );
+    }
+
+    /*
+     * =======================================================
+     * CHARACTER SIZE
+     * =======================================================
+     */
+
+    const characterSize =
+      baseFontSize *
+      sizeMultiplier;
+
+    /*
+     * =======================================================
+     * INK VARIATION
+     * =======================================================
+     *
+     * Only subtle color changes are used.
+     */
+
+    let characterInk =
+      context.__inkaiBaseInkColor;
+
+    if (
+      naturalVariation &&
+      inkVariations.length > 0
+    ) {
+      const variationValue =
+        Math.abs(
+          deterministicVariation(
+            characterIndex * 17 + 23,
+            100
+          )
+        );
+
+      const variationIndex =
+        Math.floor(
+          variationValue %
+          inkVariations.length
+        );
+
+      characterInk =
+        inkVariations[
+          variationIndex
+        ];
+    }
+
+    /*
+     * =======================================================
+     * DRAW CHARACTER
+     * =======================================================
+     */
+
+    context.save();
+
+    context.font =
+      `${characterSize}px "${fontFamily}"`;
+
+    context.fillStyle =
+      characterInk;
+
+    context.translate(
+      currentX +
+        horizontalOffset,
+      y +
+        verticalOffset
+    );
+
+    context.rotate(
+      rotation *
+        Math.PI /
+        180
+    );
+
+    context.fillText(
+      character,
+      0,
+      0
+    );
+
+    context.restore();
+
+    /*
+     * =======================================================
+     * ADVANCE CHARACTER POSITION
+     * =======================================================
+     */
+
+    context.font =
+      `${characterSize}px "${fontFamily}"`;
+
+    const characterWidth =
+      context.measureText(
+        character
+      ).width;
+
+    currentX +=
+      characterWidth +
+      letterSpacing +
+      spacingVariation;
+  }
+
+  return currentX;
+}
+
+/*
+ * =========================================================
+ * COMPONENT
+ * =========================================================
+ */
+
 function HandwritingCanvas({
   text = "",
+
   style,
-  fontSize,
+
+  fontSize = 22,
+
   inkColor,
+
   paperStyle = "plain",
+
   inkStyle = "blue",
+
+  letterSpacing = 0,
+
+  lineSpacing = 1.5,
+
+  wordSpacing = 4,
+
+  inkOpacity = 0.9,
+
+  naturalVariation = true,
 }) {
   const [zoom, setZoom] =
     useState(0.8);
@@ -267,8 +647,15 @@ function HandwritingCanvas({
   const margins =
     DEFAULT_MARGIN;
 
+  /*
+   * =========================================================
+   * GENERATE PAGES
+   * =========================================================
+   */
+
   useEffect(() => {
     if (!style) {
+      setPages([]);
       return;
     }
 
@@ -276,8 +663,16 @@ function HandwritingCanvas({
       style.fonts || [];
 
     if (!fonts.length) {
+      setPages([]);
       return;
     }
+
+    /*
+     * Use the primary font.
+     *
+     * Natural variation is created through
+     * subtle character-level transformations.
+     */
 
     const selectedFontPath =
       fonts[0];
@@ -323,8 +718,14 @@ function HandwritingCanvas({
       }
     }
 
+    /*
+     * =======================================================
+     * CREATE PAGES
+     * =======================================================
+     */
+
     function createPages(
-      fontFamily
+      loadedFontFamily
     ) {
       const pageCanvases = [];
 
@@ -335,17 +736,16 @@ function HandwritingCanvas({
 
       const lineHeight =
         size *
-        (style.line_spacing || 1.5);
+        lineSpacing;
 
       const availableWidth =
         A4_WIDTH -
         margins.left -
         margins.right;
 
-      const availableHeight =
-        A4_HEIGHT -
-        margins.top -
-        margins.bottom;
+      /*
+       * Measurement canvas
+       */
 
       const measurementCanvas =
         document.createElement(
@@ -368,7 +768,13 @@ function HandwritingCanvas({
       }
 
       measurementContext.font =
-        `${size}px "${fontFamily}"`;
+        `${size}px "${loadedFontFamily}"`;
+
+      /*
+       * =====================================================
+       * BUILD LINES
+       * =====================================================
+       */
 
       const lines = [];
 
@@ -395,9 +801,12 @@ function HandwritingCanvas({
                   : word;
 
               const measuredWidth =
-                measurementContext.measureText(
-                  testLine
-                ).width;
+                measureTextWithSpacing(
+                  measurementContext,
+                  testLine,
+                  letterSpacing,
+                  wordSpacing
+                );
 
               if (
                 measuredWidth >
@@ -408,7 +817,8 @@ function HandwritingCanvas({
                   currentLine
                 );
 
-                currentLine = word;
+                currentLine =
+                  word;
               } else {
                 currentLine =
                   testLine;
@@ -423,6 +833,12 @@ function HandwritingCanvas({
           }
         }
       );
+
+      /*
+       * =====================================================
+       * FIRST PAGE
+       * =====================================================
+       */
 
       let currentPage =
         document.createElement(
@@ -446,15 +862,27 @@ function HandwritingCanvas({
 
       setupPage(
         pageContext,
-        fontFamily,
+        loadedFontFamily,
         size
       );
 
       let y =
         margins.top;
 
+      let characterIndex = 0;
+
+      /*
+       * =====================================================
+       * DRAW LINES
+       * =====================================================
+       */
+
       lines.forEach(
         (line) => {
+          /*
+           * New page
+           */
+
           if (
             y + lineHeight >
             A4_HEIGHT -
@@ -486,7 +914,7 @@ function HandwritingCanvas({
 
             setupPage(
               pageContext,
-              fontFamily,
+              loadedFontFamily,
               size
             );
 
@@ -494,17 +922,49 @@ function HandwritingCanvas({
               margins.top;
           }
 
+          /*
+           * Draw line
+           */
+
           if (line) {
-            pageContext.fillText(
+            const ink =
+              getInkConfiguration(
+                inkStyle
+              );
+
+            drawTextWithVariation(
+              pageContext,
               line,
               margins.left,
-              y
+              y,
+              {
+                letterSpacing,
+                wordSpacing,
+                naturalVariation,
+                startIndex:
+                  characterIndex,
+                baseFontSize:
+                  size,
+                fontFamily:
+                  loadedFontFamily,
+                inkVariations:
+                  ink.variations,
+              }
             );
           }
+
+          characterIndex +=
+            line.length + 1;
 
           y += lineHeight;
         }
       );
+
+      /*
+       * =====================================================
+       * FINAL PAGE
+       * =====================================================
+       */
 
       pageCanvases.push(
         currentPage
@@ -517,26 +977,64 @@ function HandwritingCanvas({
       }
     }
 
+    /*
+     * =======================================================
+     * PAGE SETUP
+     * =======================================================
+     */
+
     function setupPage(
       context,
-      fontFamily,
+      loadedFontFamily,
       size
     ) {
+      /*
+       * Paper
+       */
+
       drawPaperBackground(
         context,
         paperStyle
       );
+
+      /*
+       * Ink configuration
+       */
 
       const ink =
         getInkConfiguration(
           inkStyle
         );
 
-      context.font =
-        `${size}px "${fontFamily}"`;
+      /*
+       * Store base ink color
+       * for the character renderer.
+       */
 
-      context.fillStyle =
-        inkColor || ink.base;
+      context.__inkaiFontFamily =
+        loadedFontFamily;
+
+      context.__inkaiBaseInkColor =
+        inkColor ||
+        ink.base;
+
+      /*
+       * Base font
+       */
+
+      context.font =
+        `${size}px "${loadedFontFamily}"`;
+
+      /*
+       * Ink opacity
+       */
+
+      context.globalAlpha =
+        inkOpacity;
+
+      /*
+       * Text configuration
+       */
 
       context.textBaseline =
         "top";
@@ -557,7 +1055,18 @@ function HandwritingCanvas({
     inkColor,
     paperStyle,
     inkStyle,
+    letterSpacing,
+    lineSpacing,
+    wordSpacing,
+    inkOpacity,
+    naturalVariation,
   ]);
+
+  /*
+   * =========================================================
+   * ZOOM
+   * =========================================================
+   */
 
   const zoomIn = () => {
     setZoom(
@@ -591,12 +1100,47 @@ function HandwritingCanvas({
     setZoom(0.8);
   };
 
+  /*
+   * =========================================================
+   * UI
+   * =========================================================
+   */
+
   return (
-    <div className="flex h-full min-h-[700px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-gray-100 dark:border-gray-800 dark:bg-gray-950">
+    <div
+      className="
+        flex
+        h-full
+        min-h-[700px]
+        flex-col
+        overflow-hidden
+        rounded-2xl
+        border
+        border-gray-200
+        bg-gray-100
+        dark:border-gray-800
+        dark:bg-gray-950
+      "
+    >
+      {/* ===================================================
+          TOOLBAR
+          =================================================== */}
 
-      {/* Preview toolbar */}
-      <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
-
+      <div
+        className="
+          flex
+          shrink-0
+          items-center
+          justify-between
+          border-b
+          border-gray-200
+          bg-white
+          px-4
+          py-3
+          dark:border-gray-800
+          dark:bg-gray-900
+        "
+      >
         <div>
           <p className="text-sm font-semibold text-gray-900 dark:text-white">
             Handwriting Preview
@@ -611,12 +1155,21 @@ function HandwritingCanvas({
         </div>
 
         <div className="flex items-center gap-1">
-
           <button
             type="button"
             onClick={zoomOut}
             disabled={zoom <= 0.5}
-            className="rounded-lg p-2 text-gray-600 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-800"
+            className="
+              rounded-lg
+              p-2
+              text-gray-600
+              transition
+              hover:bg-gray-100
+              disabled:cursor-not-allowed
+              disabled:opacity-40
+              dark:text-gray-300
+              dark:hover:bg-gray-800
+            "
             title="Zoom out"
           >
             <ZoomOut size={18} />
@@ -625,7 +1178,18 @@ function HandwritingCanvas({
           <button
             type="button"
             onClick={resetZoom}
-            className="min-w-[64px] rounded-lg px-2 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+            className="
+              min-w-[64px]
+              rounded-lg
+              px-2
+              py-2
+              text-xs
+              font-medium
+              text-gray-700
+              hover:bg-gray-100
+              dark:text-gray-300
+              dark:hover:bg-gray-800
+            "
             title="Reset zoom"
           >
             {Math.round(
@@ -638,48 +1202,76 @@ function HandwritingCanvas({
             type="button"
             onClick={zoomIn}
             disabled={zoom >= 1.5}
-            className="rounded-lg p-2 text-gray-600 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-800"
+            className="
+              rounded-lg
+              p-2
+              text-gray-600
+              transition
+              hover:bg-gray-100
+              disabled:cursor-not-allowed
+              disabled:opacity-40
+              dark:text-gray-300
+              dark:hover:bg-gray-800
+            "
             title="Zoom in"
           >
             <ZoomIn size={18} />
           </button>
 
-          <div className="mx-1 h-5 w-px bg-gray-200 dark:bg-gray-700" />
+          <div
+            className="
+              mx-1
+              h-5
+              w-px
+              bg-gray-200
+              dark:bg-gray-700
+            "
+          />
 
           <button
             type="button"
             onClick={resetZoom}
-            className="rounded-lg p-2 text-gray-600 transition hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+            className="
+              rounded-lg
+              p-2
+              text-gray-600
+              hover:bg-gray-100
+              dark:text-gray-300
+              dark:hover:bg-gray-800
+            "
             title="Reset zoom"
           >
             <RotateCcw size={17} />
           </button>
-
         </div>
       </div>
 
-      {/* Scrollable A4 pages */}
+      {/* ===================================================
+          PAGES
+          =================================================== */}
+
       <div className="flex-1 overflow-auto p-6">
-
-        <div className="flex min-w-max flex-col items-center gap-8">
-
+        <div
+          className="
+            flex
+            min-w-max
+            flex-col
+            items-center
+            gap-8
+          "
+        >
           {pages.map(
             (page, index) => (
               <div
                 key={index}
                 className="relative shrink-0"
                 style={{
-                  width: `${
-                    A4_WIDTH *
-                    zoom
-                  }px`,
-                  height: `${
-                    A4_HEIGHT *
-                    zoom
-                  }px`,
+                  width:
+                    `${A4_WIDTH * zoom}px`,
+                  height:
+                    `${A4_HEIGHT * zoom}px`,
                 }}
               >
-
                 <img
                   src={page.toDataURL(
                     "image/png"
@@ -687,27 +1279,52 @@ function HandwritingCanvas({
                   alt={`Handwriting page ${
                     index + 1
                   }`}
-                  className="absolute left-0 top-0 block origin-top-left bg-white shadow-xl"
+                  className="
+                    absolute
+                    left-0
+                    top-0
+                    block
+                    origin-top-left
+                    bg-white
+                    shadow-xl
+                  "
                   style={{
-                    width: `${A4_WIDTH}px`,
-                    height: `${A4_HEIGHT}px`,
-                    transform: `scale(${zoom})`,
+                    width:
+                      `${A4_WIDTH}px`,
+                    height:
+                      `${A4_HEIGHT}px`,
+                    transform:
+                      `scale(${zoom})`,
                   }}
                 />
 
-                {/* Margin guide */}
+                {/* MARGIN GUIDE */}
+
                 <div
-                  className="pointer-events-none absolute left-0 top-0"
+                  className="
+                    pointer-events-none
+                    absolute
+                    left-0
+                    top-0
+                  "
                   style={{
-                    width: `${A4_WIDTH}px`,
-                    height: `${A4_HEIGHT}px`,
-                    transform: `scale(${zoom})`,
+                    width:
+                      `${A4_WIDTH}px`,
+                    height:
+                      `${A4_HEIGHT}px`,
+                    transform:
+                      `scale(${zoom})`,
                     transformOrigin:
                       "top left",
                   }}
                 >
                   <div
-                    className="absolute border border-dashed border-gray-300"
+                    className="
+                      absolute
+                      border
+                      border-dashed
+                      border-gray-300
+                    "
                     style={{
                       left:
                         margins.left,
@@ -725,9 +1342,16 @@ function HandwritingCanvas({
                   />
                 </div>
 
-                {/* Page number */}
+                {/* PAGE NUMBER */}
+
                 <div
-                  className="absolute left-1/2 -translate-x-1/2 text-[10px] text-gray-400"
+                  className="
+                    absolute
+                    left-1/2
+                    -translate-x-1/2
+                    text-[10px]
+                    text-gray-400
+                  "
                   style={{
                     bottom: -22,
                   }}
@@ -735,17 +1359,24 @@ function HandwritingCanvas({
                   Page{" "}
                   {index + 1}
                 </div>
-
               </div>
             )
           )}
 
           {pages.length === 0 && (
-            <div className="flex min-h-[500px] items-center justify-center text-sm text-gray-500">
+            <div
+              className="
+                flex
+                min-h-[500px]
+                items-center
+                justify-center
+                text-sm
+                text-gray-500
+              "
+            >
               Preparing handwriting preview...
             </div>
           )}
-
         </div>
       </div>
     </div>
