@@ -65,12 +65,13 @@ const INK_STYLES = {
   },
 
   pencil: {
-    base: "#5C5C5C",
+    base: "#5A5A5A",
     variations: [
+      "#4F4F4F",
       "#555555",
-      "#5C5C5C",
-      "#636363",
-      "#696969",
+      "#5A5A5A",
+      "#606060",
+      "#666666",
     ],
   },
 };
@@ -79,6 +80,265 @@ function getInkConfiguration(inkStyle) {
   return (
     INK_STYLES[inkStyle] ||
     INK_STYLES.blue
+  );
+}
+
+/*
+ * =========================================================
+ * INK VARIATION HELPERS
+ * =========================================================
+ *
+ * Step 18
+ *
+ * These functions intentionally use deterministic values.
+ * Preview and re-render therefore remain stable.
+ * =========================================================
+ */
+
+function deterministicInkValue(
+  documentId,
+  pageNumber,
+  characterIndex,
+  channel
+) {
+  const input =
+    `${documentId}:${pageNumber}:${characterIndex}:${channel}`;
+
+  let hash = 2166136261;
+
+  for (let index = 0; index < input.length; index++) {
+    hash ^= input.charCodeAt(index);
+
+    hash =
+      Math.imul(
+        hash,
+        16777619
+      );
+  }
+
+  hash >>>= 0;
+
+  return hash / 0xffffffff;
+}
+
+
+function getInkVariation(
+  documentId,
+  pageNumber,
+  characterIndex,
+  inkStyle,
+  naturalVariation
+) {
+  /*
+   * Variation disabled
+   */
+  if (!naturalVariation) {
+    return {
+      opacityMultiplier: 1,
+      darknessMultiplier: 1,
+      textureStrength: 0,
+    };
+  }
+
+  /*
+   * =======================================================
+   * PENCIL
+   * =======================================================
+   */
+
+  if (inkStyle === "pencil") {
+    const opacityRandom =
+      deterministicInkValue(
+        documentId,
+        pageNumber,
+        characterIndex,
+        "pencil-opacity"
+      );
+
+    const darknessRandom =
+      deterministicInkValue(
+        documentId,
+        pageNumber,
+        characterIndex,
+        "pencil-darkness"
+      );
+
+    const textureRandom =
+      deterministicInkValue(
+        documentId,
+        pageNumber,
+        characterIndex,
+        "pencil-texture"
+      );
+
+    return {
+      /*
+       * 88% – 98%
+       */
+      opacityMultiplier:
+        0.88 +
+        opacityRandom * 0.10,
+
+      /*
+       * 82% – 94%
+       */
+      darknessMultiplier:
+        0.82 +
+        darknessRandom * 0.12,
+
+      /*
+       * 2% – 10%
+       */
+      textureStrength:
+        0.02 +
+        textureRandom * 0.08,
+    };
+  }
+
+  /*
+   * =======================================================
+   * NORMAL INK
+   * =======================================================
+   */
+
+  const opacityRandom =
+    deterministicInkValue(
+      documentId,
+      pageNumber,
+      characterIndex,
+      "opacity"
+    );
+
+  const darknessRandom =
+    deterministicInkValue(
+      documentId,
+      pageNumber,
+      characterIndex,
+      "darkness"
+    );
+
+  const textureRandom =
+    deterministicInkValue(
+      documentId,
+      pageNumber,
+      characterIndex,
+      "texture"
+    );
+
+  return {
+    /*
+     * 94% – 104%
+     */
+    opacityMultiplier:
+      0.94 +
+      opacityRandom * 0.10,
+
+    /*
+     * 94% – 104%
+     */
+    darknessMultiplier:
+      0.94 +
+      darknessRandom * 0.10,
+
+    /*
+     * 0% – 8%
+     */
+    textureStrength:
+      textureRandom * 0.08,
+  };
+}
+
+function adjustInkColor(
+  color,
+  darknessMultiplier
+) {
+  if (!color) {
+    return color;
+  }
+
+  /*
+   * Convert #RRGGBB into RGB.
+   */
+
+  const normalized =
+    color.replace("#", "");
+
+  if (normalized.length !== 6) {
+    return color;
+  }
+
+  const red =
+    parseInt(
+      normalized.slice(0, 2),
+      16
+    );
+
+  const green =
+    parseInt(
+      normalized.slice(2, 4),
+      16
+    );
+
+  const blue =
+    parseInt(
+      normalized.slice(4, 6),
+      16
+    );
+
+  /*
+   * Darkness multiplier:
+   *
+   * < 1 = lighter
+   * > 1 = darker
+   */
+
+  const adjustedRed =
+    Math.max(
+      0,
+      Math.min(
+        255,
+        Math.round(
+          red *
+          darknessMultiplier
+        )
+      )
+    );
+
+  const adjustedGreen =
+    Math.max(
+      0,
+      Math.min(
+        255,
+        Math.round(
+          green *
+          darknessMultiplier
+        )
+      )
+    );
+
+  const adjustedBlue =
+    Math.max(
+      0,
+      Math.min(
+        255,
+        Math.round(
+          blue *
+          darknessMultiplier
+        )
+      )
+    );
+
+  return (
+    "#" +
+    adjustedRed
+      .toString(16)
+      .padStart(2, "0") +
+    adjustedGreen
+      .toString(16)
+      .padStart(2, "0") +
+    adjustedBlue
+      .toString(16)
+      .padStart(2, "0")
   );
 }
 
@@ -384,6 +644,9 @@ function drawTextWithVariation(
     baseFontSize = 22,
     fontFamily,
     inkVariations = [],
+    documentId = "inkai-preview-document",
+    pageNumber = 1,
+    inkStyle = "blue",
   } = {}
 ) {
   let currentX = x;
@@ -524,8 +787,33 @@ function drawTextWithVariation(
      * Only subtle color changes are used.
      */
 
-    let characterInk =
+    /*
+    * =======================================================
+    * STEP 18 — INK VARIATION
+    * =======================================================
+    */
+
+    const baseInkColor =
       context.__inkaiBaseInkColor;
+
+    const inkVariation =
+      getInkVariation(
+        documentId,
+        pageNumber,
+        characterIndex,
+        inkStyle,
+        naturalVariation
+      );
+
+    /*
+    * Existing color variation.
+    *
+    * Keep this because it gives the ink
+    * very subtle color differences.
+    */
+
+    let characterInk =
+      baseInkColor;
 
     if (
       naturalVariation &&
@@ -552,12 +840,42 @@ function drawTextWithVariation(
     }
 
     /*
+    * Step 18:
+    * Slight stroke darkness variation.
+    */
+
+    characterInk =
+      adjustInkColor(
+        characterInk,
+        inkVariation.darknessMultiplier
+      );
+
+    /*
      * =======================================================
      * DRAW CHARACTER
      * =======================================================
      */
 
+    /*
+    * =======================================================
+    * STEP 18 — PER CHARACTER OPACITY
+    * =======================================================
+    */
+
+    const characterOpacity =
+      Math.max(
+        0,
+        Math.min(
+          1,
+          (context.__inkaiBaseOpacity || 1) *
+          inkVariation.opacityMultiplier
+        )
+      );
+
     context.save();
+
+    context.globalAlpha =
+      characterOpacity;
 
     context.font =
       `${characterSize}px "${fontFamily}"`;
@@ -583,6 +901,41 @@ function drawTextWithVariation(
       0,
       0
     );
+
+    /*
+    * =======================================================
+    * STEP 18 — SUBTLE INK TEXTURE
+    * =======================================================
+    *
+    * A very faint secondary pass makes the stroke
+    * feel less perfectly digital.
+    *
+    * The effect is intentionally tiny.
+    */
+
+    if (
+      naturalVariation &&
+      inkVariation.textureStrength > 0
+    ) {
+      const textureAlpha =
+        characterOpacity *
+        inkVariation.textureStrength *
+        0.12;
+
+      context.globalAlpha =
+        textureAlpha;
+
+      context.translate(
+        0.25,
+        0.15
+      );
+
+      context.fillText(
+        character,
+        0,
+        0
+      );
+    }
 
     context.restore();
 
@@ -951,6 +1304,12 @@ function HandwritingCanvas({
                   loadedFontFamily,
                 inkVariations:
                   ink.variations,
+
+                documentId,
+
+                pageNumber,
+
+                inkStyle,
               }
             );
           }
@@ -1030,6 +1389,9 @@ function HandwritingCanvas({
       /*
        * Ink opacity
        */
+
+      context.__inkaiBaseOpacity =
+        inkOpacity;
 
       context.globalAlpha =
         inkOpacity;
