@@ -1,51 +1,75 @@
 """
 InkAI Glyph Variation Engine
 
+Steps 13-17
+------------
+
 Step 13:
-- Generates subtle, deterministic character variations.
-- Uses a seeded random generator so preview/download can
-  produce reproducible handwriting.
+    Generate subtle per-character glyph variation.
 
 Step 14:
-- Supports selecting between multiple compatible font variants.
+    Support compatible font variants.
+
+Step 15:
+    Use deterministic seeds so preview and download
+    produce identical handwriting.
+
+Step 16:
+    Add subtle baseline / vertical variation.
+
+Step 17:
+    Add subtle per-character rotation.
+
+Seed structure:
+
+    document_id
+        +
+    page_number
+        +
+    character_index
+
+The same inputs always produce the same result.
 """
 
 from __future__ import annotations
 
-import random
 from dataclasses import dataclass
 from typing import Sequence
 
 
 # ============================================================
-# VARIATION LIMITS
+# SAFE VARIATION LIMITS
 # ============================================================
 
-# Keep these deliberately subtle.
+# Step 17
 MIN_ROTATION = -2.0
 MAX_ROTATION = 2.0
 
+# Step 13
 MIN_SCALE = 0.97
 MAX_SCALE = 1.03
 
+# Step 13
 MIN_OFFSET_X = -0.3
 MAX_OFFSET_X = 0.3
 
+# Step 16
 MIN_OFFSET_Y = -1.0
 MAX_OFFSET_Y = 1.0
 
+# Step 12 / Step 13
 MIN_LETTER_SPACING = -0.2
 MAX_LETTER_SPACING = 0.2
 
 
 # ============================================================
-# GLYPH VARIATION
+# GLYPH VARIATION MODEL
 # ============================================================
 
 @dataclass(frozen=True)
 class GlyphVariation:
     """
-    Represents the visual variation applied to one character.
+    Visual properties applied to one character.
     """
 
     rotation: float
@@ -56,10 +80,6 @@ class GlyphVariation:
     font_variant: str | None = None
 
     def to_dict(self) -> dict:
-        """
-        Convert variation to a JSON-friendly dictionary.
-        """
-
         return {
             "rotation": self.rotation,
             "scale": self.scale,
@@ -71,25 +91,56 @@ class GlyphVariation:
 
 
 # ============================================================
-# SEEDED RANDOM GENERATOR
+# DETERMINISTIC HASH
 # ============================================================
 
-def create_rng(seed: int | str | None = None) -> random.Random:
+def deterministic_hash(value: str) -> int:
     """
-    Create a deterministic random generator.
+    Cross-process deterministic string hash.
 
-    The same seed produces the same sequence of
-    variations.
+    We deliberately do NOT use Python's built-in hash()
+    because its result can differ between processes.
 
-    Example:
-
-        rng1 = create_rng(1234)
-        rng2 = create_rng(1234)
-
-        Both generators will produce identical results.
+    FNV-1a is simple and deterministic.
     """
 
-    return random.Random(seed)
+    hash_value = 2166136261
+
+    for character in value:
+        hash_value ^= ord(character)
+
+        hash_value = (
+            hash_value * 16777619
+        ) & 0xFFFFFFFF
+
+    return hash_value
+
+
+# ============================================================
+# SEEDED VALUE
+# ============================================================
+
+def seeded_value(
+    seed: str,
+    minimum: float,
+    maximum: float,
+) -> float:
+    """
+    Convert a deterministic seed into a value inside
+    [minimum, maximum].
+    """
+
+    hashed = deterministic_hash(seed)
+
+    normalized = (
+        hashed / 0xFFFFFFFF
+    )
+
+    return (
+        minimum
+        + normalized *
+        (maximum - minimum)
+    )
 
 
 # ============================================================
@@ -97,29 +148,31 @@ def create_rng(seed: int | str | None = None) -> random.Random:
 # ============================================================
 
 def choose_font_variant(
-    rng: random.Random,
+    seed: str,
     font_variants: Sequence[str] | None = None,
 ) -> str | None:
     """
-    Select one font variant using the seeded RNG.
+    Select a compatible font variant deterministically.
 
-    Step 14:
-
-        character
-            ↓
-        compatible font variants
-            ↓
-        random selection
-            ↓
-        selected font
+    The same seed always selects the same font.
     """
 
     if not font_variants:
         return None
 
-    return rng.choice(
-        list(font_variants)
+    variants = list(font_variants)
+
+    if not variants:
+        return None
+
+    hashed = deterministic_hash(seed)
+
+    index = (
+        hashed %
+        len(variants)
     )
+
+    return variants[index]
 
 
 # ============================================================
@@ -127,20 +180,26 @@ def choose_font_variant(
 # ============================================================
 
 def generate_glyph_variation(
-    rng: random.Random,
+    document_id: str,
+    page_number: int,
+    character_index: int,
     font_variants: Sequence[str] | None = None,
     enable_variation: bool = True,
 ) -> GlyphVariation:
     """
-    Generate subtle visual variation for one character.
+    Generate deterministic variation for one character.
 
-    The ranges intentionally remain small:
+    Seed:
 
-        Rotation:       -2°  → +2°
-        Scale:          0.97 → 1.03
-        Offset X:       -0.3 → +0.3 px
-        Offset Y:       -1   → +1 px
-        Letter spacing: -0.2 → +0.2 px
+        document_id
+            +
+        page_number
+            +
+        character_index
+
+    Example:
+
+        document-123:page-1:char-42
     """
 
     if not enable_variation:
@@ -157,73 +216,87 @@ def generate_glyph_variation(
             ),
         )
 
+    base_seed = (
+        f"{document_id}:"
+        f"{page_number}:"
+        f"{character_index}"
+    )
+
+    rotation = seeded_value(
+        f"{base_seed}:rotation",
+        MIN_ROTATION,
+        MAX_ROTATION,
+    )
+
+    scale = seeded_value(
+        f"{base_seed}:scale",
+        MIN_SCALE,
+        MAX_SCALE,
+    )
+
+    offset_x = seeded_value(
+        f"{base_seed}:offset_x",
+        MIN_OFFSET_X,
+        MAX_OFFSET_X,
+    )
+
+    offset_y = seeded_value(
+        f"{base_seed}:offset_y",
+        MIN_OFFSET_Y,
+        MAX_OFFSET_Y,
+    )
+
+    letter_spacing = seeded_value(
+        f"{base_seed}:spacing",
+        MIN_LETTER_SPACING,
+        MAX_LETTER_SPACING,
+    )
+
+    font_variant = choose_font_variant(
+        f"{base_seed}:font",
+        font_variants,
+    )
+
     return GlyphVariation(
         rotation=round(
-            rng.uniform(
-                MIN_ROTATION,
-                MAX_ROTATION,
-            ),
+            rotation,
             3,
         ),
         scale=round(
-            rng.uniform(
-                MIN_SCALE,
-                MAX_SCALE,
-            ),
+            scale,
             4,
         ),
         offset_x=round(
-            rng.uniform(
-                MIN_OFFSET_X,
-                MAX_OFFSET_X,
-            ),
+            offset_x,
             3,
         ),
         offset_y=round(
-            rng.uniform(
-                MIN_OFFSET_Y,
-                MAX_OFFSET_Y,
-            ),
+            offset_y,
             3,
         ),
         letter_spacing=round(
-            rng.uniform(
-                MIN_LETTER_SPACING,
-                MAX_LETTER_SPACING,
-            ),
+            letter_spacing,
             3,
         ),
-        font_variant=choose_font_variant(
-            rng,
-            font_variants,
-        ),
+        font_variant=font_variant,
     )
 
 
 # ============================================================
-# RENDER CHARACTER CONFIGURATION
+# RENDER CHARACTER
 # ============================================================
 
 def render_character(
     character: str,
-    rng: random.Random,
+    document_id: str,
+    page_number: int,
+    character_index: int,
     font_variants: Sequence[str] | None = None,
     enable_variation: bool = True,
 ) -> dict:
     """
-    Prepare everything required to render one character.
-
-    Concept:
-
-        render_character(character)
-                    ↓
-             random variation
-                    ↓
-              render config
-
-    This function does not draw the character itself.
-    It returns a deterministic rendering configuration
-    that can be consumed by the actual renderer.
+    Prepare deterministic rendering information
+    for one character.
     """
 
     if not character:
@@ -231,10 +304,14 @@ def render_character(
             "Character cannot be empty."
         )
 
-    variation = generate_glyph_variation(
-        rng=rng,
-        font_variants=font_variants,
-        enable_variation=enable_variation,
+    variation = (
+        generate_glyph_variation(
+            document_id=document_id,
+            page_number=page_number,
+            character_index=character_index,
+            font_variants=font_variants,
+            enable_variation=enable_variation,
+        )
     )
 
     return {
@@ -244,44 +321,32 @@ def render_character(
 
 
 # ============================================================
-# TEXT VARIATION
+# TEXT VARIATIONS
 # ============================================================
 
 def generate_text_variations(
     text: str,
-    seed: int | str | None = None,
+    document_id: str,
+    page_number: int,
+    start_character_index: int = 0,
     font_variants: Sequence[str] | None = None,
     enable_variation: bool = True,
 ) -> list[dict]:
     """
-    Generate deterministic variation data for every
-    character in a string.
-
-    Example:
-
-        "Hello"
-
-        ↓
-
-        [
-            {
-                "character": "H",
-                "rotation": ...,
-                "scale": ...,
-                ...
-            },
-            ...
-        ]
-
-    Calling this function again with the same seed
-    produces the same result.
+    Generate deterministic variation for every character
+    in a page or text block.
     """
-
-    rng = create_rng(seed)
 
     variations = []
 
-    for character in text:
+    for index, character in enumerate(text):
+
+        character_index = (
+            start_character_index
+            + index
+        )
+
+        # Spaces should not rotate or move.
         if character.isspace():
             variations.append(
                 {
@@ -304,7 +369,9 @@ def generate_text_variations(
         variations.append(
             render_character(
                 character=character,
-                rng=rng,
+                document_id=document_id,
+                page_number=page_number,
+                character_index=character_index,
                 font_variants=font_variants,
                 enable_variation=enable_variation,
             )
@@ -314,35 +381,34 @@ def generate_text_variations(
 
 
 # ============================================================
-# PAGE VARIATION
+# PAGE VARIATIONS
 # ============================================================
 
 def generate_page_variations(
     text: str,
-    seed: int | str | None = None,
+    document_id: str,
+    page_number: int,
     font_variants: Sequence[str] | None = None,
     enable_variation: bool = True,
 ) -> dict:
     """
-    Generate reproducible variation information for
-    an entire page.
-
-    The returned seed should be stored with the document
-    or generation job if exact preview/download matching
-    is required.
+    Generate deterministic variation data for a complete page.
     """
 
-    variations = generate_text_variations(
+    characters = generate_text_variations(
         text=text,
-        seed=seed,
+        document_id=document_id,
+        page_number=page_number,
+        start_character_index=0,
         font_variants=font_variants,
         enable_variation=enable_variation,
     )
 
     return {
-        "seed": seed,
+        "document_id": document_id,
+        "page_number": page_number,
         "variation_enabled": enable_variation,
-        "characters": variations,
+        "characters": characters,
     }
 
 
@@ -353,44 +419,25 @@ def generate_page_variations(
 def validate_variation(
     variation: GlyphVariation,
 ) -> bool:
-    """
-    Verify that a generated variation stays inside
-    the safe natural-handwriting ranges.
-    """
 
-    if not (
+    return (
         MIN_ROTATION
         <= variation.rotation
         <= MAX_ROTATION
-    ):
-        return False
-
-    if not (
+        and
         MIN_SCALE
         <= variation.scale
         <= MAX_SCALE
-    ):
-        return False
-
-    if not (
+        and
         MIN_OFFSET_X
         <= variation.offset_x
         <= MAX_OFFSET_X
-    ):
-        return False
-
-    if not (
+        and
         MIN_OFFSET_Y
         <= variation.offset_y
         <= MAX_OFFSET_Y
-    ):
-        return False
-
-    if not (
+        and
         MIN_LETTER_SPACING
         <= variation.letter_spacing
         <= MAX_LETTER_SPACING
-    ):
-        return False
-
-    return True
+    )

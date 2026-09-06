@@ -409,6 +409,8 @@ function HandwritingGeneratorPage() {
             <HandwritingPreview
               document={handwritingDocument}
 
+              documentId={document?.id || document?._id || "inkai-preview-document"}
+
               font={selectedFont}
 
               paper={selectedPaper}

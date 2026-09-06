@@ -5,8 +5,45 @@ import handwritingFonts from "../../data/handwritingFonts";
 import HandwritingCanvas from "./HandwritingCanvas";
 
 
+/*
+ * =========================================================
+ * HANDWRITING PREVIEW
+ * =========================================================
+ *
+ * Responsible for:
+ *
+ * 1. Receiving the saved document
+ * 2. Resolving the selected handwriting font
+ * 3. Converting document blocks into plain text
+ * 4. Passing stable document information to the canvas
+ *
+ * IMPORTANT:
+ *
+ * This component does NOT generate random variation.
+ *
+ * The actual glyph variation is handled by the
+ * deterministic variation engine.
+ *
+ * Preview and download must use the same:
+ *
+ *      documentId
+ *      page number
+ *      character index
+ *
+ * so that the generated handwriting remains identical.
+ * =========================================================
+ */
+
 function HandwritingPreview({
   document,
+
+  /*
+   * Stable document identifier.
+   *
+   * This should normally come from the saved document.
+   */
+  documentId,
+
   font,
   paper,
   ink,
@@ -19,48 +56,21 @@ function HandwritingPreview({
   naturalVariation = true,
 }) {
 
-  /*
-   * =========================================================
-   * DOCUMENT CHECK
-   * =========================================================
-   */
-
-  if (!document) {
-    return (
-      <div
-        className="
-          flex
-          min-h-[500px]
-          items-center
-          justify-center
-          rounded-xl
-          border
-          border-slate-200
-          bg-white
-          text-sm
-          text-slate-500
-        "
-      >
-        No document available.
-      </div>
-    );
-  }
-
 
   /*
    * =========================================================
    * RESOLVE FONT
    * =========================================================
    *
-   * selectedFont is an ID such as:
+   * IMPORTANT:
    *
-   * "inkai-default"
+   * Keep hooks before any conditional return.
    *
-   * HandwritingCanvas needs the complete font object.
+   * This prevents React's Rules of Hooks from being violated
+   * if the document changes from null → available.
    */
 
   const selectedFontObject = useMemo(() => {
-
     return (
       handwritingFonts.find(
         (item) =>
@@ -69,17 +79,25 @@ function HandwritingPreview({
       handwritingFonts[0] ||
       null
     );
-
   }, [font]);
 
 
   /*
    * =========================================================
-   * CONVERT BLOCKS TO TEXT
+   * CONVERT DOCUMENT TO TEXT
    * =========================================================
+   *
+   * The handwriting canvas currently works with text.
+   *
+   * Convert the structured document into a readable
+   * handwritten text representation.
    */
 
   const handwritingText = useMemo(() => {
+
+    if (!document) {
+      return "";
+    }
 
     const blocks =
       document.blocks || [];
@@ -95,7 +113,9 @@ function HandwritingPreview({
 
 
       /*
+       * =====================================================
        * HEADING
+       * =====================================================
        */
 
       if (
@@ -114,7 +134,9 @@ function HandwritingPreview({
 
 
       /*
+       * =====================================================
        * PARAGRAPH
+       * =====================================================
        */
 
       if (
@@ -133,7 +155,9 @@ function HandwritingPreview({
 
 
       /*
+       * =====================================================
        * BULLET LIST
+       * =====================================================
        */
 
       if (
@@ -159,7 +183,6 @@ function HandwritingPreview({
           textParts.push(
             `• ${itemText}`
           );
-
         });
 
 
@@ -170,7 +193,9 @@ function HandwritingPreview({
 
 
       /*
+       * =====================================================
        * ORDERED LIST
+       * =====================================================
        */
 
       if (
@@ -197,7 +222,6 @@ function HandwritingPreview({
             textParts.push(
               `${index + 1}. ${itemText}`
             );
-
           }
         );
 
@@ -209,7 +233,12 @@ function HandwritingPreview({
 
 
       /*
+       * =====================================================
        * PAGE BREAK
+       * =====================================================
+       *
+       * The canvas currently represents a page break
+       * using blank lines.
        */
 
       if (
@@ -226,10 +255,14 @@ function HandwritingPreview({
 
 
       /*
+       * =====================================================
        * IMAGE
+       * =====================================================
        *
-       * Images remain unsupported in the canvas
-       * renderer for now.
+       * Images are intentionally skipped for now.
+       *
+       * Image rendering can be added later to the
+       * handwriting page renderer.
        */
 
       if (
@@ -249,11 +282,41 @@ function HandwritingPreview({
 
   /*
    * =========================================================
+   * DOCUMENT CHECK
+   * =========================================================
+   */
+
+  if (!document) {
+
+    return (
+      <div
+        className="
+          flex
+          min-h-[500px]
+          items-center
+          justify-center
+          rounded-xl
+          border
+          border-slate-200
+          bg-white
+          text-sm
+          text-slate-500
+        "
+      >
+        No document available.
+      </div>
+    );
+  }
+
+
+  /*
+   * =========================================================
    * FONT CHECK
    * =========================================================
    */
 
   if (!selectedFontObject) {
+
     return (
       <div
         className="
@@ -277,30 +340,107 @@ function HandwritingPreview({
 
   /*
    * =========================================================
+   * STABLE DOCUMENT ID
+   * =========================================================
+   *
+   * Step 15
+   *
+   * The backend variation engine needs a stable identifier.
+   *
+   * Preferred order:
+   *
+   *      documentId prop
+   *          ↓
+   *      document.id
+   *          ↓
+   *      document._id
+   *          ↓
+   *      fallback
+   *
+   * IMPORTANT:
+   *
+   * This fallback is only for documents that don't yet have
+   * a database ID.
+   *
+   * A real saved document should always have an ID.
+   */
+
+  const stableDocumentId =
+    documentId ||
+    document.id ||
+    document._id ||
+    "inkai-preview-document";
+
+
+  /*
+   * =========================================================
    * CANVAS
    * =========================================================
    */
 
   return (
     <HandwritingCanvas
+      /*
+       * Text
+       */
       text={handwritingText}
 
-      style={selectedFontObject}
+      /*
+       * Stable document identity
+       *
+       * Used by the deterministic glyph variation engine.
+       */
+      documentId={
+        stableDocumentId
+      }
 
+      /*
+       * Font
+       */
+      style={
+        selectedFontObject
+      }
+
+      /*
+       * Basic appearance
+       */
       fontSize={fontSize}
 
       paperStyle={paper}
 
       inkStyle={ink}
 
-      letterSpacing={letterSpacing}
+      /*
+       * Handwriting controls
+       */
+      letterSpacing={
+        letterSpacing
+      }
 
-      lineSpacing={lineSpacing}
+      lineSpacing={
+        lineSpacing
+      }
 
-      wordSpacing={wordSpacing}
+      wordSpacing={
+        wordSpacing
+      }
 
-      inkOpacity={inkOpacity}
+      inkOpacity={
+        inkOpacity
+      }
 
+      /*
+       * Step 13–17
+       *
+       * Enables deterministic:
+       *
+       * - glyph variation
+       * - scale variation
+       * - baseline variation
+       * - rotation
+       * - tiny spacing variation
+       * - future font variant selection
+       */
       naturalVariation={
         naturalVariation
       }

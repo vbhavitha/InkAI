@@ -618,6 +618,8 @@ function drawTextWithVariation(
 function HandwritingCanvas({
   text = "",
 
+  documentId = "inkai-preview-document",
+
   style,
 
   fontSize = 22,
