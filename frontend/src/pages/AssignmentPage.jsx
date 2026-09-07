@@ -5,6 +5,8 @@ import AssignmentTemplates from "../components/assignment/AssignmentTemplates";
 import PaperSelector from "../components/assignment/PaperSelector";
 import PageSettings from "../components/assignment/PageSettings";
 import WritingArea from "../components/assignment/WritingArea";
+import AssignmentHeader from "../components/assignment/AssignmentHeader";
+import TitleSettings from "../components/assignment/TitleSettings";
 
 import {
   getPaperConfig,
@@ -16,30 +18,48 @@ import {
 ============================================================ */
 
 const DEFAULT_ASSIGNMENT = {
-  /* Student information */
+  /* ----------------------------------------------------------
+     Student Information
+  ---------------------------------------------------------- */
+
   studentName: "",
   rollNumber: "",
   className: "",
   section: "",
 
-  /* Assignment information */
+  /* ----------------------------------------------------------
+     Assignment Information
+  ---------------------------------------------------------- */
+
   subject: "",
   title: "",
   teacherName: "",
   date: new Date().toISOString().split("T")[0],
 
-  /* Template */
+  /* ----------------------------------------------------------
+     Template
+  ---------------------------------------------------------- */
+
   template: "college-assignment",
 
-  /* Paper */
+  /* ----------------------------------------------------------
+     Paper Style
+  ---------------------------------------------------------- */
+
   paperStyle: "ruled",
   notebookMargin: "normal",
 
-  /* Page */
+  /* ----------------------------------------------------------
+     Page Settings
+  ---------------------------------------------------------- */
+
   paperSize: "A4",
   orientation: "portrait",
 
-  /* Page margins */
+  /* ----------------------------------------------------------
+     Page Margins
+  ---------------------------------------------------------- */
+
   marginPreset: "normal",
 
   customMargins: {
@@ -49,25 +69,43 @@ const DEFAULT_ASSIGNMENT = {
     left: 50,
   },
 
-  /* Display fields */
+  /* ----------------------------------------------------------
+     Header Display Fields
+  ---------------------------------------------------------- */
+
   showName: true,
   showRollNumber: true,
   showClass: true,
   showSection: true,
   showSubject: true,
   showDate: true,
-  showTeacher: true,
+  showTeacher: false,
 
-  /* Footer */
+  /* ----------------------------------------------------------
+     Footer
+  ---------------------------------------------------------- */
+
   showFooter: true,
   showPageNumber: true,
 
-  /* Font sizes */
+  /* ----------------------------------------------------------
+     Font Sizes
+  ---------------------------------------------------------- */
+
   headingFontSize: "large",
   titleFontSize: "medium",
   bodyFontSize: "medium",
 
-  /* Content */
+  /* ----------------------------------------------------------
+     Title Formatting
+  ---------------------------------------------------------- */
+
+  titleAlignment: "center",
+
+  /* ----------------------------------------------------------
+     Content
+  ---------------------------------------------------------- */
+
   content: "",
 };
 
@@ -131,24 +169,6 @@ const TEMPLATE_HEADINGS = {
   "project-report": "PROJECT REPORT",
   "simple-homework": "HOMEWORK",
 };
-
-/* ============================================================
-   DATE FORMATTER
-============================================================ */
-
-function formatDate(dateString) {
-  if (!dateString) {
-    return "________";
-  }
-
-  const [year, month, day] = dateString.split("-");
-
-  if (!year || !month || !day) {
-    return dateString;
-  }
-
-  return `${day}/${month}/${year}`;
-}
 
 /* ============================================================
    PAGE MARGIN HELPERS
@@ -223,6 +243,7 @@ function AssignmentPage() {
       ====================================================== */}
 
       <header className="border-b border-white/10 bg-slate-950/95">
+
         <div className="mx-auto max-w-7xl px-6 py-5">
 
           <h1 className="text-2xl font-bold tracking-tight">
@@ -235,6 +256,7 @@ function AssignmentPage() {
           </p>
 
         </div>
+
       </header>
 
       {/* =====================================================
@@ -249,9 +271,12 @@ function AssignmentPage() {
 
         <section className="rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-xl">
 
-          {/* Section title */}
+          {/* -------------------------------------------------
+              SECTION TITLE
+          -------------------------------------------------- */}
 
           <div className="mb-6">
+
             <h2 className="text-lg font-semibold">
               Assignment Setup
             </h2>
@@ -260,10 +285,11 @@ function AssignmentPage() {
               Enter your assignment details and configure the
               document.
             </p>
+
           </div>
 
           {/* =================================================
-              INFORMATION
+              STUDENT + ASSIGNMENT INFORMATION
           ================================================== */}
 
           <AssignmentForm
@@ -276,12 +302,17 @@ function AssignmentPage() {
           ================================================== */}
 
           <div className="mt-4">
+
             <AssignmentTemplates
               selectedTemplate={assignment.template}
               onTemplateChange={(template) =>
-                updateAssignment("template", template)
+                updateAssignment(
+                  "template",
+                  template
+                )
               }
             />
+
           </div>
 
           {/* =================================================
@@ -293,6 +324,7 @@ function AssignmentPage() {
             <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4">
 
               <div>
+
                 <h3 className="text-sm font-semibold text-white">
                   Paper Style
                 </h3>
@@ -300,6 +332,7 @@ function AssignmentPage() {
                 <p className="mt-1 text-xs text-slate-500">
                   Choose notebook and writing-line style.
                 </p>
+
               </div>
 
               <span className="ml-4 text-xs text-slate-400 transition-transform duration-200 group-open:rotate-180">
@@ -312,13 +345,18 @@ function AssignmentPage() {
 
               <PaperSelector
                 selectedPaper={assignment.paperStyle}
+
                 onPaperChange={(paperStyle) =>
                   updateAssignment(
                     "paperStyle",
                     paperStyle
                   )
                 }
-                selectedMargin={assignment.notebookMargin}
+
+                selectedMargin={
+                  assignment.notebookMargin
+                }
+
                 onMarginChange={(notebookMargin) =>
                   updateAssignment(
                     "notebookMargin",
@@ -372,128 +410,10 @@ function AssignmentPage() {
               }
             />
 
-            {/* =================================================
-                FONT SETTINGS
-            ================================================== */}
-
-            <details className="group mt-4 rounded-xl border border-white/10 bg-slate-800/40">
-
-              <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4">
-
-                <div>
-                  <h3 className="text-sm font-semibold text-white">
-                    Font Sizes
-                  </h3>
-
-                  <p className="mt-1 text-xs text-slate-500">
-                    Adjust heading, title and content sizes.
-                  </p>
-                </div>
-
-                <span className="ml-4 text-xs text-slate-400 transition-transform duration-200 group-open:rotate-180">
-                  ▼
-                </span>
-
-              </summary>
-
-              <div className="border-t border-white/10 px-5 py-5">
-
-                <div className="grid gap-4 sm:grid-cols-3">
-
-                  {/* Heading */}
-
-                  <div>
-                    <label className="mb-2 block text-xs text-slate-400">
-                      Heading
-                    </label>
-
-                    <select
-                      value={assignment.headingFontSize}
-                      onChange={(event) =>
-                        updateAssignment(
-                          "headingFontSize",
-                          event.target.value
-                        )
-                      }
-                      className="w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
-                    >
-                      {FONT_SIZES.map((size) => (
-                        <option
-                          key={size.id}
-                          value={size.id}
-                        >
-                          {size.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Title */}
-
-                  <div>
-                    <label className="mb-2 block text-xs text-slate-400">
-                      Title
-                    </label>
-
-                    <select
-                      value={assignment.titleFontSize}
-                      onChange={(event) =>
-                        updateAssignment(
-                          "titleFontSize",
-                          event.target.value
-                        )
-                      }
-                      className="w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
-                    >
-                      {FONT_SIZES.map((size) => (
-                        <option
-                          key={size.id}
-                          value={size.id}
-                        >
-                          {size.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Content */}
-
-                  <div>
-                    <label className="mb-2 block text-xs text-slate-400">
-                      Content
-                    </label>
-
-                    <select
-                      value={assignment.bodyFontSize}
-                      onChange={(event) =>
-                        updateAssignment(
-                          "bodyFontSize",
-                          event.target.value
-                        )
-                      }
-                      className="w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
-                    >
-                      {FONT_SIZES.map((size) => (
-                        <option
-                          key={size.id}
-                          value={size.id}
-                        >
-                          {size.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                </div>
-
-              </div>
-
-            </details>
-
           </div>
 
           {/* =================================================
-              DISPLAY FIELDS
+              FONT SETTINGS
           ================================================== */}
 
           <details className="group mt-4 rounded-xl border border-white/10 bg-slate-800/40">
@@ -501,14 +421,166 @@ function AssignmentPage() {
             <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4">
 
               <div>
+
                 <h3 className="text-sm font-semibold text-white">
-                  Display Fields
+                  Font Sizes
                 </h3>
 
                 <p className="mt-1 text-xs text-slate-500">
-                  Choose which information appears on the
-                  assignment.
+                  Adjust heading, title and content sizes.
                 </p>
+
+              </div>
+
+              <span className="ml-4 text-xs text-slate-400 transition-transform duration-200 group-open:rotate-180">
+                ▼
+              </span>
+
+            </summary>
+
+            <div className="border-t border-white/10 px-5 py-5">
+
+              <div className="grid gap-4 sm:grid-cols-3">
+
+                {/* Heading */}
+
+                <div>
+
+                  <label className="mb-2 block text-xs text-slate-400">
+                    Heading
+                  </label>
+
+                  <select
+                    value={assignment.headingFontSize}
+                    onChange={(event) =>
+                      updateAssignment(
+                        "headingFontSize",
+                        event.target.value
+                      )
+                    }
+                    className="w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
+                  >
+
+                    {FONT_SIZES.map((size) => (
+                      <option
+                        key={size.id}
+                        value={size.id}
+                      >
+                        {size.name}
+                      </option>
+                    ))}
+
+                  </select>
+
+                </div>
+
+                {/* Title */}
+
+                <div>
+
+                  <label className="mb-2 block text-xs text-slate-400">
+                    Title
+                  </label>
+
+                  <select
+                    value={assignment.titleFontSize}
+                    onChange={(event) =>
+                      updateAssignment(
+                        "titleFontSize",
+                        event.target.value
+                      )
+                    }
+                    className="w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
+                  >
+
+                    {FONT_SIZES.map((size) => (
+                      <option
+                        key={size.id}
+                        value={size.id}
+                      >
+                        {size.name}
+                      </option>
+                    ))}
+
+                  </select>
+
+                </div>
+
+                {/* Content */}
+
+                <div>
+
+                  <label className="mb-2 block text-xs text-slate-400">
+                    Content
+                  </label>
+
+                  <select
+                    value={assignment.bodyFontSize}
+                    onChange={(event) =>
+                      updateAssignment(
+                        "bodyFontSize",
+                        event.target.value
+                      )
+                    }
+                    className="w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
+                  >
+
+                    {FONT_SIZES.map((size) => (
+                      <option
+                        key={size.id}
+                        value={size.id}
+                      >
+                        {size.name}
+                      </option>
+                    ))}
+
+                  </select>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </details>
+
+          {/* =================================================
+              TITLE SETTINGS
+          ================================================== */}
+
+          <TitleSettings
+            titleAlignment={
+              assignment.titleAlignment
+            }
+
+            onTitleAlignmentChange={
+              (titleAlignment) =>
+                updateAssignment(
+                  "titleAlignment",
+                  titleAlignment
+                )
+            }
+          />
+
+          {/* =================================================
+              HEADER SETTINGS
+          ================================================== */}
+
+          <details className="group mt-4 rounded-xl border border-white/10 bg-slate-800/40">
+
+            <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4">
+
+              <div>
+
+                <h3 className="text-sm font-semibold text-white">
+                  Header
+                </h3>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Choose which information appears in the
+                  assignment header.
+                </p>
+
               </div>
 
               <span className="ml-4 text-xs text-slate-400 transition-transform duration-200 group-open:rotate-180">
@@ -522,14 +594,25 @@ function AssignmentPage() {
               <div className="grid gap-3 sm:grid-cols-2">
 
                 {[
-                  ["showName", "Student Name"],
-                  ["showRollNumber", "Roll Number"],
-                  ["showClass", "Class"],
-                  ["showSection", "Section"],
-                  ["showSubject", "Subject"],
-                  ["showDate", "Date"],
-                  ["showTeacher", "Teacher"],
-                  ["showPageNumber", "Page Number"],
+                  ["showName", "Show Name"],
+                  [
+                    "showRollNumber",
+                    "Show Roll Number",
+                  ],
+                  [
+                    "showSubject",
+                    "Show Subject",
+                  ],
+                  ["showDate", "Show Date"],
+                  [
+                    "showTeacher",
+                    "Show Teacher",
+                  ],
+                  ["showClass", "Show Class"],
+                  [
+                    "showSection",
+                    "Show Section",
+                  ],
                 ].map(([field, label]) => (
 
                   <label
@@ -557,25 +640,81 @@ function AssignmentPage() {
 
               </div>
 
-              {/* Footer */}
+            </div>
 
-              <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-slate-800 px-3 py-3 text-sm text-slate-300 transition hover:border-white/20">
+          </details>
 
-                <input
-                  type="checkbox"
-                  checked={assignment.showFooter}
-                  onChange={(event) =>
-                    updateAssignment(
-                      "showFooter",
-                      event.target.checked
-                    )
-                  }
-                  className="h-4 w-4 rounded border-slate-600 bg-slate-700 text-indigo-500 focus:ring-indigo-500"
-                />
+          {/* =================================================
+              FOOTER SETTINGS
+          ================================================== */}
 
-                Show Footer
+          <details className="group mt-4 rounded-xl border border-white/10 bg-slate-800/40">
 
-              </label>
+            <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4">
+
+              <div>
+
+                <h3 className="text-sm font-semibold text-white">
+                  Footer
+                </h3>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Configure footer and page numbering.
+                </p>
+
+              </div>
+
+              <span className="ml-4 text-xs text-slate-400 transition-transform duration-200 group-open:rotate-180">
+                ▼
+              </span>
+
+            </summary>
+
+            <div className="border-t border-white/10 px-5 py-5">
+
+              <div className="space-y-3">
+
+                {/* Show Footer */}
+
+                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-slate-800 px-3 py-3 text-sm text-slate-300 transition hover:border-white/20">
+
+                  <input
+                    type="checkbox"
+                    checked={assignment.showFooter}
+                    onChange={(event) =>
+                      updateAssignment(
+                        "showFooter",
+                        event.target.checked
+                      )
+                    }
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-700 text-indigo-500 focus:ring-indigo-500"
+                  />
+
+                  Show Footer
+
+                </label>
+
+                {/* Page Number */}
+
+                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-slate-800 px-3 py-3 text-sm text-slate-300 transition hover:border-white/20">
+
+                  <input
+                    type="checkbox"
+                    checked={assignment.showPageNumber}
+                    onChange={(event) =>
+                      updateAssignment(
+                        "showPageNumber",
+                        event.target.checked
+                      )
+                    }
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-700 text-indigo-500 focus:ring-indigo-500"
+                  />
+
+                  Show Page Number
+
+                </label>
+
+              </div>
 
             </div>
 
@@ -589,6 +728,8 @@ function AssignmentPage() {
 
         <section className="rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-xl">
 
+          {/* Preview Header */}
+
           <div className="mb-6">
 
             <div className="flex items-center justify-between">
@@ -600,8 +741,8 @@ function AssignmentPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-400">
-                  Preview updates automatically as you
-                  change settings.
+                  Preview updates automatically as you change
+                  settings.
                 </p>
 
               </div>
@@ -617,6 +758,8 @@ function AssignmentPage() {
             </div>
 
           </div>
+
+          {/* Preview Container */}
 
           <div className="flex min-h-[700px] items-start justify-center overflow-auto rounded-xl bg-slate-800/60 p-6">
 
@@ -640,29 +783,48 @@ function AssignmentPage() {
 
 function AssignmentPreview({ data }) {
 
+  /* ----------------------------------------------------------
+     Orientation
+  ---------------------------------------------------------- */
+
   const isLandscape =
     data.orientation === "landscape";
+
+  /* ----------------------------------------------------------
+     Paper Configuration
+  ---------------------------------------------------------- */
 
   const paperConfig =
     getPaperConfig(data.paperStyle);
 
+  /* ----------------------------------------------------------
+     Page Margins
+  ---------------------------------------------------------- */
+
   const pageMargins =
     getPageMargins(data);
 
-  /*
-   * Notebook margin affects where handwriting begins.
-   *
-   * Page margin affects the overall page layout.
-   */
+  /* ----------------------------------------------------------
+     Notebook Writing Margin
+  ---------------------------------------------------------- */
+
   const writingLeftMargin =
     getEffectiveLeftMargin(
       data.paperStyle,
       data.notebookMargin
     );
 
+  /* ----------------------------------------------------------
+     Preview Dimensions
+  ---------------------------------------------------------- */
+
   const paperClass = isLandscape
     ? "h-[520px] w-[735px]"
     : "min-h-[735px] w-[520px]";
+
+  /* ----------------------------------------------------------
+     Font Sizes
+  ---------------------------------------------------------- */
 
   const headingSize =
     FONT_SIZE_CLASSES.heading[
@@ -682,6 +844,10 @@ function AssignmentPreview({ data }) {
     ] ||
     FONT_SIZE_CLASSES.body.medium;
 
+  /* ----------------------------------------------------------
+     Template Heading
+  ---------------------------------------------------------- */
+
   const templateHeading =
     TEMPLATE_HEADINGS[data.template] ||
     "ASSIGNMENT";
@@ -692,15 +858,20 @@ function AssignmentPreview({ data }) {
 
   const PaperBackground = () => {
 
-    /* Plain paper */
+    /* --------------------------------------------------------
+       Plain Paper
+    -------------------------------------------------------- */
 
     if (data.paperStyle === "plain") {
       return null;
     }
 
-    /* Graph paper */
+    /* --------------------------------------------------------
+       Graph Paper
+    -------------------------------------------------------- */
 
     if (data.paperStyle === "graph") {
+
       return (
         <div
           className="pointer-events-none absolute inset-0"
@@ -716,20 +887,26 @@ function AssignmentPreview({ data }) {
                 transparent 1px
               )
             `,
+
             backgroundSize: `${
               paperConfig.gridSize
             }px ${
               paperConfig.gridSize
             }px`,
+
             opacity: 0.45,
           }}
         />
       );
     }
 
+    /* --------------------------------------------------------
+       Ruled / Notebook Paper
+    -------------------------------------------------------- */
+
     return (
       <>
-        {/* Horizontal ruled lines */}
+        {/* Horizontal writing lines */}
 
         <div
           className="pointer-events-none absolute inset-0"
@@ -757,10 +934,11 @@ function AssignmentPreview({ data }) {
           }}
         />
 
-        {/* Notebook margin */}
+        {/* Notebook Vertical Margin */}
 
         {paperConfig.showVerticalMargin &&
           data.notebookMargin !== "none" && (
+
             <div
               className="pointer-events-none absolute bottom-0 top-0 border-l border-red-300"
               style={{
@@ -772,78 +950,10 @@ function AssignmentPreview({ data }) {
                 opacity: 0.6,
               }}
             />
+
           )}
+
       </>
-    );
-  };
-
-  /* ==========================================================
-     HEADER INFORMATION
-  ========================================================== */
-
-  const HeaderInformation = ({
-    compact = false,
-  }) => {
-
-    return (
-      <div
-        className={
-          compact
-            ? "grid grid-cols-2 gap-x-8 gap-y-1.5 border-b border-slate-300 pb-4 text-xs"
-            : "grid grid-cols-2 gap-x-8 gap-y-2 border-b border-slate-300 pb-4 text-xs"
-        }
-      >
-
-        {data.showSubject && (
-          <div>
-            <strong>Subject:</strong>{" "}
-            {data.subject || "Subject"}
-          </div>
-        )}
-
-        {data.showName && (
-          <div>
-            <strong>Name:</strong>{" "}
-            {data.studentName || "Student Name"}
-          </div>
-        )}
-
-        {data.showRollNumber && (
-          <div>
-            <strong>Roll No:</strong>{" "}
-            {data.rollNumber || "________"}
-          </div>
-        )}
-
-        {data.showClass && (
-          <div>
-            <strong>Class:</strong>{" "}
-            {data.className || "________"}
-          </div>
-        )}
-
-        {data.showSection && (
-          <div>
-            <strong>Section:</strong>{" "}
-            {data.section || "________"}
-          </div>
-        )}
-
-        {data.showTeacher && (
-          <div>
-            <strong>Teacher:</strong>{" "}
-            {data.teacherName || "________"}
-          </div>
-        )}
-
-        {data.showDate && (
-          <div>
-            <strong>Date:</strong>{" "}
-            {formatDate(data.date)}
-          </div>
-        )}
-
-      </div>
     );
   };
 
@@ -858,9 +968,7 @@ function AssignmentPreview({ data }) {
     }
 
     return (
-      <div
-        className="absolute bottom-5 left-8 right-8 flex justify-between border-t border-slate-300 pt-2 text-[10px] text-slate-500"
-      >
+      <div className="absolute bottom-5 left-8 right-8 flex justify-between border-t border-slate-300 pt-2 text-[10px] text-slate-500">
 
         <span>
           InkAI
@@ -881,20 +989,30 @@ function AssignmentPreview({ data }) {
   ========================================================== */
 
   const pageStyle = {
-    paddingTop: `${pageMargins.top}px`,
-    paddingRight: `${pageMargins.right}px`,
-    paddingBottom: `${pageMargins.bottom}px`,
-    paddingLeft: `${Math.max(
-      pageMargins.left,
-      writingLeftMargin
-    )}px`,
+
+    paddingTop:
+      `${pageMargins.top}px`,
+
+    paddingRight:
+      `${pageMargins.right}px`,
+
+    paddingBottom:
+      `${pageMargins.bottom}px`,
+
+    paddingLeft:
+      `${Math.max(
+        pageMargins.left,
+        writingLeftMargin
+      )}px`,
   };
 
   /* ==========================================================
      SCHOOL NOTEBOOK
   ========================================================== */
 
-  if (data.template === "school-notebook") {
+  if (
+    data.template === "school-notebook"
+  ) {
 
     return (
       <div
@@ -906,19 +1024,35 @@ function AssignmentPreview({ data }) {
 
         <div className="relative z-10">
 
+          {/* Heading */}
+
           <h2
             className={`mb-5 text-center font-bold tracking-widest ${headingSize}`}
           >
             {templateHeading}
           </h2>
 
-          <HeaderInformation compact />
+          {/* Header */}
+
+          <AssignmentHeader
+            assignment={data}
+          />
+
+          {/* Assignment Title */}
 
           <h3
-            className={`mb-5 mt-6 text-center font-bold ${titleSize}`}
+            className={`mb-5 mt-6 font-bold ${titleSize}`}
+            style={{
+              textAlign:
+                data.titleAlignment ||
+                "center",
+            }}
           >
-            {data.title || "Assignment Title"}
+            {data.title ||
+              "Assignment Title"}
           </h3>
+
+          {/* Content */}
 
           <WritingArea
             paperStyle={data.paperStyle}
@@ -938,7 +1072,9 @@ function AssignmentPreview({ data }) {
      COLLEGE ASSIGNMENT
   ========================================================== */
 
-  if (data.template === "college-assignment") {
+  if (
+    data.template === "college-assignment"
+  ) {
 
     return (
       <div
@@ -950,7 +1086,7 @@ function AssignmentPreview({ data }) {
 
         <div className="relative z-10">
 
-          {/* Main heading */}
+          {/* Main Heading */}
 
           <h2
             className={`mb-4 text-center font-bold tracking-[0.18em] ${headingSize}`}
@@ -958,19 +1094,27 @@ function AssignmentPreview({ data }) {
             {templateHeading}
           </h2>
 
-          {/* Compact metadata */}
+          {/* Configurable Header */}
 
-          <HeaderInformation compact />
+          <AssignmentHeader
+            assignment={data}
+          />
 
-          {/* Assignment title */}
+          {/* Assignment Title */}
 
           <h3
-            className={`mb-5 mt-5 text-center font-bold ${titleSize}`}
+            className={`mb-5 mt-5 font-bold ${titleSize}`}
+            style={{
+              textAlign:
+                data.titleAlignment ||
+                "center",
+            }}
           >
-            {data.title || "Assignment Title"}
+            {data.title ||
+              "Assignment Title"}
           </h3>
 
-          {/* Content */}
+          {/* Assignment Content */}
 
           <WritingArea
             paperStyle={data.paperStyle}
@@ -993,7 +1137,9 @@ function AssignmentPreview({ data }) {
      PROJECT REPORT
   ========================================================== */
 
-  if (data.template === "project-report") {
+  if (
+    data.template === "project-report"
+  ) {
 
     return (
       <div
@@ -1002,6 +1148,8 @@ function AssignmentPreview({ data }) {
       >
 
         <div className="relative z-10 flex h-full flex-col items-center text-center">
+
+          {/* Report Heading */}
 
           <div className="mt-8">
 
@@ -1015,6 +1163,8 @@ function AssignmentPreview({ data }) {
 
           </div>
 
+          {/* Project Title */}
+
           <div className="mt-12">
 
             <p className="text-xs uppercase tracking-widest text-slate-500">
@@ -1023,11 +1173,19 @@ function AssignmentPreview({ data }) {
 
             <h3
               className={`mt-3 font-bold ${titleSize}`}
+              style={{
+                textAlign:
+                  data.titleAlignment ||
+                  "center",
+              }}
             >
-              {data.title || "Project Title"}
+              {data.title ||
+                "Project Title"}
             </h3>
 
           </div>
+
+          {/* Submitted Information */}
 
           <div
             className={`mt-12 space-y-3 ${bodySize}`}
@@ -1039,25 +1197,29 @@ function AssignmentPreview({ data }) {
 
             {data.showName && (
               <p>
-                {data.studentName || "Student Name"}
+                {data.studentName ||
+                  "Student Name"}
               </p>
             )}
 
             {data.showRollNumber && (
               <p>
-                {data.rollNumber || "Roll Number"}
+                {data.rollNumber ||
+                  "Roll Number"}
               </p>
             )}
 
             {data.showClass && (
               <p>
-                {data.className || "Class"}
+                {data.className ||
+                  "Class"}
               </p>
             )}
 
             {data.showSection && (
               <p>
-                {data.section || "Section"}
+                {data.section ||
+                  "Section"}
               </p>
             )}
 
@@ -1068,7 +1230,8 @@ function AssignmentPreview({ data }) {
                 </p>
 
                 <p>
-                  {data.teacherName || "Professor"}
+                  {data.teacherName ||
+                    "Professor"}
                 </p>
               </>
             )}
@@ -1097,19 +1260,35 @@ function AssignmentPreview({ data }) {
 
       <div className="relative z-10">
 
+        {/* Heading */}
+
         <h2
           className={`mb-5 text-center font-bold tracking-widest ${headingSize}`}
         >
           {templateHeading}
         </h2>
 
-        <HeaderInformation compact />
+        {/* Header */}
+
+        <AssignmentHeader
+          assignment={data}
+        />
+
+        {/* Homework Title */}
 
         <h3
-          className={`mb-5 mt-6 text-center font-bold ${titleSize}`}
+          className={`mb-5 mt-6 font-bold ${titleSize}`}
+          style={{
+            textAlign:
+              data.titleAlignment ||
+              "center",
+          }}
         >
-          {data.title || "Homework"}
+          {data.title ||
+            "Homework"}
         </h3>
+
+        {/* Homework Content */}
 
         <WritingArea
           paperStyle={data.paperStyle}
