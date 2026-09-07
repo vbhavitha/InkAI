@@ -14,6 +14,12 @@ import {
   convertDocumentToHandwritingDocument,
 } from "../services/handwritingDocumentService";
 
+import {
+  createHandwritingDocument,
+  getHandwritingDocument,
+  updateHandwritingDocument,
+} from "../services/handwritingDocumentService";
+
 /*
  * =========================================================
  * PHASE 7 — HANDWRITING GENERATOR
@@ -688,6 +694,60 @@ function HandwritingGeneratorPage() {
       );
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const saveHandwritingSettings = async () => {
+    if (!documentId || !userId) {
+      console.warn(
+        "Cannot save handwriting settings:",
+        "documentId or userId is missing."
+      );
+
+      return;
+    }
+
+    const payload = {
+      documentId,
+      userId,
+      style: selectedPreset,
+      font: selectedFont,
+      inkColor: selectedInk,
+      paperStyle: selectedPaper,
+      fontSize,
+      lineSpacing,
+      letterSpacing,
+      naturalness,
+      randomSeed,
+    };
+
+    try {
+      try {
+        await updateHandwritingDocument(
+          payload
+        );
+      } catch (error) {
+        if (
+          error.message
+            ?.toLowerCase()
+            .includes("not found")
+        ) {
+          await createHandwritingDocument(
+            payload
+          );
+        } else {
+          throw error;
+        }
+      }
+
+      console.log(
+        "Handwriting settings saved."
+      );
+    } catch (error) {
+      console.error(
+        "Failed to save handwriting settings:",
+        error
+      );
     }
   };
 

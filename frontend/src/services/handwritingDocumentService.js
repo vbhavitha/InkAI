@@ -1,271 +1,199 @@
-/*
- * =========================================================
- * PHASE 7 HANDWRITING DOCUMENT MODEL
- * =========================================================
- *
- * Converts the structured Phase 6 document into a
- * format that the handwriting renderer can consume.
- *
- * IMPORTANT:
- *
- * We preserve structure.
- *
- * We do NOT convert the document into plain text.
- * =========================================================
- */
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  "http://127.0.0.1:8000";
 
-function extractText(node) {
-  if (!node) {
-    return "";
-  }
-
-  if (node.type === "text") {
-    return node.text || "";
-  }
-
-  if (!node.content) {
-    return "";
-  }
-
-  return node.content
-    .map((child) => extractText(child))
-    .join("");
+function buildUrl(path) {
+  return `${API_BASE_URL.replace(/\/$/, "")}${path}`;
 }
 
 
-function extractMarks(node) {
-  if (!node?.content) {
-    return [];
+async function handleResponse(response) {
+  const contentType =
+    response.headers.get("content-type") || "";
+
+  const data = contentType.includes("application/json")
+    ? await response.json()
+    : await response.text();
+
+  if (!response.ok) {
+    const message =
+      typeof data === "object" && data?.detail
+        ? data.detail
+        : `Request failed with status ${response.status}`;
+
+    throw new Error(message);
   }
 
-  const marks = [];
+  return data;
+}
 
-  node.content.forEach((child) => {
-    if (!child.marks) {
-      return;
+
+// ============================================================
+// CREATE
+// ============================================================
+
+
+export async function createHandwritingDocument({
+  documentId,
+  userId,
+  style,
+  font,
+  inkColor,
+  paperStyle,
+  fontSize,
+  lineSpacing,
+  letterSpacing,
+  naturalness,
+  randomSeed,
+}) {
+  const response = await fetch(
+    buildUrl("/api/handwriting/documents"),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        document_id: Number(documentId),
+        user_id: Number(userId),
+        style,
+        font,
+        ink_color: inkColor,
+        paper_style: paperStyle,
+        font_size: fontSize,
+        line_spacing: lineSpacing,
+        letter_spacing: letterSpacing,
+        naturalness:
+          naturalness > 1
+            ? naturalness / 100
+            : naturalness,
+        random_seed: randomSeed,
+      }),
     }
+  );
 
-    child.marks.forEach((mark) => {
-      if (!marks.includes(mark.type)) {
-        marks.push(mark.type);
-      }
-    });
-  });
-
-  return marks;
+  return handleResponse(response);
 }
 
 
-function convertNode(node) {
-  if (!node) {
-    return null;
-  }
-
-  switch (node.type) {
-
-    /*
-     * Paragraph
-     */
-
-    case "paragraph":
-      return {
-        type: "paragraph",
-        text: extractText(node),
-        marks: extractMarks(node),
-      };
+// ============================================================
+// GET
+// ============================================================
 
 
-    /*
-     * Heading
-     */
-
-    case "heading":
-      return {
-        type: "heading",
-        level: node.attrs?.level || 1,
-        text: extractText(node),
-        marks: extractMarks(node),
-      };
-
-
-    /*
-     * Bullet list
-     */
-
-    case "bulletList":
-      return {
-        type: "bulletList",
-
-        items: (node.content || [])
-          .map(convertNode)
-          .filter(Boolean),
-      };
-
-
-    /*
-     * Ordered list
-     */
-
-    case "orderedList":
-      return {
-        type: "orderedList",
-
-        items: (node.content || [])
-          .map(convertNode)
-          .filter(Boolean),
-      };
-
-
-    /*
-     * List item
-     */
-
-    case "listItem":
-      return {
-        type: "listItem",
-
-        content: (node.content || [])
-          .map(convertNode)
-          .filter(Boolean),
-      };
-
-
-    /*
-     * Image
-     */
-
-    case "image":
-      return {
-        type: "image",
-
-        src: node.attrs?.src || "",
-
-        alt:
-          node.attrs?.alt || "",
-
-        title:
-          node.attrs?.title || "",
-
-        alignment:
-          node.attrs?.alignment || "left",
-
-        width:
-          node.attrs?.width || null,
-
-        height:
-          node.attrs?.height || null,
-      };
-
-
-    /*
-     * Table
-     */
-
-    case "table":
-      return {
-        type: "table",
-
-        rows: (node.content || [])
-          .map(convertNode)
-          .filter(Boolean),
-      };
-
-
-    /*
-     * Table row
-     */
-
-    case "tableRow":
-      return {
-        type: "tableRow",
-
-        cells: (node.content || [])
-          .map(convertNode)
-          .filter(Boolean),
-      };
-
-
-    /*
-     * Table cell
-     */
-
-    case "tableCell":
-
-    case "tableHeader":
-      return {
-        type: node.type,
-
-        text: extractText(node),
-      };
-
-
-    /*
-     * Page break
-     */
-
-    case "pageBreak":
-      return {
-        type: "pageBreak",
-      };
-
-
-    /*
-     * Unknown node
-     */
-
-    default:
-      return {
-        type: node.type,
-
-        text: extractText(node),
-      };
-  }
-}
-
-
-/*
- * =========================================================
- * MAIN CONVERTER
- * =========================================================
- */
-
-export function convertDocumentToHandwritingDocument(
-  document
+export async function getHandwritingDocument(
+  documentId,
+  userId
 ) {
-  if (!document) {
-    throw new Error(
-      "A document is required."
-    );
-  }
+  const response = await fetch(
+    buildUrl(
+      `/api/handwriting/documents/${documentId}?user_id=${userId}`
+    )
+  );
 
-  const tiptapDocument =
-    document.content?.type === "doc"
-      ? document.content
-      : document.content?.content
-        ? document.content
-        : {
-            type: "doc",
-            content: [],
-          };
-
-  const nodes =
-    tiptapDocument.content || [];
-
-  return {
-    documentId: document.id,
-
-    title:
-      document.title ||
-      "Untitled Document",
-
-    blocks: nodes
-      .map(convertNode)
-      .filter(Boolean),
-
-    wordCount:
-      document.word_count || 0,
-
-    characterCount:
-      document.character_count || 0,
-  };
+  return handleResponse(response);
 }
+
+
+// ============================================================
+// UPDATE
+// ============================================================
+
+
+export async function updateHandwritingDocument({
+  documentId,
+  userId,
+  style,
+  font,
+  inkColor,
+  paperStyle,
+  fontSize,
+  lineSpacing,
+  letterSpacing,
+  naturalness,
+  randomSeed,
+}) {
+  const response = await fetch(
+    buildUrl(
+      `/api/handwriting/documents/${documentId}?user_id=${userId}`
+    ),
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...(style !== undefined && {
+          style,
+        }),
+
+        ...(font !== undefined && {
+          font,
+        }),
+
+        ...(inkColor !== undefined && {
+          ink_color: inkColor,
+        }),
+
+        ...(paperStyle !== undefined && {
+          paper_style: paperStyle,
+        }),
+
+        ...(fontSize !== undefined && {
+          font_size: fontSize,
+        }),
+
+        ...(lineSpacing !== undefined && {
+          line_spacing: lineSpacing,
+        }),
+
+        ...(letterSpacing !== undefined && {
+          letter_spacing: letterSpacing,
+        }),
+
+        ...(naturalness !== undefined && {
+          naturalness:
+            naturalness > 1
+              ? naturalness / 100
+              : naturalness,
+        }),
+
+        ...(randomSeed !== undefined && {
+          random_seed: randomSeed,
+        }),
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
+
+// ============================================================
+// DELETE
+// ============================================================
+
+
+export async function deleteHandwritingDocument(
+  documentId,
+  userId
+) {
+  const response = await fetch(
+    buildUrl(
+      `/api/handwriting/documents/${documentId}?user_id=${userId}`
+    ),
+    {
+      method: "DELETE",
+    }
+  );
+
+  return handleResponse(response);
+}
+
+
+export default {
+  createHandwritingDocument,
+  getHandwritingDocument,
+  updateHandwritingDocument,
+  deleteHandwritingDocument,
+};

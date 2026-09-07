@@ -1,26 +1,55 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
 from dotenv import load_dotenv
 import os
 
-# Load .env file
+
+# =========================================================
+# ENVIRONMENT
+# =========================================================
+
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL"
+)
 
-# Create SQLAlchemy Engine
-engine = create_engine(DATABASE_URL)
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not configured."
+    )
 
-# Create Session Factory
+
+# =========================================================
+# DATABASE ENGINE
+# =========================================================
+
+engine = create_engine(
+    DATABASE_URL
+)
+
+
+# =========================================================
+# SESSION FACTORY
+# =========================================================
+
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
-    bind=engine
+    bind=engine,
 )
 
-# Base class for all models
+
+# =========================================================
+# BASE MODEL
+# =========================================================
+
 Base = declarative_base()
+
+
+# =========================================================
+# DATABASE DEPENDENCY
+# =========================================================
 
 def get_db():
     db = SessionLocal()
