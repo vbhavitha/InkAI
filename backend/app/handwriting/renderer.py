@@ -33,6 +33,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, List
 
+from app.handwriting.paper_styles import (
+    get_paper_style,
+)
+
 from app.handwriting.page_renderer import (
     LayoutPage,
     LayoutParagraph,
@@ -72,6 +76,9 @@ class HandwritingRenderSettings:
     letter_spacing: float = 0.0
 
     word_spacing: float = 0.0
+
+    paper_line_height: float | None = None
+    paper_baseline_offset: float | None = None
 
 
 # ============================================================
@@ -241,4 +248,41 @@ def prepare_handwriting_render(
     return renderer.prepare(
         paragraphs=paragraphs,
         settings=render_settings,
+    )
+
+def create_layout(
+    self,
+    paragraphs: List[LayoutParagraph],
+    settings: HandwritingRenderSettings,
+) -> List[LayoutPage]:
+
+    paper = get_paper_style(
+        settings.paper
+    )
+
+    line_spacing = (
+        paper.line_height
+        / settings.font_size
+        if settings.paper_line_height is None
+        else (
+            settings.paper_line_height
+            / settings.font_size
+        )
+    )
+
+    engine = PageLayoutEngine(
+        page_size=self.page_size,
+
+        margins=PageMargins(
+            top=paper.top_margin,
+            right=paper.right_margin,
+            bottom=paper.bottom_margin,
+            left=paper.left_margin,
+        ),
+
+        line_spacing=line_spacing,
+    )
+
+    return engine.layout_document(
+        paragraphs
     )
