@@ -1,9 +1,7 @@
-import React, {
-  useEffect,
-  useState,
-} from "react";
-
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ChevronLeft,
+  ChevronRight,
   ZoomIn,
   ZoomOut,
   RotateCcw,
@@ -13,7 +11,6 @@ import {
   getFontUrl,
   getStyleFontFamily,
 } from "../../utils/handwritingUtils";
-
 
 /*
  * =========================================================
@@ -30,7 +27,6 @@ const DEFAULT_MARGIN = {
   bottom: 70,
   left: 70,
 };
-
 
 /*
  * =========================================================
@@ -79,61 +75,116 @@ const INK_STYLES = {
       "#666666",
     ],
   },
+
+  gray: {
+    base: "#5A5A5A",
+    variations: [
+      "#515151",
+      "#5A5A5A",
+      "#636363",
+      "#6B6B6B",
+    ],
+  },
 };
 
-
 function getInkConfiguration(inkStyle) {
-  return (
-    INK_STYLES[inkStyle] ||
-    INK_STYLES.blue
-  );
+  return INK_STYLES[inkStyle] || INK_STYLES.blue;
 }
-
 
 /*
  * =========================================================
- * DETERMINISTIC INK VALUE
+ * DETERMINISTIC RANDOMNESS
+ *
+ * Same:
+ * documentId + style + seed + page + character
+ *
+ * => same handwriting.
  * =========================================================
  */
 
-function deterministicInkValue(
-  documentId,
-  pageNumber,
-  characterIndex,
-  channel
-) {
-  const input =
-    `${documentId}:${pageNumber}:${characterIndex}:${channel}`;
+function hashString(value) {
+  const input = String(value ?? "");
 
   let hash = 2166136261;
 
-  for (
-    let index = 0;
-    index < input.length;
-    index++
-  ) {
+  for (let index = 0; index < input.length; index += 1) {
     hash ^= input.charCodeAt(index);
-
-    hash = Math.imul(
-      hash,
-      16777619
-    );
+    hash = Math.imul(hash, 16777619);
   }
 
-  hash >>>= 0;
-
-  return hash / 0xffffffff;
+  return hash >>> 0;
 }
 
+function deterministicRandom(...values) {
+  const hash = hashString(values.join(":"));
+
+  return hash / 4294967295;
+}
+
+function deterministicVariation(
+  documentId,
+  styleId,
+  seed,
+  pageNumber,
+  characterIndex,
+  channel,
+  amount = 1
+) {
+  const random = deterministicRandom(
+    documentId,
+    styleId,
+    seed,
+    pageNumber,
+    characterIndex,
+    channel
+  );
+
+  return (random - 0.5) * amount;
+}
+
+/*
+ * =========================================================
+ * NATURALNESS
+ *
+ * 0   = perfectly uniform
+ * 25  = subtle
+ * 50  = natural
+ * 75  = strong
+ * 100 = maximum controlled variation
+ * =========================================================
+ */
+
+function clampNaturalness(value) {
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric)) {
+    return 0.5;
+  }
+
+  if (numeric > 1) {
+    return Math.max(0, Math.min(100, numeric)) / 100;
+  }
+
+  return Math.max(0, Math.min(1, numeric));
+}
+
+/*
+ * =========================================================
+ * INK VARIATION
+ * =========================================================
+ */
 
 function getInkVariation(
   documentId,
+  styleId,
+  seed,
   pageNumber,
   characterIndex,
   inkStyle,
-  naturalVariation
+  naturalVariation,
+  naturalness
 ) {
-  if (!naturalVariation) {
+  if (!naturalVariation || naturalness <= 0) {
     return {
       opacityMultiplier: 1,
       darknessMultiplier: 1,
@@ -141,186 +192,123 @@ function getInkVariation(
     };
   }
 
+  const opacityRandom = deterministicRandom(
+    documentId,
+    styleId,
+    seed,
+    pageNumber,
+    characterIndex,
+    "opacity"
+  );
+
+  const darknessRandom = deterministicRandom(
+    documentId,
+    styleId,
+    seed,
+    pageNumber,
+    characterIndex,
+    "darkness"
+  );
+
+  const textureRandom = deterministicRandom(
+    documentId,
+    styleId,
+    seed,
+    pageNumber,
+    characterIndex,
+    "texture"
+  );
+
   if (inkStyle === "pencil") {
-    const opacityRandom =
-      deterministicInkValue(
-        documentId,
-        pageNumber,
-        characterIndex,
-        "pencil-opacity"
-      );
-
-    const darknessRandom =
-      deterministicInkValue(
-        documentId,
-        pageNumber,
-        characterIndex,
-        "pencil-darkness"
-      );
-
-    const textureRandom =
-      deterministicInkValue(
-        documentId,
-        pageNumber,
-        characterIndex,
-        "pencil-texture"
-      );
-
     return {
       opacityMultiplier:
-        0.88 +
-        opacityRandom * 0.10,
+        1 -
+        naturalness * 0.12 +
+        opacityRandom * naturalness * 0.08,
 
       darknessMultiplier:
-        0.82 +
-        darknessRandom * 0.12,
+        1 -
+        naturalness * 0.15 +
+        darknessRandom * naturalness * 0.10,
 
       textureStrength:
-        0.02 +
-        textureRandom * 0.08,
+        naturalness * (0.02 + textureRandom * 0.08),
     };
   }
 
-  const opacityRandom =
-    deterministicInkValue(
-      documentId,
-      pageNumber,
-      characterIndex,
-      "opacity"
-    );
-
-  const darknessRandom =
-    deterministicInkValue(
-      documentId,
-      pageNumber,
-      characterIndex,
-      "darkness"
-    );
-
-  const textureRandom =
-    deterministicInkValue(
-      documentId,
-      pageNumber,
-      characterIndex,
-      "texture"
-    );
-
   return {
     opacityMultiplier:
-      0.94 +
-      opacityRandom * 0.10,
+      1 -
+      naturalness * 0.06 +
+      opacityRandom * naturalness * 0.08,
 
     darknessMultiplier:
-      0.94 +
-      darknessRandom * 0.10,
+      1 -
+      naturalness * 0.04 +
+      darknessRandom * naturalness * 0.08,
 
     textureStrength:
-      textureRandom * 0.08,
+      naturalness * textureRandom * 0.08,
   };
 }
 
+/*
+ * =========================================================
+ * COLOR HELPERS
+ * =========================================================
+ */
 
-function adjustInkColor(
-  color,
-  darknessMultiplier
-) {
-  if (!color) {
+function adjustInkColor(color, darknessMultiplier) {
+  if (!color || typeof color !== "string") {
     return color;
   }
 
-  const normalized =
-    color.replace("#", "");
+  const normalized = color.replace("#", "");
 
   if (normalized.length !== 6) {
     return color;
   }
 
-  const red =
-    parseInt(
-      normalized.slice(0, 2),
-      16
-    );
+  const red = parseInt(normalized.slice(0, 2), 16);
+  const green = parseInt(normalized.slice(2, 4), 16);
+  const blue = parseInt(normalized.slice(4, 6), 16);
 
-  const green =
-    parseInt(
-      normalized.slice(2, 4),
-      16
-    );
+  const adjustedRed = Math.max(
+    0,
+    Math.min(255, Math.round(red * darknessMultiplier))
+  );
 
-  const blue =
-    parseInt(
-      normalized.slice(4, 6),
-      16
-    );
+  const adjustedGreen = Math.max(
+    0,
+    Math.min(255, Math.round(green * darknessMultiplier))
+  );
 
-  const adjustedRed =
-    Math.max(
-      0,
-      Math.min(
-        255,
-        Math.round(
-          red *
-          darknessMultiplier
-        )
-      )
-    );
-
-  const adjustedGreen =
-    Math.max(
-      0,
-      Math.min(
-        255,
-        Math.round(
-          green *
-          darknessMultiplier
-        )
-      )
-    );
-
-  const adjustedBlue =
-    Math.max(
-      0,
-      Math.min(
-        255,
-        Math.round(
-          blue *
-          darknessMultiplier
-        )
-      )
-    );
+  const adjustedBlue = Math.max(
+    0,
+    Math.min(255, Math.round(blue * darknessMultiplier))
+  );
 
   return (
     "#" +
-    adjustedRed
-      .toString(16)
-      .padStart(2, "0") +
-    adjustedGreen
-      .toString(16)
-      .padStart(2, "0") +
-    adjustedBlue
-      .toString(16)
-      .padStart(2, "0")
+    adjustedRed.toString(16).padStart(2, "0") +
+    adjustedGreen.toString(16).padStart(2, "0") +
+    adjustedBlue.toString(16).padStart(2, "0")
   );
 }
 
-
 /*
  * =========================================================
- * PAPER BACKGROUND
+ * PAPER
  * =========================================================
  */
 
-function drawPaperBackground(
-  context,
-  paperStyle
-) {
+function drawPaperBackground(context, paperStyle) {
   context.save();
 
-  if (paperStyle === "notebook") {
-    context.fillStyle = "#fdfcf8";
-  } else {
-    context.fillStyle = "#ffffff";
-  }
+  context.fillStyle =
+    paperStyle === "notebook"
+      ? "#fdfcf8"
+      : "#fffef9";
 
   context.fillRect(
     0,
@@ -333,37 +321,25 @@ function drawPaperBackground(
     paperStyle === "ruled" ||
     paperStyle === "notebook"
   ) {
-    drawRuledPaper(
-      context,
-      paperStyle
-    );
+    drawRuledPaper(context, paperStyle);
   }
 
   if (paperStyle === "graph") {
     drawGraphPaper(context);
   }
 
+  drawPaperTexture(context, paperStyle);
+
   context.restore();
 }
 
-
-/*
- * =========================================================
- * RULED / NOTEBOOK PAPER
- * =========================================================
- */
-
-function drawRuledPaper(
-  context,
-  paperStyle
-) {
+function drawRuledPaper(context, paperStyle) {
   const lineSpacing = 36;
   const startY = 105;
 
   context.save();
 
   context.lineWidth = 1;
-
   context.strokeStyle =
     "rgba(100, 130, 170, 0.28)";
 
@@ -373,14 +349,8 @@ function drawRuledPaper(
     y += lineSpacing
   ) {
     context.beginPath();
-
     context.moveTo(45, y);
-
-    context.lineTo(
-      A4_WIDTH - 45,
-      y
-    );
-
+    context.lineTo(A4_WIDTH - 45, y);
     context.stroke();
   }
 
@@ -391,31 +361,13 @@ function drawRuledPaper(
     context.lineWidth = 1.2;
 
     context.beginPath();
-
-    context.moveTo(
-      105,
-      45
-    );
-
-    context.lineTo(
-      105,
-      A4_HEIGHT - 45
-    );
-
+    context.moveTo(105, 45);
+    context.lineTo(105, A4_HEIGHT - 45);
     context.stroke();
-
-    drawPaperTexture(context);
   }
 
   context.restore();
 }
-
-
-/*
- * =========================================================
- * GRAPH PAPER
- * =========================================================
- */
 
 function drawGraphPaper(context) {
   const gridSize = 25;
@@ -423,7 +375,6 @@ function drawGraphPaper(context) {
   context.save();
 
   context.lineWidth = 0.7;
-
   context.strokeStyle =
     "rgba(100, 130, 170, 0.22)";
 
@@ -433,14 +384,8 @@ function drawGraphPaper(context) {
     x += gridSize
   ) {
     context.beginPath();
-
     context.moveTo(x, 0);
-
-    context.lineTo(
-      x,
-      A4_HEIGHT
-    );
-
+    context.lineTo(x, A4_HEIGHT);
     context.stroke();
   }
 
@@ -450,57 +395,42 @@ function drawGraphPaper(context) {
     y += gridSize
   ) {
     context.beginPath();
-
     context.moveTo(0, y);
-
-    context.lineTo(
-      A4_WIDTH,
-      y
-    );
-
+    context.lineTo(A4_WIDTH, y);
     context.stroke();
   }
 
   context.restore();
 }
 
+function drawPaperTexture(context, paperStyle) {
+  if (
+    paperStyle !== "notebook" &&
+    paperStyle !== "plain"
+  ) {
+    return;
+  }
 
-/*
- * =========================================================
- * PAPER TEXTURE
- * =========================================================
- */
-
-function drawPaperTexture(context) {
   context.save();
 
   /*
    * Micro grain
    */
 
-  for (
-    let y = 0;
-    y < A4_HEIGHT;
-    y += 6
-  ) {
-    for (
-      let x = 0;
-      x < A4_WIDTH;
-      x += 6
-    ) {
+  for (let y = 0; y < A4_HEIGHT; y += 6) {
+    for (let x = 0; x < A4_WIDTH; x += 6) {
       const value =
         Math.sin(
           x * 12.9898 +
-          y * 78.233
+            y * 78.233
         ) * 43758.5453;
 
       const normalized =
-        value -
-        Math.floor(value);
+        value - Math.floor(value);
 
       if (normalized > 0.68) {
         context.fillStyle =
-          `rgba(70, 65, 55, ${
+          `rgba(70,65,55,${
             0.008 +
             normalized * 0.010
           })`;
@@ -515,89 +445,61 @@ function drawPaperTexture(context) {
     }
   }
 
-
   /*
    * Paper fibers
    */
 
-  for (
-    let index = 0;
-    index < 180;
-    index++
-  ) {
+  for (let index = 0; index < 180; index += 1) {
     const seed =
-      Math.sin(
-        index * 91.731
-      ) * 43758.5453;
+      Math.sin(index * 91.731) *
+      43758.5453;
 
     const normalized =
-      seed -
-      Math.floor(seed);
+      seed - Math.floor(seed);
 
     const x =
-      normalized *
-      A4_WIDTH;
+      normalized * A4_WIDTH;
 
     const secondSeed =
-      Math.sin(
-        index * 47.173
-      ) * 43758.5453;
+      Math.sin(index * 47.173) *
+      43758.5453;
 
     const secondNormalized =
       secondSeed -
       Math.floor(secondSeed);
 
     const y =
-      secondNormalized *
-      A4_HEIGHT;
+      secondNormalized * A4_HEIGHT;
 
     const length =
-      8 +
-      normalized * 20;
+      8 + normalized * 20;
 
     const angle =
-      (
-        secondNormalized -
-        0.5
-      ) * 0.35;
+      (secondNormalized - 0.5) * 0.35;
 
     context.save();
 
-    context.translate(
-      x,
-      y
-    );
-
+    context.translate(x, y);
     context.rotate(angle);
 
     context.strokeStyle =
-      "rgba(120, 110, 95, 0.018)";
+      "rgba(120,110,95,0.018)";
 
     context.lineWidth = 0.45;
 
     context.beginPath();
-
-    context.moveTo(
-      0,
-      0
-    );
-
-    context.lineTo(
-      length,
-      0
-    );
-
+    context.moveTo(0, 0);
+    context.lineTo(length, 0);
     context.stroke();
 
     context.restore();
   }
 
-
   /*
    * Paper tonality
    */
 
-  const paperGradient =
+  const gradient =
     context.createLinearGradient(
       0,
       0,
@@ -605,23 +507,22 @@ function drawPaperTexture(context) {
       A4_HEIGHT
     );
 
-  paperGradient.addColorStop(
+  gradient.addColorStop(
     0,
-    "rgba(255, 252, 244, 0.018)"
+    "rgba(255,252,244,0.018)"
   );
 
-  paperGradient.addColorStop(
+  gradient.addColorStop(
     0.5,
-    "rgba(255, 255, 255, 0)"
+    "rgba(255,255,255,0)"
   );
 
-  paperGradient.addColorStop(
+  gradient.addColorStop(
     1,
-    "rgba(245, 240, 228, 0.018)"
+    "rgba(245,240,228,0.018)"
   );
 
-  context.fillStyle =
-    paperGradient;
+  context.fillStyle = gradient;
 
   context.fillRect(
     0,
@@ -633,41 +534,9 @@ function drawPaperTexture(context) {
   context.restore();
 }
 
-
 /*
  * =========================================================
- * CHARACTER VARIATION
- * =========================================================
- */
-
-function deterministicVariation(
-  index,
-  amount = 1
-) {
-  const value =
-    Math.sin(
-      index * 12.9898
-    ) * 43758.5453;
-
-  const normalized =
-    value -
-    Math.floor(value);
-
-  return (
-    normalized - 0.5
-  ) * amount;
-}
-
-
-/*
- * =========================================================
- * ACTUAL GLYPH WIDTH
- * =========================================================
- *
- * STEP 22
- *
- * Width is measured using Canvas measureText()
- * with the actual loaded handwriting font.
+ * TEXT MEASUREMENT
  * =========================================================
  */
 
@@ -679,17 +548,10 @@ function measureTextWithSpacing(
 ) {
   let width = 0;
 
-  for (
-    const character of text
-  ) {
-    width +=
-      context.measureText(
-        character
-      ).width;
+  for (const character of String(text ?? "")) {
+    width += context.measureText(character).width;
 
-    if (
-      character === " "
-    ) {
+    if (character === " ") {
       width += wordSpacing;
     } else {
       width += letterSpacing;
@@ -698,7 +560,6 @@ function measureTextWithSpacing(
 
   return width;
 }
-
 
 function wrapTextByRenderedWidth(
   context,
@@ -711,7 +572,9 @@ function wrapTextByRenderedWidth(
     fontFamily,
   } = {}
 ) {
-  if (!text) {
+  const value = String(text ?? "");
+
+  if (!value) {
     return [""];
   }
 
@@ -719,61 +582,45 @@ function wrapTextByRenderedWidth(
     `${fontSize}px "${fontFamily}"`;
 
   const getWidth = (
-    value,
-    spacingForWords = wordSpacing
+    line,
+    currentWordSpacing = wordSpacing
   ) =>
     measureTextWithSpacing(
       context,
-      value,
+      line,
       letterSpacing,
-      spacingForWords
+      currentWordSpacing
     );
 
   const lines = [];
+  const words = value.split(/\s+/);
 
   let currentLine = "";
 
-  /*
-   * Preserve normal word boundaries.
-   */
-
-  const words =
-    text.split(/\s+/);
-
-  for (
-    const word of words
-  ) {
+  for (const word of words) {
     if (!word) {
       continue;
     }
 
-    const candidate =
-      currentLine
-        ? `${currentLine} ${word}`
-        : word;
+    const candidate = currentLine
+      ? `${currentLine} ${word}`
+      : word;
 
     if (
       getWidth(candidate) <=
       maxWidth
     ) {
-      currentLine =
-        candidate;
-
+      currentLine = candidate;
       continue;
     }
 
     if (currentLine) {
-      lines.push(
-        currentLine
-      );
-
+      lines.push(currentLine);
       currentLine = "";
     }
 
     /*
      * Long word.
-     *
-     * Break using actual glyph widths.
      */
 
     if (
@@ -781,18 +628,14 @@ function wrapTextByRenderedWidth(
       maxWidth
     ) {
       currentLine = word;
-
       continue;
     }
 
     let partialWord = "";
 
-    for (
-      const character of word
-    ) {
+    for (const character of word) {
       const candidateCharacter =
-        partialWord +
-        character;
+        partialWord + character;
 
       const characterWidth =
         measureTextWithSpacing(
@@ -810,24 +653,18 @@ function wrapTextByRenderedWidth(
           candidateCharacter;
       } else {
         if (partialWord) {
-          lines.push(
-            partialWord
-          );
+          lines.push(partialWord);
         }
 
-        partialWord =
-          character;
+        partialWord = character;
       }
     }
 
-    currentLine =
-      partialWord;
+    currentLine = partialWord;
   }
 
   if (currentLine) {
-    lines.push(
-      currentLine
-    );
+    lines.push(currentLine);
   }
 
   return lines.length
@@ -835,10 +672,121 @@ function wrapTextByRenderedWidth(
     : [""];
 }
 
+/*
+ * =========================================================
+ * TEXT EXTRACTION
+ *
+ * Supports the normalized document produced by
+ * handwritingDocumentService.js as well as TipTap-like
+ * content structures.
+ * =========================================================
+ */
+
+function extractInlineText(content) {
+  if (!Array.isArray(content)) {
+    return "";
+  }
+
+  return content
+    .map((node) => {
+      if (!node) {
+        return "";
+      }
+
+      if (
+        typeof node.text === "string"
+      ) {
+        return node.text;
+      }
+
+      if (
+        Array.isArray(node.content)
+      ) {
+        return extractInlineText(
+          node.content
+        );
+      }
+
+      return "";
+    })
+    .join("");
+}
+
+function getBlockText(block) {
+  if (!block) {
+    return "";
+  }
+
+  if (
+    typeof block.text === "string"
+  ) {
+    return block.text;
+  }
+
+  if (
+    typeof block.content === "string"
+  ) {
+    return block.content;
+  }
+
+  if (
+    Array.isArray(block.content)
+  ) {
+    return extractInlineText(
+      block.content
+    );
+  }
+
+  return "";
+}
+
+function getListItemText(item) {
+  if (!item) {
+    return "";
+  }
+
+  if (
+    typeof item.text === "string"
+  ) {
+    return item.text;
+  }
+
+  if (
+    Array.isArray(item.content)
+  ) {
+    return extractInlineText(
+      item.content
+    );
+  }
+
+  return "";
+}
+
+function getCellText(cell) {
+  if (!cell) {
+    return "";
+  }
+
+  if (
+    typeof cell.text === "string"
+  ) {
+    return cell.text;
+  }
+
+  if (
+    Array.isArray(cell.content)
+  ) {
+    return extractInlineText(
+      cell.content
+    );
+  }
+
+  return "";
+}
 
 /*
  * =========================================================
- * DRAW TEXT WITH NATURAL VARIATION
+ * DRAW TEXT
  * =========================================================
  */
 
@@ -851,48 +799,47 @@ function drawTextWithVariation(
     letterSpacing = 0,
     wordSpacing = 4,
     naturalVariation = true,
+    naturalness = 0.5,
     startIndex = 0,
     baseFontSize = 22,
     fontFamily,
     inkVariations = [],
-    documentId =
-      "inkai-preview-document",
+    documentId = "inkai-preview-document",
+    styleId = "default",
+    seed = 12345,
     pageNumber = 1,
     inkStyle = "blue",
   } = {}
 ) {
   let currentX = x;
 
+  const effectiveNaturalness =
+    clampNaturalness(naturalness);
+
   for (
     let index = 0;
     index < text.length;
-    index++
+    index += 1
   ) {
-    const character =
-      text[index];
+    const character = text[index];
 
     const characterIndex =
       startIndex + index;
 
     /*
-     * Space
+     * Spaces.
      */
 
-    if (
-      character === " "
-    ) {
+    if (character === " ") {
       context.font =
         `${baseFontSize}px "${fontFamily}"`;
 
       currentX +=
-        context.measureText(
-          " "
-        ).width +
+        context.measureText(" ").width +
         wordSpacing;
 
       continue;
     }
-
 
     let rotation = 0;
     let sizeMultiplier = 1;
@@ -900,62 +847,91 @@ function drawTextWithVariation(
     let horizontalOffset = 0;
     let spacingVariation = 0;
 
-
-    if (naturalVariation) {
+    if (
+      naturalVariation &&
+      effectiveNaturalness > 0
+    ) {
       rotation =
         deterministicVariation(
-          characterIndex * 3 + 1,
-          4
+          documentId,
+          styleId,
+          seed,
+          pageNumber,
+          characterIndex,
+          "rotation",
+          0.5 +
+            effectiveNaturalness * 2.5
         );
 
       sizeMultiplier =
         1 +
         deterministicVariation(
-          characterIndex * 5 + 7,
-          0.06
+          documentId,
+          styleId,
+          seed,
+          pageNumber,
+          characterIndex,
+          "scale",
+          0.008 +
+            effectiveNaturalness * 0.045
         );
 
       verticalOffset =
         deterministicVariation(
-          characterIndex * 7 + 11,
-          2
+          documentId,
+          styleId,
+          seed,
+          pageNumber,
+          characterIndex,
+          "baseline",
+          0.5 +
+            effectiveNaturalness * 4
         );
 
       horizontalOffset =
         deterministicVariation(
-          characterIndex * 11 + 17,
-          0.6
+          documentId,
+          styleId,
+          seed,
+          pageNumber,
+          characterIndex,
+          "offset",
+          0.15 +
+            effectiveNaturalness * 1.2
         );
 
       spacingVariation =
         deterministicVariation(
-          characterIndex * 13 + 29,
-          0.4
+          documentId,
+          styleId,
+          seed,
+          pageNumber,
+          characterIndex,
+          "spacing",
+          0.15 +
+            effectiveNaturalness * 1.2
         );
     }
-
 
     const characterSize =
       baseFontSize *
       sizeMultiplier;
 
-
-    /*
-     * Ink variation
-     */
-
     const baseInkColor =
-      context.__inkaiBaseInkColor;
+      context.__inkaiBaseInkColor ||
+      "#19426F";
 
     const inkVariation =
       getInkVariation(
         documentId,
+        styleId,
+        seed,
         pageNumber,
         characterIndex,
         inkStyle,
-        naturalVariation
+        naturalVariation,
+        effectiveNaturalness
       );
-
 
     let characterInk =
       baseInkColor;
@@ -964,26 +940,30 @@ function drawTextWithVariation(
       naturalVariation &&
       inkVariations.length > 0
     ) {
-      const variationValue =
-        Math.abs(
-          deterministicVariation(
-            characterIndex * 17 + 23,
-            100
-          )
+      const variationRandom =
+        deterministicRandom(
+          documentId,
+          styleId,
+          seed,
+          pageNumber,
+          characterIndex,
+          "ink-color"
         );
 
       const variationIndex =
         Math.floor(
-          variationValue %
-          inkVariations.length
+          variationRandom *
+            inkVariations.length
         );
 
       characterInk =
         inkVariations[
-          variationIndex
+          Math.min(
+            variationIndex,
+            inkVariations.length - 1
+          )
         ];
     }
-
 
     characterInk =
       adjustInkColor(
@@ -991,24 +971,18 @@ function drawTextWithVariation(
         inkVariation.darknessMultiplier
       );
 
+    const baseOpacity =
+      context.__inkaiBaseOpacity ?? 1;
 
     const characterOpacity =
       Math.max(
         0,
         Math.min(
           1,
-          (
-            context.__inkaiBaseOpacity ||
-            1
-          ) *
-          inkVariation.opacityMultiplier
+          baseOpacity *
+            inkVariation.opacityMultiplier
         )
       );
-
-
-    /*
-     * Draw character
-     */
 
     context.save();
 
@@ -1021,17 +995,15 @@ function drawTextWithVariation(
     context.fillStyle =
       characterInk;
 
+    context.textBaseline = "top";
+
     context.translate(
-      currentX +
-        horizontalOffset,
-      y +
-        verticalOffset
+      currentX + horizontalOffset,
+      y + verticalOffset
     );
 
     context.rotate(
-      rotation *
-      Math.PI /
-      180
+      rotation * Math.PI / 180
     );
 
     context.fillText(
@@ -1040,23 +1012,17 @@ function drawTextWithVariation(
       0
     );
 
-
     /*
-     * Subtle texture
+     * Pencil / ink texture.
      */
 
     if (
-      naturalVariation &&
-      inkVariation.textureStrength >
-        0
+      inkVariation.textureStrength > 0
     ) {
-      const textureAlpha =
+      context.globalAlpha =
         characterOpacity *
         inkVariation.textureStrength *
         0.12;
-
-      context.globalAlpha =
-        textureAlpha;
 
       context.translate(
         0.25,
@@ -1072,9 +1038,8 @@ function drawTextWithVariation(
 
     context.restore();
 
-
     /*
-     * Advance actual glyph width.
+     * Advance using actual glyph width.
      */
 
     context.font =
@@ -1094,58 +1059,6 @@ function drawTextWithVariation(
   return currentX;
 }
 
-
-/*
- * =========================================================
- * INLINE / BLOCK HELPERS
- * =========================================================
- */
-
-function getBlockText(block) {
-  if (!block) {
-    return "";
-  }
-
-  if (
-    typeof block.text ===
-    "string"
-  ) {
-    return block.text;
-  }
-
-  return "";
-}
-
-
-function getListItemText(item) {
-  if (!item) {
-    return "";
-  }
-
-  if (
-    typeof item.text ===
-    "string"
-  ) {
-    return item.text;
-  }
-
-  for (
-    const child of item.content ||
-    []
-  ) {
-    if (
-      child &&
-      typeof child.text ===
-      "string"
-    ) {
-      return child.text;
-    }
-  }
-
-  return "";
-}
-
-
 /*
  * =========================================================
  * COMPONENT
@@ -1153,21 +1066,26 @@ function getListItemText(item) {
  */
 
 function HandwritingCanvas({
+  /*
+   * Structured TipTap document.
+   */
   document:
     handwritingDocument = null,
 
   /*
-   * Backwards compatibility.
-   *
-   * Older callers may still provide text.
+   * Backwards-compatible plain text.
    */
-
   text = "",
 
   documentId =
     "inkai-preview-document",
 
   style,
+
+  /*
+   * Style ID is separate from the font object.
+   */
+  handwritingStyle = "school_notebook",
 
   fontSize = 22,
 
@@ -1186,6 +1104,32 @@ function HandwritingCanvas({
   inkOpacity = 0.9,
 
   naturalVariation = true,
+
+  /*
+   * 0–1 or 0–100 are both accepted.
+   */
+  naturalness = 0.5,
+
+  /*
+   * Deterministic random seed.
+   */
+  seed = 12345,
+
+  /*
+   * Assignment mode.
+   */
+  assignmentMode = false,
+
+  assignmentDetails = {},
+
+  /*
+   * Multi-page selection.
+   */
+  selectedPage = 0,
+
+  onPagesChange,
+
+  onPageSelect,
 }) {
   const [zoom, setZoom] =
     useState(0.8);
@@ -1196,60 +1140,68 @@ function HandwritingCanvas({
   const margins =
     DEFAULT_MARGIN;
 
+  const normalizedNaturalness =
+    clampNaturalness(naturalness);
+
+  const normalizedSeed =
+    Number.isFinite(Number(seed))
+      ? Number(seed)
+      : 12345;
 
   /*
-   * =========================================================
-   * NORMALIZE DOCUMENT
-   * =========================================================
+   * Keep normalized document stable.
    *
-   * Step 24:
-   *
-   * Prefer the structured document.
-   *
-   * Only use plain text as a compatibility fallback.
+   * This prevents an object created by the parent
+   * from continuously retriggering the renderer.
    */
 
   const normalizedDocument =
-    handwritingDocument &&
-    Array.isArray(
-      handwritingDocument.blocks
-    )
-      ? handwritingDocument
-      : {
-          documentId,
-          title:
-            "Untitled Document",
+    useMemo(() => {
+      if (
+        handwritingDocument &&
+        Array.isArray(
+          handwritingDocument.blocks
+        )
+      ) {
+        return handwritingDocument;
+      }
 
-          blocks: [
-            {
-              type:
-                "paragraph",
-
-              text:
-                text || "",
-            },
-          ],
-        };
-
+      return {
+        documentId,
+        title: "Untitled Document",
+        blocks: [
+          {
+            type: "paragraph",
+            text: text || "",
+          },
+        ],
+      };
+    }, [
+      handwritingDocument,
+      documentId,
+      text,
+    ]);
 
   /*
    * =========================================================
-   * GENERATE PAGES
+   * PAGE GENERATION
    * =========================================================
    */
 
   useEffect(() => {
     if (!style) {
       setPages([]);
-      return;
+      return undefined;
     }
 
     const fonts =
-      style.fonts || [];
+      Array.isArray(style.fonts)
+        ? style.fonts
+        : [];
 
     if (!fonts.length) {
       setPages([]);
-      return;
+      return undefined;
     }
 
     const selectedFontPath =
@@ -1273,7 +1225,6 @@ function HandwritingCanvas({
 
     let cancelled = false;
 
-
     async function prepareFont() {
       try {
         await fontFace.load();
@@ -1291,16 +1242,22 @@ function HandwritingCanvas({
         );
       } catch (error) {
         console.error(
-          "Failed to load handwriting font:",
+          "InkAI: failed to load handwriting font",
           error
         );
 
+        /*
+         * We still attempt to render using the
+         * browser's fallback font.
+         */
+
         if (!cancelled) {
-          setPages([]);
+          createPages(
+            fontFamily
+          );
         }
       }
     }
-
 
     /*
      * =======================================================
@@ -1314,17 +1271,9 @@ function HandwritingCanvas({
       const pageCanvases = [];
 
       const size =
-        fontSize ||
-        style.default_size ||
+        Number(fontSize) ||
+        Number(style.default_size) ||
         22;
-
-
-      /*
-       * Measurement canvas
-       *
-       * The actual selected handwriting font is
-       * already loaded at this point.
-       */
 
       const measurementCanvas =
         document.createElement(
@@ -1346,13 +1295,11 @@ function HandwritingCanvas({
         return;
       }
 
-
       const availableWidth =
         A4_WIDTH -
         margins.left -
         margins.right -
         6;
-
 
       /*
        * =====================================================
@@ -1380,7 +1327,6 @@ function HandwritingCanvas({
         return;
       }
 
-
       let pageNumber = 1;
 
       let characterIndex = 0;
@@ -1388,6 +1334,7 @@ function HandwritingCanvas({
       let y =
         margins.top;
 
+      let pageHasContent = false;
 
       setupPage(
         pageContext,
@@ -1395,647 +1342,592 @@ function HandwritingCanvas({
         size
       );
 
-
       /*
        * =====================================================
        * PAGE HELPERS
        * =====================================================
        */
 
-      const finishCurrentPage =
-        () => {
+      function finishCurrentPage() {
+        if (
+          pageHasContent ||
+          pageCanvases.length === 0
+        ) {
           pageCanvases.push(
             currentPage
           );
-        };
+        }
+      }
 
-
-      const startNewPage =
-        () => {
-          currentPage =
-            document.createElement(
-              "canvas"
-            );
-
-          currentPage.width =
-            A4_WIDTH;
-
-          currentPage.height =
-            A4_HEIGHT;
-
-          pageContext =
-            currentPage.getContext(
-              "2d"
-            );
-
-          if (!pageContext) {
-            return false;
-          }
-
-          pageNumber += 1;
-
-          y =
-            margins.top;
-
-          setupPage(
-            pageContext,
-            loadedFontFamily,
-            size
+      function startNewPage() {
+        currentPage =
+          document.createElement(
+            "canvas"
           );
 
-          return true;
-        };
+        currentPage.width =
+          A4_WIDTH;
 
+        currentPage.height =
+          A4_HEIGHT;
 
-      const ensureSpace =
-        (requiredHeight) => {
-          if (
-            y +
-              requiredHeight >
-            A4_HEIGHT -
-              margins.bottom
-          ) {
-            finishCurrentPage();
+        pageContext =
+          currentPage.getContext(
+            "2d"
+          );
 
-            return startNewPage();
-          }
+        if (!pageContext) {
+          return false;
+        }
 
-          return true;
-        };
+        pageNumber += 1;
 
+        y =
+          margins.top;
+
+        pageHasContent = false;
+
+        setupPage(
+          pageContext,
+          loadedFontFamily,
+          size
+        );
+
+        return true;
+      }
+
+      function ensureSpace(
+        requiredHeight
+      ) {
+        if (
+          y + requiredHeight >
+          A4_HEIGHT -
+            margins.bottom
+        ) {
+          finishCurrentPage();
+
+          return startNewPage();
+        }
+
+        return true;
+      }
 
       /*
        * =====================================================
-       * RENDER PARAGRAPH / HEADING
+       * TEXT BLOCK
        * =====================================================
        */
 
-      const renderTextBlock =
-        (block) => {
-          const isHeading =
-            block.type ===
-            "heading";
+      function renderTextBlock(
+        block
+      ) {
+        const isHeading =
+          block.type === "heading";
 
-          const level =
-            Number(
-              block.level
-            ) || 1;
+        const level =
+          Number(
+            block.level ||
+              block.attrs?.level
+          ) || 1;
 
+        const headingScale = {
+          1: 1.55,
+          2: 1.35,
+          3: 1.2,
+          4: 1.1,
+          5: 1.05,
+          6: 1,
+        };
 
-          /*
-           * Heading sizes
-           */
-
-          const headingScale = {
-            1: 1.55,
-            2: 1.35,
-            3: 1.20,
-          };
-
-          const blockFontSize =
-            isHeading
-              ? size *
-                (
-                  headingScale[
-                    level
-                  ] || 1.2
-                )
-              : (
-                  block.fontSize ||
-                  size
-                );
-
-
-          const blockLineSpacing =
-            isHeading
-              ? (
-                  block.lineSpacing ||
-                  1.25
-                )
-              : (
-                  block.lineSpacing ||
-                  lineSpacing
-                );
-
-
-          const blockLineHeight =
-            blockFontSize *
-            blockLineSpacing;
-
-
-          const blockText =
-            getBlockText(
-              block
-            );
-
-
-          /*
-           * Empty paragraph.
-           */
-
-          if (
-            !blockText
-          ) {
-            if (
-              !ensureSpace(
-                blockLineHeight
-              )
-            ) {
-              return;
-            }
-
-            y +=
-              blockLineHeight +
+        const blockFontSize =
+          isHeading
+            ? size *
               (
-                block.paragraphSpacing ||
-                0
+                headingScale[level] ||
+                1.2
+              )
+            : Number(
+                block.fontSize ||
+                  block.attrs?.fontSize ||
+                  size
               );
 
+        const blockLineSpacing =
+          isHeading
+            ? Number(
+                block.lineSpacing ||
+                  block.attrs?.lineSpacing ||
+                  1.25
+              )
+            : Number(
+                block.lineSpacing ||
+                  block.attrs?.lineSpacing ||
+                  lineSpacing
+              );
+
+        const blockLineHeight =
+          blockFontSize *
+          blockLineSpacing;
+
+        const blockText =
+          getBlockText(block);
+
+        /*
+         * Empty paragraph.
+         */
+
+        if (!blockText) {
+          if (
+            !ensureSpace(
+              blockLineHeight
+            )
+          ) {
             return;
           }
 
+          y +=
+            blockLineHeight +
+            Number(
+              block.paragraphSpacing ||
+                0
+            );
 
-          measurementContext.font =
-            `${blockFontSize}px "${loadedFontFamily}"`;
+          pageHasContent = true;
 
+          return;
+        }
 
-          const blockIndent =
+        measurementContext.font =
+          `${blockFontSize}px "${loadedFontFamily}"`;
+
+        const blockIndent =
+          Number(
             block.leftIndent ||
-            0;
+              block.attrs?.leftIndent ||
+              0
+          );
 
-
-          const wrappedLines =
-            wrapTextByRenderedWidth(
-              measurementContext,
-              blockText,
-              Math.max(
-                50,
-                availableWidth -
-                  blockIndent
-              ),
-              {
-                letterSpacing,
-                wordSpacing,
-                fontSize:
-                  blockFontSize,
-                fontFamily:
-                  loadedFontFamily,
-              }
-            );
-
-
-          for (
-            const line of wrappedLines
-          ) {
-            if (
-              !ensureSpace(
-                blockLineHeight
-              )
-            ) {
-              return;
+        const wrappedLines =
+          wrapTextByRenderedWidth(
+            measurementContext,
+            blockText,
+            Math.max(
+              50,
+              availableWidth -
+                blockIndent
+            ),
+            {
+              letterSpacing,
+              wordSpacing,
+              fontSize:
+                blockFontSize,
+              fontFamily:
+                loadedFontFamily,
             }
+          );
 
-
-            const ink =
-              getInkConfiguration(
-                inkStyle
-              );
-
-
-            /*
-             * Heading and paragraph both use
-             * the handwriting font.
-             *
-             * The size difference preserves
-             * the semantic hierarchy.
-             */
-
-            drawTextWithVariation(
-              pageContext,
-              line,
-              margins.left +
-                blockIndent,
-              y,
-              {
-                letterSpacing,
-                wordSpacing,
-                naturalVariation,
-
-                startIndex:
-                  characterIndex,
-
-                baseFontSize:
-                  blockFontSize,
-
-                fontFamily:
-                  loadedFontFamily,
-
-                inkVariations:
-                  ink.variations,
-
-                documentId,
-
-                pageNumber,
-
-                inkStyle,
-              }
-            );
-
-
-            characterIndex +=
-              line.length + 1;
-
-            y +=
-              blockLineHeight;
+        for (
+          const line of wrappedLines
+        ) {
+          if (
+            !ensureSpace(
+              blockLineHeight
+            )
+          ) {
+            return;
           }
 
+          const ink =
+            getInkConfiguration(
+              inkStyle
+            );
 
-          /*
-           * Paragraph / heading spacing.
-           */
+          drawTextWithVariation(
+            pageContext,
+            line,
+            margins.left +
+              blockIndent,
+            y,
+            {
+              letterSpacing,
+              wordSpacing,
+              naturalVariation,
+              naturalness:
+                normalizedNaturalness,
+
+              startIndex:
+                characterIndex,
+
+              baseFontSize:
+                blockFontSize,
+
+              fontFamily:
+                loadedFontFamily,
+
+              inkVariations:
+                ink.variations,
+
+              documentId,
+
+              styleId:
+                handwritingStyle,
+
+              seed:
+                normalizedSeed,
+
+              pageNumber,
+
+              inkStyle,
+            }
+          );
+
+          characterIndex +=
+            line.length + 1;
 
           y +=
-            block.paragraphSpacing ||
-            (isHeading ? 12 : 6);
-        };
+            blockLineHeight;
 
+          pageHasContent = true;
+        }
+
+        y +=
+          Number(
+            block.paragraphSpacing ||
+              block.attrs?.paragraphSpacing ||
+              (isHeading ? 12 : 6)
+          );
+      }
 
       /*
        * =====================================================
-       * RENDER LIST
+       * LIST
        * =====================================================
        */
 
-      const renderListBlock =
-        (block) => {
-          const isOrdered =
-            block.type ===
-            "orderedList";
+      function renderListBlock(
+        block
+      ) {
+        const isOrdered =
+          block.type ===
+          "orderedList";
 
-          const items =
-            block.items || [];
+        const items =
+          Array.isArray(block.items)
+            ? block.items
+            : Array.isArray(block.content)
+              ? block.content
+              : [];
 
-          const listIndent =
+        const listIndent =
+          Number(
             block.indent ||
-            28;
+              block.attrs?.indent ||
+              28
+          );
 
-          const listFontSize =
+        const listFontSize =
+          Number(
             block.fontSize ||
-            size;
+              block.attrs?.fontSize ||
+              size
+          );
 
-          const listLineHeight =
-            listFontSize *
-            (
-              block.lineSpacing ||
+        const listLineHeight =
+          listFontSize *
+          Number(
+            block.lineSpacing ||
+              block.attrs?.lineSpacing ||
               lineSpacing
-            );
+          );
 
+        const startNumber =
+          Number(
+            block.start ||
+              block.attrs?.start ||
+              1
+          );
 
-          items.forEach(
-            (item, index) => {
-              const itemText =
-                getListItemText(
-                  item
-                );
+        items.forEach(
+          (item, index) => {
+            const itemText =
+              getListItemText(item);
 
-              const marker =
-                isOrdered
-                  ? `${index + 1}.`
-                  : "•";
+            const marker =
+              isOrdered
+                ? `${startNumber + index}.`
+                : "•";
 
+            const combinedText =
+              `${marker} ${itemText}`;
 
-              const combinedText =
-                `${marker} ${itemText}`;
+            measurementContext.font =
+              `${listFontSize}px "${loadedFontFamily}"`;
 
-
-              measurementContext.font =
-                `${listFontSize}px "${loadedFontFamily}"`;
-
-
-              const wrappedLines =
-                wrapTextByRenderedWidth(
-                  measurementContext,
-                  combinedText,
-                  Math.max(
-                    50,
-                    availableWidth -
-                      listIndent
-                  ),
-                  {
-                    letterSpacing,
-                    wordSpacing,
-                    fontSize:
-                      listFontSize,
-                    fontFamily:
-                      loadedFontFamily,
-                  }
-                );
-
-
-              wrappedLines.forEach(
-                (line) => {
-                  if (
-                    !ensureSpace(
-                      listLineHeight
-                    )
-                  ) {
-                    return;
-                  }
-
-
-                  const ink =
-                    getInkConfiguration(
-                      inkStyle
-                    );
-
-
-                  drawTextWithVariation(
-                    pageContext,
-                    line,
-                    margins.left +
-                      listIndent,
-                    y,
-                    {
-                      letterSpacing,
-                      wordSpacing,
-                      naturalVariation,
-
-                      startIndex:
-                        characterIndex,
-
-                      baseFontSize:
-                        listFontSize,
-
-                      fontFamily:
-                        loadedFontFamily,
-
-                      inkVariations:
-                        ink.variations,
-
-                      documentId,
-
-                      pageNumber,
-
-                      inkStyle,
-                    }
-                  );
-
-
-                  characterIndex +=
-                    line.length + 1;
-
-                  y +=
-                    listLineHeight;
+            const wrappedLines =
+              wrapTextByRenderedWidth(
+                measurementContext,
+                combinedText,
+                Math.max(
+                  50,
+                  availableWidth -
+                    listIndent
+                ),
+                {
+                  letterSpacing,
+                  wordSpacing,
+                  fontSize:
+                    listFontSize,
+                  fontFamily:
+                    loadedFontFamily,
                 }
               );
 
+            wrappedLines.forEach(
+              (line) => {
+                if (
+                  !ensureSpace(
+                    listLineHeight
+                  )
+                ) {
+                  return;
+                }
 
-              y +=
+                const ink =
+                  getInkConfiguration(
+                    inkStyle
+                  );
+
+                drawTextWithVariation(
+                  pageContext,
+                  line,
+                  margins.left +
+                    listIndent,
+                  y,
+                  {
+                    letterSpacing,
+                    wordSpacing,
+                    naturalVariation,
+                    naturalness:
+                      normalizedNaturalness,
+
+                    startIndex:
+                      characterIndex,
+
+                    baseFontSize:
+                      listFontSize,
+
+                    fontFamily:
+                      loadedFontFamily,
+
+                    inkVariations:
+                      ink.variations,
+
+                    documentId,
+
+                    styleId:
+                      handwritingStyle,
+
+                    seed:
+                      normalizedSeed,
+
+                    pageNumber,
+
+                    inkStyle,
+                  }
+                );
+
+                characterIndex +=
+                  line.length + 1;
+
+                y +=
+                  listLineHeight;
+
+                pageHasContent = true;
+              }
+            );
+
+            y +=
+              Number(
                 block.paragraphSpacing ||
-                4;
-            }
-          );
+                  4
+              );
+          }
+        );
 
-          y += 4;
-        };
-
+        y += 4;
+      }
 
       /*
        * =====================================================
-       * TABLE HELPERS
+       * TABLE
        * =====================================================
        */
 
-      const getCellText =
-        (cell) => {
-          if (!cell) {
-            return "";
-          }
+      function renderTableBlock(
+        block
+      ) {
+        const rows =
+          Array.isArray(block.rows)
+            ? block.rows
+            : Array.isArray(block.content)
+              ? block.content
+              : [];
 
-          if (
-            typeof cell.text ===
-            "string"
-          ) {
-            return cell.text;
-          }
+        if (!rows.length) {
+          return;
+        }
 
-          return "";
-        };
+        const cellPadding =
+          Number(
+            block.cellPadding || 8
+          );
 
-
-      const renderTableBlock =
-        (block) => {
-          const rows =
-            block.rows || [];
-
-          if (!rows.length) {
-            return;
-          }
-
-
-          const cellPadding =
-            block.cellPadding ||
-            8;
-
-          const tableFontSize =
+        const tableFontSize =
+          Number(
             block.fontSize ||
-            size;
+              block.attrs?.fontSize ||
+              size
+          );
 
-          const tableLineHeight =
-            tableFontSize *
-            1.35;
+        const tableLineHeight =
+          tableFontSize * 1.35;
 
-
-          /*
-           * Determine column count.
-           */
-
-          const columnCount =
-            rows.reduce(
-              (
+        const columnCount =
+          rows.reduce(
+            (maximum, row) =>
+              Math.max(
                 maximum,
-                row
-              ) =>
-                Math.max(
-                  maximum,
-                  (
-                    row.cells ||
-                    []
-                  ).length
-                ),
-              0
-            );
+                (
+                  row?.cells ||
+                  row?.content ||
+                  []
+                ).length
+              ),
+            0
+          );
 
+        if (!columnCount) {
+          return;
+        }
 
-          if (
-            columnCount === 0
-          ) {
-            return;
-          }
+        /*
+         * Calculate column widths.
+         */
 
+        const columnWidths =
+          new Array(
+            columnCount
+          ).fill(0);
 
-          /*
-           * Measure the widest content
-           * in each column.
-           */
+        rows.forEach(
+          (row) => {
+            const cells =
+              row?.cells ||
+              row?.content ||
+              [];
 
-          const columnWidths =
-            new Array(
-              columnCount
-            ).fill(0);
-
-
-          rows.forEach(
-            (row) => {
+            cells.forEach(
               (
-                row.cells ||
-                []
-              ).forEach(
+                cell,
+                columnIndex
+              ) => {
+                const cellText =
+                  getCellText(cell);
+
+                measurementContext.font =
+                  `${tableFontSize}px "${loadedFontFamily}"`;
+
+                const measuredWidth =
+                  measureTextWithSpacing(
+                    measurementContext,
+                    cellText,
+                    letterSpacing,
+                    wordSpacing
+                  );
+
+                columnWidths[
+                  columnIndex
+                ] =
+                  Math.max(
+                    columnWidths[
+                      columnIndex
+                    ],
+                    measuredWidth +
+                      cellPadding * 2,
+                    70
+                  );
+              }
+            );
+          }
+        );
+
+        /*
+         * Fit table into page.
+         */
+
+        const totalWidth =
+          columnWidths.reduce(
+            (total, width) =>
+              total + width,
+            0
+          );
+
+        if (
+          totalWidth >
+          availableWidth
+        ) {
+          const scale =
+            availableWidth /
+            totalWidth;
+
+          for (
+            let index = 0;
+            index <
+            columnWidths.length;
+            index += 1
+          ) {
+            columnWidths[index] *=
+              scale;
+          }
+        }
+
+        /*
+         * Render rows.
+         */
+
+        rows.forEach(
+          (row) => {
+            const cells =
+              row?.cells ||
+              row?.content ||
+              [];
+
+            measurementContext.font =
+              `${tableFontSize}px "${loadedFontFamily}"`;
+
+            const wrappedCells =
+              cells.map(
                 (
                   cell,
                   columnIndex
                 ) => {
                   const cellText =
-                    getCellText(
-                      cell
-                    );
+                    getCellText(cell);
 
-                  measurementContext.font =
-                    `${tableFontSize}px "${loadedFontFamily}"`;
-
-                  const measuredWidth =
-                    measureTextWithSpacing(
-                      measurementContext,
-                      cellText,
-                      letterSpacing,
-                      wordSpacing
-                    );
-
-                  columnWidths[
-                    columnIndex
-                  ] =
+                  const cellWidth =
                     Math.max(
-                      columnWidths[
-                        columnIndex
-                      ],
-                      measuredWidth +
+                      30,
+                      (
+                        columnWidths[
+                          columnIndex
+                        ] || 80
+                      ) -
                         cellPadding * 2
                     );
-                }
-              );
-            }
-          );
 
-
-          /*
-           * Fit table into available width.
-           */
-
-          const totalWidth =
-            columnWidths.reduce(
-              (
-                total,
-                width
-              ) =>
-                total + width,
-              0
-            );
-
-
-          const tableMaxWidth =
-            availableWidth;
-
-
-          if (
-            totalWidth >
-            tableMaxWidth
-          ) {
-            const scale =
-              tableMaxWidth /
-              totalWidth;
-
-            for (
-              let index = 0;
-              index <
-              columnWidths.length;
-              index++
-            ) {
-              columnWidths[
-                index
-              ] *= scale;
-            }
-          }
-
-
-          const tableWidth =
-            columnWidths.reduce(
-              (
-                total,
-                width
-              ) =>
-                total + width,
-              0
-            );
-
-
-          /*
-           * Render each row.
-           */
-
-          rows.forEach(
-            (row) => {
-              const cells =
-                row.cells || [];
-
-
-              let rowHeight =
-                tableLineHeight +
-                cellPadding * 2;
-
-
-              if (
-                !ensureSpace(
-                  rowHeight
-                )
-              ) {
-                return;
-              }
-
-
-              /*
-               * Calculate row height from
-               * wrapped cell content.
-               */
-
-              const wrappedCells =
-                cells.map(
-                  (
+                  return {
                     cell,
-                    columnIndex
-                  ) => {
-                    const cellText =
-                      getCellText(
-                        cell
-                      );
-
-                    const cellWidth =
-                      Math.max(
-                        30,
-                        (
-                          columnWidths[
-                            columnIndex
-                          ] ||
-                          80
-                        ) -
-                        cellPadding * 2
-                      );
-
-
-                    measurementContext.font =
-                      `${tableFontSize}px "${loadedFontFamily}"`;
-
-
-                    const wrapped =
+                    lines:
                       wrapTextByRenderedWidth(
                         measurementContext,
                         cellText,
@@ -2048,105 +1940,66 @@ function HandwritingCanvas({
                           fontFamily:
                             loadedFontFamily,
                         }
-                      );
+                      ),
+                  };
+                }
+              );
 
-
-                    return {
-                      cell,
-                      lines:
-                        wrapped,
-                    };
-                  }
-                );
-
-
-              const maximumLines =
-                wrappedCells.reduce(
-                  (
+            const maximumLines =
+              wrappedCells.reduce(
+                (maximum, item) =>
+                  Math.max(
                     maximum,
-                    item
-                  ) =>
-                    Math.max(
-                      maximum,
-                      item.lines.length
-                    ),
-                  1
-                );
+                    item.lines.length
+                  ),
+                1
+              );
 
-
-              rowHeight =
-                maximumLines *
+            const rowHeight =
+              maximumLines *
                 tableLineHeight +
-                cellPadding * 2;
+              cellPadding * 2;
 
+            if (
+              !ensureSpace(
+                rowHeight
+              )
+            ) {
+              return;
+            }
 
-              if (
-                !ensureSpace(
-                  rowHeight
-                )
-              ) {
-                return;
-              }
+            let currentX =
+              margins.left;
 
+            wrappedCells.forEach(
+              (
+                item,
+                columnIndex
+              ) => {
+                const cellWidth =
+                  columnWidths[
+                    columnIndex
+                  ] || 80;
 
-              /*
-               * Draw cells.
-               */
+                const cellType =
+                  item.cell?.type;
 
-              let currentX =
-                margins.left;
+                const isHeader =
+                  cellType ===
+                  "tableHeader" ||
+                  item.cell?.header === true;
 
+                /*
+                 * Header background.
+                 */
 
-              wrappedCells.forEach(
-                (
-                  item,
-                  columnIndex
-                ) => {
-                  const cellWidth =
-                    columnWidths[
-                      columnIndex
-                    ] || 80;
-
-
-                  const isHeader =
-                    item.cell?.type ===
-                    "tableHeader";
-
-
-                  /*
-                   * Cell background.
-                   */
-
-                  if (isHeader) {
-                    pageContext.save();
-
-                    pageContext.fillStyle =
-                      "rgba(235, 235, 235, 0.35)";
-
-                    pageContext.fillRect(
-                      currentX,
-                      y,
-                      cellWidth,
-                      rowHeight
-                    );
-
-                    pageContext.restore();
-                  }
-
-
-                  /*
-                   * Cell border.
-                   */
-
+                if (isHeader) {
                   pageContext.save();
 
-                  pageContext.strokeStyle =
-                    "rgba(80, 80, 80, 0.45)";
+                  pageContext.fillStyle =
+                    "rgba(235,235,235,0.35)";
 
-                  pageContext.lineWidth =
-                    0.8;
-
-                  pageContext.strokeRect(
+                  pageContext.fillRect(
                     currentX,
                     y,
                     cellWidth,
@@ -2154,178 +2007,344 @@ function HandwritingCanvas({
                   );
 
                   pageContext.restore();
+                }
 
+                /*
+                 * Border.
+                 */
 
-                  /*
-                   * Handwritten cell content.
-                   */
+                pageContext.save();
 
-                  item.lines.forEach(
-                    (
-                      cellLine,
-                      lineIndex
-                    ) => {
-                      const ink =
-                        getInkConfiguration(
-                          inkStyle
-                        );
+                pageContext.strokeStyle =
+                  "rgba(80,80,80,0.45)";
 
+                pageContext.lineWidth =
+                  0.8;
 
-                      drawTextWithVariation(
-                        pageContext,
-                        cellLine,
-                        currentX +
-                          cellPadding,
-                        y +
-                          cellPadding +
-                          lineIndex *
-                            tableLineHeight,
-                        {
-                          letterSpacing,
-                          wordSpacing,
-                          naturalVariation,
+                pageContext.strokeRect(
+                  currentX,
+                  y,
+                  cellWidth,
+                  rowHeight
+                );
 
-                          startIndex:
-                            characterIndex,
+                pageContext.restore();
 
-                          baseFontSize:
-                            tableFontSize,
+                /*
+                 * Cell text.
+                 */
 
-                          fontFamily:
-                            loadedFontFamily,
-
-                          inkVariations:
-                            ink.variations,
-
-                          documentId,
-
-                          pageNumber,
-
-                          inkStyle,
-                        }
+                item.lines.forEach(
+                  (
+                    cellLine,
+                    lineIndex
+                  ) => {
+                    const ink =
+                      getInkConfiguration(
+                        inkStyle
                       );
 
+                    drawTextWithVariation(
+                      pageContext,
+                      cellLine,
+                      currentX +
+                        cellPadding,
+                      y +
+                        cellPadding +
+                        lineIndex *
+                          tableLineHeight,
+                      {
+                        letterSpacing,
+                        wordSpacing,
+                        naturalVariation,
+                        naturalness:
+                          normalizedNaturalness,
 
-                      characterIndex +=
-                        cellLine.length +
-                        1;
-                    }
-                  );
+                        startIndex:
+                          characterIndex,
 
+                        baseFontSize:
+                          tableFontSize,
 
-                  currentX +=
-                    cellWidth;
-                }
-              );
+                        fontFamily:
+                          loadedFontFamily,
 
+                        inkVariations:
+                          ink.variations,
 
-              /*
-               * Advance to next row.
-               */
+                        documentId,
 
-              y +=
-                rowHeight;
-            }
-          );
+                        styleId:
+                          handwritingStyle,
 
+                        seed:
+                          normalizedSeed,
 
-          /*
-           * Table bottom spacing.
-           */
+                        pageNumber,
 
-          y += 12;
-        };
+                        inkStyle,
+                      }
+                    );
 
+                    characterIndex +=
+                      cellLine.length + 1;
 
-      /*
-       * =====================================================
-       * RENDER IMAGE
-       * =====================================================
-       *
-       * Images remain structural.
-       *
-       * Actual image loading is intentionally asynchronous,
-       * so we reserve a safe visual placeholder for preview.
-       * PDF image embedding can be handled in Phase 9.
-       */
+                    pageHasContent = true;
+                  }
+                );
 
-      const renderImageBlock =
-        (block) => {
-          const imageHeight =
-            Math.min(
-              240,
-              block.height ||
-                180
+                currentX +=
+                  cellWidth;
+              }
             );
 
-          if (
-            !ensureSpace(
-              imageHeight
-            )
-          ) {
-            return;
+            y += rowHeight;
           }
+        );
 
-
-          pageContext.save();
-
-          pageContext.strokeStyle =
-            "rgba(120, 120, 120, 0.35)";
-
-          pageContext.setLineDash([
-            5,
-            4,
-          ]);
-
-          pageContext.strokeRect(
-            margins.left,
-            y,
-            Math.min(
-              availableWidth,
-              block.width ||
-                availableWidth
-            ),
-            imageHeight
-          );
-
-          pageContext.setLineDash([]);
-
-          pageContext.font =
-            `14px "${loadedFontFamily}"`;
-
-          pageContext.fillStyle =
-            "rgba(90, 90, 90, 0.7)";
-
-          pageContext.fillText(
-            block.alt ||
-              "Image",
-            margins.left + 12,
-            y + 12
-          );
-
-          pageContext.restore();
-
-          y +=
-            imageHeight + 12;
-        };
-
+        y += 12;
+      }
 
       /*
        * =====================================================
-       * STRUCTURED DOCUMENT RENDERING
+       * IMAGE
        * =====================================================
        *
-       * STEP 24
-       *
-       * We deliberately switch on block.type.
-       *
-       * No flattening.
+       * The preview reserves space and shows a clean
+       * placeholder. Actual PDF image embedding belongs
+       * to the PDF renderer.
+       */
+
+      function renderImageBlock(
+        block
+      ) {
+        const imageHeight =
+          Math.min(
+            240,
+            Number(
+              block.height ||
+                block.attrs?.height ||
+                180
+            )
+          );
+
+        if (
+          !ensureSpace(
+            imageHeight
+          )
+        ) {
+          return;
+        }
+
+        const imageWidth =
+          Math.min(
+            availableWidth,
+            Number(
+              block.width ||
+                block.attrs?.width ||
+                availableWidth
+            )
+          );
+
+        pageContext.save();
+
+        pageContext.strokeStyle =
+          "rgba(120,120,120,0.35)";
+
+        pageContext.setLineDash([
+          5,
+          4,
+        ]);
+
+        pageContext.strokeRect(
+          margins.left,
+          y,
+          imageWidth,
+          imageHeight
+        );
+
+        pageContext.setLineDash([]);
+
+        pageContext.font =
+          `14px "${loadedFontFamily}"`;
+
+        pageContext.fillStyle =
+          "rgba(90,90,90,0.7)";
+
+        pageContext.textBaseline =
+          "top";
+
+        pageContext.fillText(
+          block.alt ||
+            block.attrs?.alt ||
+            "Image",
+          margins.left + 12,
+          y + 12
+        );
+
+        pageContext.restore();
+
+        y +=
+          imageHeight + 12;
+
+        pageHasContent = true;
+      }
+
+      /*
+       * =====================================================
+       * ASSIGNMENT HEADER
+       * =====================================================
+       */
+
+      function renderAssignmentHeader() {
+        if (!assignmentMode) {
+          return;
+        }
+
+        const details =
+          assignmentDetails || {};
+
+        const title =
+          details.assignmentTitle ||
+          details.title ||
+          "Assignment";
+
+        const headerHeight = 145;
+
+        if (
+          !ensureSpace(
+            headerHeight
+          )
+        ) {
+          return;
+        }
+
+        /*
+         * Assignment title.
+         */
+
+        pageContext.save();
+
+        pageContext.textAlign =
+          "center";
+
+        pageContext.textBaseline =
+          "top";
+
+        pageContext.font =
+          `bold ${Math.round(
+            size * 1.35
+          )}px "${loadedFontFamily}"`;
+
+        pageContext.fillStyle =
+          inkColor ||
+          getInkConfiguration(
+            inkStyle
+          ).base;
+
+        pageContext.fillText(
+          title,
+          A4_WIDTH / 2,
+          y
+        );
+
+        pageContext.restore();
+
+        y += size * 1.8;
+
+        /*
+         * Details.
+         */
+
+        const detailRows = [
+          [
+            "Student Name",
+            details.studentName,
+          ],
+          [
+            "Roll Number",
+            details.rollNumber,
+          ],
+          [
+            "Subject",
+            details.subject,
+          ],
+          [
+            "Class",
+            details.className ||
+              details.class,
+          ],
+          [
+            "Teacher",
+            details.teacher,
+          ],
+        ];
+
+        const visibleRows =
+          detailRows.filter(
+            ([, value]) =>
+              value !== undefined &&
+              value !== null &&
+              String(value).trim()
+          );
+
+        pageContext.save();
+
+        pageContext.textAlign =
+          "left";
+
+        pageContext.textBaseline =
+          "top";
+
+        visibleRows.forEach(
+          ([label, value]) => {
+            pageContext.font =
+              `${Math.round(
+                size * 0.72
+              )}px "${loadedFontFamily}"`;
+
+            pageContext.fillStyle =
+              inkColor ||
+              getInkConfiguration(
+                inkStyle
+              ).base;
+
+            pageContext.fillText(
+              `${label}: ${value}`,
+              margins.left,
+              y
+            );
+
+            y +=
+              size * 0.95;
+          }
+        );
+
+        pageContext.restore();
+
+        y += 15;
+
+        pageHasContent = true;
+      }
+
+      /*
+       * =====================================================
+       * STRUCTURED DOCUMENT
+       * =====================================================
        */
 
       const blocks =
-        normalizedDocument.blocks ||
-        [];
+        Array.isArray(
+          normalizedDocument.blocks
+        )
+          ? normalizedDocument.blocks
+          : [];
 
+      /*
+       * Assignment header goes before content.
+       */
+
+      renderAssignmentHeader();
 
       for (
         const block of blocks
@@ -2333,7 +2352,6 @@ function HandwritingCanvas({
         if (!block) {
           continue;
         }
-
 
         /*
          * ---------------------------------------------------
@@ -2345,17 +2363,23 @@ function HandwritingCanvas({
           block.type ===
           "pageBreak"
         ) {
-          finishCurrentPage();
+          /*
+           * Don't create a blank page when a page break
+           * appears before any content.
+           */
 
-          if (
-            !startNewPage()
-          ) {
-            break;
+          if (pageHasContent) {
+            finishCurrentPage();
+
+            if (
+              !startNewPage()
+            ) {
+              break;
+            }
           }
 
           continue;
         }
-
 
         /*
          * ---------------------------------------------------
@@ -2374,7 +2398,6 @@ function HandwritingCanvas({
           continue;
         }
 
-
         /*
          * ---------------------------------------------------
          * HEADING
@@ -2391,7 +2414,6 @@ function HandwritingCanvas({
 
           continue;
         }
-
 
         /*
          * ---------------------------------------------------
@@ -2410,7 +2432,6 @@ function HandwritingCanvas({
           continue;
         }
 
-
         /*
          * ---------------------------------------------------
          * ORDERED LIST
@@ -2427,7 +2448,6 @@ function HandwritingCanvas({
 
           continue;
         }
-
 
         /*
          * ---------------------------------------------------
@@ -2446,7 +2466,6 @@ function HandwritingCanvas({
           continue;
         }
 
-
         /*
          * ---------------------------------------------------
          * IMAGE
@@ -2464,12 +2483,11 @@ function HandwritingCanvas({
           continue;
         }
 
-
         /*
          * ---------------------------------------------------
          * LIST ITEM
          *
-         * Normally handled by its parent list.
+         * Normally handled by the parent list.
          * ---------------------------------------------------
          */
 
@@ -2478,9 +2496,7 @@ function HandwritingCanvas({
           "listItem"
         ) {
           renderTextBlock({
-            type:
-              "paragraph",
-
+            type: "paragraph",
             text:
               getListItemText(
                 block
@@ -2490,15 +2506,33 @@ function HandwritingCanvas({
           continue;
         }
 
+        /*
+         * ---------------------------------------------------
+         * HARD BREAK
+         * ---------------------------------------------------
+         */
+
+        if (
+          block.type ===
+          "hardBreak"
+        ) {
+          if (
+            ensureSpace(
+              size * lineSpacing
+            )
+          ) {
+            y +=
+              size * lineSpacing;
+
+            pageHasContent = true;
+          }
+
+          continue;
+        }
 
         /*
          * ---------------------------------------------------
          * UNKNOWN BLOCK
-         * ---------------------------------------------------
-         *
-         * We do not silently flatten it.
-         *
-         * This makes future Phase 7 nodes easier to add.
          * ---------------------------------------------------
          */
 
@@ -2508,7 +2542,6 @@ function HandwritingCanvas({
         );
       }
 
-
       /*
        * =====================================================
        * FINAL PAGE
@@ -2516,24 +2549,82 @@ function HandwritingCanvas({
        */
 
       if (
-        pageCanvases.length === 0 ||
-        pageCanvases[
-          pageCanvases.length - 1
-        ] !== currentPage
+        pageHasContent ||
+        pageCanvases.length === 0
       ) {
         pageCanvases.push(
           currentPage
         );
       }
 
+      if (cancelled) {
+        return;
+      }
 
-      if (!cancelled) {
-        setPages(
-          pageCanvases
+      /*
+       * Convert to serializable page objects.
+       *
+       * This is useful for thumbnails and parent state.
+       */
+
+      const renderedPages =
+        pageCanvases.map(
+          (
+            canvas,
+            index
+          ) => ({
+            pageNumber:
+              index + 1,
+
+            canvas,
+
+            dataUrl:
+              canvas.toDataURL(
+                "image/png"
+              ),
+          })
+        );
+
+      setPages(
+        renderedPages
+      );
+
+      /*
+       * Notify parent.
+       */
+
+      if (
+        typeof onPagesChange ===
+        "function"
+      ) {
+        onPagesChange(
+          renderedPages.map(
+            (page) => ({
+              pageNumber:
+                page.pageNumber,
+              dataUrl:
+                page.dataUrl,
+            })
+          )
+        );
+      }
+
+      /*
+       * Keep selected page inside bounds.
+       */
+
+      if (
+        typeof onPageSelect ===
+          "function" &&
+        renderedPages.length > 0 &&
+        selectedPage >=
+          renderedPages.length
+      ) {
+        onPageSelect(
+          renderedPages.length - 1
         );
       }
     }
-
 
     /*
      * =======================================================
@@ -2551,12 +2642,10 @@ function HandwritingCanvas({
         paperStyle
       );
 
-
       const ink =
         getInkConfiguration(
           inkStyle
         );
-
 
       context.__inkaiFontFamily =
         loadedFontFamily;
@@ -2565,11 +2654,11 @@ function HandwritingCanvas({
         inkColor ||
         ink.base;
 
-      context.font =
-        `${size}px "${loadedFontFamily}"`;
-
       context.__inkaiBaseOpacity =
         inkOpacity;
+
+      context.font =
+        `${size}px "${loadedFontFamily}"`;
 
       context.globalAlpha =
         inkOpacity;
@@ -2581,9 +2670,7 @@ function HandwritingCanvas({
         "left";
     }
 
-
     prepareFont();
-
 
     return () => {
       cancelled = true;
@@ -2592,6 +2679,7 @@ function HandwritingCanvas({
     normalizedDocument,
     documentId,
     style,
+    handwritingStyle,
     fontSize,
     inkColor,
     paperStyle,
@@ -2601,9 +2689,15 @@ function HandwritingCanvas({
     wordSpacing,
     inkOpacity,
     naturalVariation,
+    normalizedNaturalness,
+    normalizedSeed,
+    assignmentMode,
+    assignmentDetails,
     text,
+    onPagesChange,
+    onPageSelect,
+    selectedPage,
   ]);
-
 
   /*
    * =========================================================
@@ -2625,7 +2719,6 @@ function HandwritingCanvas({
     );
   };
 
-
   const zoomOut = () => {
     setZoom(
       (current) =>
@@ -2640,11 +2733,67 @@ function HandwritingCanvas({
     );
   };
 
-
   const resetZoom = () => {
     setZoom(0.8);
   };
 
+  /*
+   * =========================================================
+   * PAGE NAVIGATION
+   * =========================================================
+   */
+
+  const safeSelectedPage =
+    Math.max(
+      0,
+      Math.min(
+        selectedPage,
+        Math.max(
+          pages.length - 1,
+          0
+        )
+      )
+    );
+
+  const currentPage =
+    pages[safeSelectedPage];
+
+  const goToPreviousPage =
+    () => {
+      if (
+        safeSelectedPage <= 0
+      ) {
+        return;
+      }
+
+      if (
+        typeof onPageSelect ===
+        "function"
+      ) {
+        onPageSelect(
+          safeSelectedPage - 1
+        );
+      }
+    };
+
+  const goToNextPage =
+    () => {
+      if (
+        safeSelectedPage >=
+        pages.length - 1
+      ) {
+        return;
+      }
+
+      if (
+        typeof onPageSelect ===
+        "function"
+      ) {
+        onPageSelect(
+          safeSelectedPage + 1
+        );
+      }
+    };
 
   /*
    * =========================================================
@@ -2668,7 +2817,6 @@ function HandwritingCanvas({
         dark:bg-gray-950
       "
     >
-
       {/* ===================================================
           TOOLBAR
           =================================================== */}
@@ -2688,9 +2836,7 @@ function HandwritingCanvas({
           dark:bg-gray-900
         "
       >
-
         <div>
-
           <p className="text-sm font-semibold text-gray-900 dark:text-white">
             Handwriting Preview
           </p>
@@ -2701,11 +2847,94 @@ function HandwritingCanvas({
               ? "page"
               : "pages"}
           </p>
-
         </div>
 
-
         <div className="flex items-center gap-1">
+          {/* Previous page */}
+
+          <button
+            type="button"
+            onClick={
+              goToPreviousPage
+            }
+            disabled={
+              safeSelectedPage <= 0
+            }
+            className="
+              rounded-lg
+              p-2
+              text-gray-600
+              transition
+              hover:bg-gray-100
+              disabled:cursor-not-allowed
+              disabled:opacity-30
+              dark:text-gray-300
+              dark:hover:bg-gray-800
+            "
+            title="Previous page"
+          >
+            <ChevronLeft
+              size={18}
+            />
+          </button>
+
+          {/* Page indicator */}
+
+          <span
+            className="
+              min-w-[70px]
+              text-center
+              text-xs
+              font-medium
+              text-gray-600
+              dark:text-gray-300
+            "
+          >
+            {pages.length
+              ? `${safeSelectedPage + 1} / ${pages.length}`
+              : "—"}
+          </span>
+
+          {/* Next page */}
+
+          <button
+            type="button"
+            onClick={
+              goToNextPage
+            }
+            disabled={
+              safeSelectedPage >=
+              pages.length - 1
+            }
+            className="
+              rounded-lg
+              p-2
+              text-gray-600
+              transition
+              hover:bg-gray-100
+              disabled:cursor-not-allowed
+              disabled:opacity-30
+              dark:text-gray-300
+              dark:hover:bg-gray-800
+            "
+            title="Next page"
+          >
+            <ChevronRight
+              size={18}
+            />
+          </button>
+
+          <div
+            className="
+              mx-1
+              h-5
+              w-px
+              bg-gray-200
+              dark:bg-gray-700
+            "
+          />
+
+          {/* Zoom out */}
 
           <button
             type="button"
@@ -2729,6 +2958,7 @@ function HandwritingCanvas({
             <ZoomOut size={18} />
           </button>
 
+          {/* Zoom */}
 
           <button
             type="button"
@@ -2753,6 +2983,7 @@ function HandwritingCanvas({
             %
           </button>
 
+          {/* Zoom in */}
 
           <button
             type="button"
@@ -2776,7 +3007,6 @@ function HandwritingCanvas({
             <ZoomIn size={18} />
           </button>
 
-
           <div
             className="
               mx-1
@@ -2787,6 +3017,7 @@ function HandwritingCanvas({
             "
           />
 
+          {/* Reset */}
 
           <button
             type="button"
@@ -2801,158 +3032,227 @@ function HandwritingCanvas({
             "
             title="Reset zoom"
           >
-            <RotateCcw size={17} />
+            <RotateCcw
+              size={17}
+            />
           </button>
-
         </div>
-
       </div>
 
-
       {/* ===================================================
-          PAGES
+          PAGE THUMBNAILS
           =================================================== */}
 
-      <div className="flex-1 overflow-auto p-6">
-
+      {pages.length > 1 && (
         <div
           className="
             flex
-            min-w-max
-            flex-col
-            items-center
-            gap-8
+            shrink-0
+            gap-3
+            overflow-x-auto
+            border-b
+            border-gray-200
+            bg-white
+            px-4
+            py-3
+            dark:border-gray-800
+            dark:bg-gray-900
           "
         >
-
           {pages.map(
             (
               page,
               index
-            ) => (
-              <div
-                key={index}
+            ) => {
+              const isSelected =
+                index ===
+                safeSelectedPage;
+
+              return (
+                <button
+                  key={
+                    page.pageNumber
+                  }
+                  type="button"
+                  onClick={() =>
+                    typeof onPageSelect ===
+                    "function"
+                      ? onPageSelect(
+                          index
+                        )
+                      : undefined
+                  }
+                  className={`
+                    relative
+                    shrink-0
+                    overflow-hidden
+                    rounded-md
+                    border-2
+                    bg-white
+                    shadow-sm
+                    transition
+                    ${
+                      isSelected
+                        ? "border-indigo-500 shadow-md"
+                        : "border-gray-200 hover:border-gray-400"
+                    }
+                  `}
+                  title={`Page ${index + 1}`}
+                >
+                  <img
+                    src={
+                      page.dataUrl
+                    }
+                    alt={`Page ${
+                      index + 1
+                    } thumbnail`}
+                    className="
+                      block
+                      h-24
+                      w-[68px]
+                      object-cover
+                      object-top
+                    "
+                  />
+
+                  <span
+                    className="
+                      absolute
+                      bottom-0
+                      left-0
+                      right-0
+                      bg-black/50
+                      py-0.5
+                      text-center
+                      text-[9px]
+                      font-medium
+                      text-white
+                    "
+                  >
+                    {index + 1}
+                  </span>
+                </button>
+              );
+            }
+          )}
+        </div>
+      )}
+
+      {/* ===================================================
+          MAIN PAGE
+          =================================================== */}
+
+      <div className="flex-1 overflow-auto p-6">
+        <div className="flex min-w-max justify-center">
+          {currentPage ? (
+            <div
+              className="
+                relative
+                shrink-0
+              "
+              style={{
+                width:
+                  `${A4_WIDTH * zoom}px`,
+                height:
+                  `${A4_HEIGHT * zoom}px`,
+              }}
+            >
+              <img
+                src={
+                  currentPage.dataUrl
+                }
+                alt={`Handwriting page ${
+                  safeSelectedPage + 1
+                }`}
                 className="
-                  relative
-                  shrink-0
+                  absolute
+                  left-0
+                  top-0
+                  block
+                  origin-top-left
+                  bg-white
+                  shadow-xl
                 "
                 style={{
                   width:
-                    `${A4_WIDTH * zoom}px`,
-
+                    `${A4_WIDTH}px`,
                   height:
-                    `${A4_HEIGHT * zoom}px`,
+                    `${A4_HEIGHT}px`,
+                  transform:
+                    `scale(${zoom})`,
+                }}
+              />
+
+              {/* =================================================
+                  MARGIN GUIDE
+                  ================================================= */}
+
+              <div
+                className="
+                  pointer-events-none
+                  absolute
+                  left-0
+                  top-0
+                "
+                style={{
+                  width:
+                    `${A4_WIDTH}px`,
+                  height:
+                    `${A4_HEIGHT}px`,
+                  transform:
+                    `scale(${zoom})`,
+                  transformOrigin:
+                    "top left",
                 }}
               >
-
-                <img
-                  src={page.toDataURL(
-                    "image/png"
-                  )}
-                  alt={
-                    `Handwriting page ${
-                      index + 1
-                    }`
-                  }
+                <div
                   className="
                     absolute
-                    left-0
-                    top-0
-                    block
-                    origin-top-left
-                    bg-white
-                    shadow-xl
+                    border
+                    border-dashed
+                    border-gray-300
                   "
                   style={{
+                    left:
+                      margins.left,
+
+                    top:
+                      margins.top,
+
                     width:
-                      `${A4_WIDTH}px`,
+                      A4_WIDTH -
+                      margins.left -
+                      margins.right,
 
                     height:
-                      `${A4_HEIGHT}px`,
-
-                    transform:
-                      `scale(${zoom})`,
+                      A4_HEIGHT -
+                      margins.top -
+                      margins.bottom,
                   }}
                 />
-
-
-                {/* MARGIN GUIDE */}
-
-                <div
-                  className="
-                    pointer-events-none
-                    absolute
-                    left-0
-                    top-0
-                  "
-                  style={{
-                    width:
-                      `${A4_WIDTH}px`,
-
-                    height:
-                      `${A4_HEIGHT}px`,
-
-                    transform:
-                      `scale(${zoom})`,
-
-                    transformOrigin:
-                      "top left",
-                  }}
-                >
-
-                  <div
-                    className="
-                      absolute
-                      border
-                      border-dashed
-                      border-gray-300
-                    "
-                    style={{
-                      left:
-                        margins.left,
-
-                      top:
-                        margins.top,
-
-                      width:
-                        A4_WIDTH -
-                        margins.left -
-                        margins.right,
-
-                      height:
-                        A4_HEIGHT -
-                        margins.top -
-                        margins.bottom,
-                    }}
-                  />
-
-                </div>
-
-
-                {/* PAGE NUMBER */}
-
-                <div
-                  className="
-                    absolute
-                    left-1/2
-                    -translate-x-1/2
-                    text-[10px]
-                    text-gray-400
-                  "
-                  style={{
-                    bottom: -22,
-                  }}
-                >
-                  Page{" "}
-                  {index + 1}
-                </div>
-
               </div>
-            )
-          )}
 
+              {/* =================================================
+                  PAGE NUMBER
+                  ================================================= */}
 
-          {pages.length === 0 && (
+              <div
+                className="
+                  absolute
+                  left-1/2
+                  -translate-x-1/2
+                  text-[10px]
+                  text-gray-400
+                "
+                style={{
+                  bottom: -22,
+                }}
+              >
+                Page{" "}
+                {safeSelectedPage + 1}
+              </div>
+            </div>
+          ) : (
             <div
               className="
                 flex
@@ -2966,14 +3266,10 @@ function HandwritingCanvas({
               Preparing handwriting preview...
             </div>
           )}
-
         </div>
-
       </div>
-
     </div>
   );
 }
-
 
 export default HandwritingCanvas;

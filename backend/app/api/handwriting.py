@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -19,8 +23,9 @@ router = APIRouter(
 
 
 # ============================================================
-# REQUEST MODEL
+# REQUEST MODELS
 # ============================================================
+
 
 class GlyphVariationRequest(BaseModel):
     document_id: str = Field(
@@ -38,12 +43,138 @@ class GlyphVariationRequest(BaseModel):
     enable_variation: bool = True
 
 
+class HandwritingRenderRequest(BaseModel):
+    """
+    Request used by the Handwriting Generator frontend.
+
+    naturalness is accepted as either:
+        0.0 - 1.0
+
+    or:
+        0 - 100
+
+    The API normalizes the value to 0.0 - 1.0.
+    """
+
+    document_id: str = Field(
+        min_length=1,
+    )
+
+    style: str = Field(
+        default="neat_student",
+        min_length=1,
+    )
+
+    ink: str = Field(
+        default="blue",
+        min_length=1,
+    )
+
+    paper: str = Field(
+        default="ruled",
+        min_length=1,
+    )
+
+    font_size: float = Field(
+        default=22,
+        ge=8,
+        le=100,
+    )
+
+    naturalness: float = Field(
+        default=0.5,
+        ge=0,
+        le=100,
+    )
+
+    seed: int = Field(
+        default=12345,
+        ge=0,
+    )
+
+
+class HandwritingPDFRequest(HandwritingRenderRequest):
+    """
+    Request used for final PDF generation.
+
+    PDF rendering will be connected to the dedicated
+    handwriting PDF renderer in the next Phase 7 step.
+    """
+
+    page_numbers: bool = True
+
+    quality: str = Field(
+        default="high",
+        min_length=1,
+    )
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+
+def normalize_naturalness(
+    value: float,
+) -> float:
+    """
+    Convert naturalness to the internal 0.0 - 1.0 range.
+
+    Examples:
+        0    -> 0.0
+        25   -> 0.25
+        50   -> 0.50
+        75   -> 0.75
+        100  -> 1.0
+
+    Values already between 0 and 1 are preserved.
+    """
+
+    if value <= 1:
+        return max(
+            0.0,
+            min(1.0, value),
+        )
+
+    return max(
+        0.0,
+        min(100.0, value),
+    ) / 100.0
+
+
+def validate_style(
+    style_id: str,
+) -> dict[str, Any]:
+    """
+    Retrieve and validate a handwriting style.
+    """
+
+    style = get_handwriting_style(
+        style_id,
+    )
+
+    if not style:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Handwriting style "
+                f"'{style_id}' not found."
+            ),
+        )
+
+    return style
+
+
 # ============================================================
 # STYLE LIST
 # ============================================================
 
+
 @router.get("/styles")
 def list_handwriting_styles():
+    """
+    Return all available handwriting styles.
+    """
 
     styles = get_handwriting_styles()
 
@@ -88,13 +219,17 @@ def list_handwriting_styles():
 # SINGLE STYLE
 # ============================================================
 
+
 @router.get("/styles/{style_id}")
 def get_style(
     style_id: str,
 ):
+    """
+    Return details for one handwriting style.
+    """
 
     style = get_handwriting_style(
-        style_id
+        style_id,
     )
 
     if not style:
@@ -116,8 +251,13 @@ def get_style(
 # VALIDATE FONTS
 # ============================================================
 
+
 @router.get("/styles/validate")
 def validate_styles():
+    """
+    Check whether all configured handwriting
+    font files exist.
+    """
 
     missing_fonts = (
         validate_handwriting_styles()
@@ -135,17 +275,22 @@ def validate_styles():
 # GLYPH VARIATION
 # ============================================================
 
+
 @router.post("/variation")
 def create_glyph_variation(
     request: GlyphVariationRequest,
 ):
+    """
+    Generate deterministic glyph variations
+    for a page of handwriting text.
+    """
 
     font_variants = []
 
     if request.style_id:
 
         style = get_handwriting_style(
-            request.style_id
+            request.style_id,
         )
 
         if not style:
@@ -172,3 +317,132 @@ def create_glyph_variation(
             request.enable_variation
         ),
     )
+
+
+# ============================================================
+# HANDWRITING RENDER
+# ============================================================
+
+
+@router.post("/render")
+def render_handwriting(
+    request: HandwritingRenderRequest,
+):
+    """
+    Start a handwriting rendering request.
+
+    The actual visual rendering is currently performed
+    by the frontend canvas renderer.
+
+    This endpoint validates the rendering configuration
+    and returns deterministic rendering metadata.
+
+    Later this metadata can be consumed by the backend
+    PDF renderer without changing the frontend API.
+    """
+
+    style = validate_style(
+        request.style,
+    )
+
+    naturalness = normalize_naturalness(
+        request.naturalness,
+    )
+
+    return {
+        "document_id": request.document_id,
+        "pages": 0,
+        "preview_url": None,
+        "status": "ready",
+        "settings": {
+            "style": request.style,
+            "style_name": style.get(
+                "name",
+                request.style,
+            ),
+            "ink": request.ink,
+            "paper": request.paper,
+            "font_size": request.font_size,
+            "naturalness": naturalness,
+            "seed": request.seed,
+        },
+    }
+
+
+# ============================================================
+# HANDWRITING PREVIEW
+# ============================================================
+
+
+@router.get("/preview/{document_id}")
+def get_handwriting_preview(
+    document_id: str,
+):
+    """
+    Return preview information for a document.
+
+    Actual canvas preview is generated in the browser.
+    """
+
+    if not document_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Document ID is required.",
+        )
+
+    return {
+        "document_id": document_id,
+        "status": "frontend_rendered",
+        "preview_url": None,
+    }
+
+
+# ============================================================
+# HANDWRITING PDF
+# ============================================================
+
+
+@router.post("/pdf")
+def generate_handwriting_pdf(
+    request: HandwritingPDFRequest,
+):
+    """
+    Placeholder for the final handwriting PDF renderer.
+
+    The dedicated PDF renderer will be implemented
+    separately so that:
+
+        Handwriting Renderer
+                 |
+          +------+------+
+          |             |
+       Canvas          PDF
+       Preview        Renderer
+
+    This keeps preview rendering independent from
+    final PDF generation.
+    """
+
+    validate_style(
+        request.style,
+    )
+
+    naturalness = normalize_naturalness(
+        request.naturalness,
+    )
+
+    return {
+        "document_id": request.document_id,
+        "status": "ready_for_pdf_renderer",
+        "settings": {
+            "style": request.style,
+            "ink": request.ink,
+            "paper": request.paper,
+            "font_size": request.font_size,
+            "naturalness": naturalness,
+            "seed": request.seed,
+            "page_numbers": request.page_numbers,
+            "quality": request.quality,
+        },
+        "download_url": None,
+    }

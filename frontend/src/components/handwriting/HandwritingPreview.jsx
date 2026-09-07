@@ -12,25 +12,40 @@ import HandwritingCanvas from "./HandwritingCanvas";
  *
  * Responsible for:
  *
- * 1. Receiving the saved document
+ * 1. Receiving the structured handwriting document
  * 2. Resolving the selected handwriting font
- * 3. Converting document blocks into plain text
- * 4. Passing stable document information to the canvas
+ * 3. Passing the COMPLETE structured document to the canvas
+ * 4. Passing deterministic rendering configuration
+ * 5. Passing page-selection / page-generation callbacks
  *
  * IMPORTANT:
  *
- * This component does NOT generate random variation.
+ * This component MUST NOT flatten the document into text.
  *
- * The actual glyph variation is handled by the
- * deterministic variation engine.
+ * Pipeline:
  *
- * Preview and download must use the same:
+ * TipTap JSON
+ *      ↓
+ * Document Service
+ *      ↓
+ * Structured Handwriting Document
+ *      ↓
+ * HandwritingPreview
+ *      ↓
+ * HandwritingCanvas
  *
- *      documentId
- *      page number
- *      character index
+ * Supported structures:
  *
- * so that the generated handwriting remains identical.
+ * - Heading
+ * - Paragraph
+ * - Bullet list
+ * - Ordered list
+ * - Table
+ * - Image
+ * - Manual page break
+ *
+ * The actual handwriting variation is handled by the
+ * deterministic renderer.
  * =========================================================
  */
 
@@ -39,21 +54,90 @@ function HandwritingPreview({
 
   /*
    * Stable document identifier.
-   *
-   * This should normally come from the saved document.
    */
   documentId,
 
+  /*
+   * Selected handwriting font.
+   */
   font,
+
+  /*
+   * Paper / ink.
+   */
   paper,
   ink,
 
+  /*
+   * Basic handwriting settings.
+   */
   fontSize = 22,
   letterSpacing = 0,
   lineSpacing = 1.5,
   wordSpacing = 4,
   inkOpacity = 0.9,
   naturalVariation = true,
+
+  /*
+   * =========================================================
+   * PHASE 7 SETTINGS
+   * =========================================================
+   */
+
+  /*
+   * Naturalness is normalized to:
+   *
+   * 0.0 → 1.0
+   */
+  naturalness = 0.5,
+
+  /*
+   * Deterministic randomization seed.
+   */
+  seed = 12345,
+
+  /*
+   * Preset/style identifier.
+   *
+   * Example:
+   * school_notebook
+   */
+  style = "school_notebook",
+
+  /*
+   * Assignment Mode.
+   */
+  assignmentMode = false,
+
+  assignmentDetails = {
+    studentName: "",
+    rollNumber: "",
+    subject: "",
+    className: "",
+    teacher: "",
+    assignmentTitle: "",
+  },
+
+  /*
+   * =========================================================
+   * PAGE CONTROLS
+   * =========================================================
+   */
+
+  /*
+   * Currently selected page.
+   */
+  selectedPage = 0,
+
+  /*
+   * Called whenever the renderer creates/recreates pages.
+   */
+  onPagesChange,
+
+  /*
+   * Called when the user selects a page.
+   */
+  onPageSelect,
 }) {
 
 
@@ -62,12 +146,7 @@ function HandwritingPreview({
    * RESOLVE FONT
    * =========================================================
    *
-   * IMPORTANT:
-   *
-   * Keep hooks before any conditional return.
-   *
-   * This prevents React's Rules of Hooks from being violated
-   * if the document changes from null → available.
+   * Keep this hook before conditional returns.
    */
 
   const selectedFontObject = useMemo(() => {
@@ -84,210 +163,11 @@ function HandwritingPreview({
 
   /*
    * =========================================================
-   * CONVERT DOCUMENT TO TEXT
-   * =========================================================
-   *
-   * The handwriting canvas currently works with text.
-   *
-   * Convert the structured document into a readable
-   * handwritten text representation.
-   */
-
-  const handwritingText = useMemo(() => {
-
-    if (!document) {
-      return "";
-    }
-
-    const blocks =
-      document.blocks || [];
-
-    const textParts = [];
-
-
-    blocks.forEach((block) => {
-
-      if (!block) {
-        return;
-      }
-
-
-      /*
-       * =====================================================
-       * HEADING
-       * =====================================================
-       */
-
-      if (
-        block.type ===
-        "heading"
-      ) {
-
-        textParts.push(
-          block.text || ""
-        );
-
-        textParts.push("");
-
-        return;
-      }
-
-
-      /*
-       * =====================================================
-       * PARAGRAPH
-       * =====================================================
-       */
-
-      if (
-        block.type ===
-        "paragraph"
-      ) {
-
-        textParts.push(
-          block.text || ""
-        );
-
-        textParts.push("");
-
-        return;
-      }
-
-
-      /*
-       * =====================================================
-       * BULLET LIST
-       * =====================================================
-       */
-
-      if (
-        block.type ===
-        "bulletList"
-      ) {
-
-        const items =
-          block.items || [];
-
-
-        items.forEach((item) => {
-
-          const itemText =
-            item.content
-              ?.map(
-                (child) =>
-                  child.text || ""
-              )
-              .join("") || "";
-
-
-          textParts.push(
-            `• ${itemText}`
-          );
-        });
-
-
-        textParts.push("");
-
-        return;
-      }
-
-
-      /*
-       * =====================================================
-       * ORDERED LIST
-       * =====================================================
-       */
-
-      if (
-        block.type ===
-        "orderedList"
-      ) {
-
-        const items =
-          block.items || [];
-
-
-        items.forEach(
-          (item, index) => {
-
-            const itemText =
-              item.content
-                ?.map(
-                  (child) =>
-                    child.text || ""
-                )
-                .join("") || "";
-
-
-            textParts.push(
-              `${index + 1}. ${itemText}`
-            );
-          }
-        );
-
-
-        textParts.push("");
-
-        return;
-      }
-
-
-      /*
-       * =====================================================
-       * PAGE BREAK
-       * =====================================================
-       *
-       * The canvas currently represents a page break
-       * using blank lines.
-       */
-
-      if (
-        block.type ===
-        "pageBreak"
-      ) {
-
-        textParts.push("");
-        textParts.push("");
-        textParts.push("");
-
-        return;
-      }
-
-
-      /*
-       * =====================================================
-       * IMAGE
-       * =====================================================
-       *
-       * Images are intentionally skipped for now.
-       *
-       * Image rendering can be added later to the
-       * handwriting page renderer.
-       */
-
-      if (
-        block.type ===
-        "image"
-      ) {
-        return;
-      }
-
-    });
-
-
-    return textParts.join("\n");
-
-  }, [document]);
-
-
-  /*
-   * =========================================================
    * DOCUMENT CHECK
    * =========================================================
    */
 
   if (!document) {
-
     return (
       <div
         className="
@@ -316,7 +196,6 @@ function HandwritingPreview({
    */
 
   if (!selectedFontObject) {
-
     return (
       <div
         className="
@@ -343,26 +222,17 @@ function HandwritingPreview({
    * STABLE DOCUMENT ID
    * =========================================================
    *
-   * Step 15
+   * Preferred:
    *
-   * The backend variation engine needs a stable identifier.
+   * documentId prop
+   *      ↓
+   * document.id
+   *      ↓
+   * document._id
+   *      ↓
+   * fallback
    *
-   * Preferred order:
-   *
-   *      documentId prop
-   *          ↓
-   *      document.id
-   *          ↓
-   *      document._id
-   *          ↓
-   *      fallback
-   *
-   * IMPORTANT:
-   *
-   * This fallback is only for documents that don't yet have
-   * a database ID.
-   *
-   * A real saved document should always have an ID.
+   * This value participates in deterministic rendering.
    */
 
   const stableDocumentId =
@@ -374,45 +244,153 @@ function HandwritingPreview({
 
   /*
    * =========================================================
+   * NORMALIZE NATURALNESS
+   * =========================================================
+   *
+   * The page normally supplies a value between 0 and 1.
+   *
+   * This extra protection prevents accidental values such
+   * as 50 or -1 from reaching the renderer.
+   */
+
+  const normalizedNaturalness = Math.max(
+    0,
+    Math.min(
+      1,
+      Number.isFinite(
+        Number(naturalness)
+      )
+        ? Number(naturalness)
+        : 0.5
+    )
+  );
+
+
+  /*
+   * =========================================================
+   * NORMALIZE SEED
+   * =========================================================
+   *
+   * JavaScript numbers are used because the renderer needs
+   * a deterministic numeric seed.
+   */
+
+  const normalizedSeed =
+    Number.isFinite(
+      Number(seed)
+    )
+      ? Number(seed)
+      : 12345;
+
+
+  /*
+   * =========================================================
    * CANVAS
    * =========================================================
+   *
+   * IMPORTANT:
+   *
+   * Do NOT pass:
+   *
+   *      text={...}
+   *
+   * here.
+   *
+   * The canvas receives the complete structured document.
    */
 
   return (
     <HandwritingCanvas
-      /*
-       * Text
-       */
-      text={handwritingText}
 
       /*
-       * Stable document identity
+       * =====================================================
+       * STRUCTURED DOCUMENT
+       * =====================================================
        *
-       * Used by the deterministic glyph variation engine.
+       * This is the critical Phase 7 change.
+       *
+       * The renderer can now distinguish:
+       *
+       * heading
+       * paragraph
+       * bulletList
+       * orderedList
+       * table
+       * image
+       * pageBreak
        */
+
+      document={
+        document
+      }
+
+
+      /*
+       * =====================================================
+       * DOCUMENT ID
+       * =====================================================
+       */
+
       documentId={
         stableDocumentId
       }
 
+
       /*
-       * Font
+       * =====================================================
+       * FONT
+       * =====================================================
        */
+
       style={
         selectedFontObject
       }
 
-      /*
-       * Basic appearance
-       */
-      fontSize={fontSize}
-
-      paperStyle={paper}
-
-      inkStyle={ink}
 
       /*
-       * Handwriting controls
+       * =====================================================
+       * PRESET / STYLE ID
+       * =====================================================
+       *
+       * This is separate from the resolved font object.
+       *
+       * The deterministic renderer can therefore use:
+       *
+       * Document ID
+       * + Style
+       * + Seed
        */
+
+      handwritingStyle={
+        style
+      }
+
+
+      /*
+       * =====================================================
+       * BASIC APPEARANCE
+       * =====================================================
+       */
+
+      fontSize={
+        fontSize
+      }
+
+      paperStyle={
+        paper
+      }
+
+      inkStyle={
+        ink
+      }
+
+
+      /*
+       * =====================================================
+       * HANDWRITING CONTROLS
+       * =====================================================
+       */
+
       letterSpacing={
         letterSpacing
       }
@@ -429,21 +407,85 @@ function HandwritingPreview({
         inkOpacity
       }
 
+
       /*
-       * Step 13–17
+       * =====================================================
+       * LEGACY NATURAL VARIATION
+       * =====================================================
        *
-       * Enables deterministic:
-       *
-       * - glyph variation
-       * - scale variation
-       * - baseline variation
-       * - rotation
-       * - tiny spacing variation
-       * - future font variant selection
+       * Kept for compatibility with the existing canvas.
        */
+
       naturalVariation={
         naturalVariation
       }
+
+
+      /*
+       * =====================================================
+       * PHASE 7 NATURALNESS
+       * =====================================================
+       *
+       * 0.0 → uniform
+       * 0.25 → subtle
+       * 0.50 → natural
+       * 0.75 → noticeable
+       * 1.0 → strong
+       */
+
+      naturalness={
+        normalizedNaturalness
+      }
+
+
+      /*
+       * =====================================================
+       * DETERMINISTIC RANDOM SEED
+       * =====================================================
+       *
+       * Randomize in the parent changes this value.
+       *
+       * The document itself does NOT change.
+       */
+
+      seed={
+        normalizedSeed
+      }
+
+
+      /*
+       * =====================================================
+       * ASSIGNMENT MODE
+       * =====================================================
+       */
+
+      assignmentMode={
+        assignmentMode
+      }
+
+      assignmentDetails={
+        assignmentDetails
+      }
+
+
+      /*
+       * =====================================================
+       * PAGE NAVIGATION
+       * =====================================================
+       */
+
+      selectedPage={
+        selectedPage
+      }
+
+      onPagesChange={
+        onPagesChange
+      }
+
+      onPageSelect={
+        onPageSelect
+      }
+
     />
   );
 }
