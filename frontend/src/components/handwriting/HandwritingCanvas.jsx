@@ -351,7 +351,18 @@ function adjustInkColor(
 function drawPaperBackground(context, paperStyle) {
   context.save();
 
-  context.fillStyle = "#ffffff";
+  if (paperStyle === "notebook") {
+    context.fillStyle = "#fdfcf8";
+  } else {
+    context.fillStyle = "#ffffff";
+  }
+
+  context.fillRect(
+    0,
+    0,
+    A4_WIDTH,
+    A4_HEIGHT
+  );
 
   context.fillRect(
     0,
@@ -498,32 +509,60 @@ function drawGraphPaper(context) {
  * =========================================================
  */
 
+/*
+ * =========================================================
+ * REALISTIC PAPER TEXTURE
+ * =========================================================
+ *
+ * Step 20
+ *
+ * The texture is intentionally extremely subtle.
+ *
+ * Layers:
+ *
+ * 1. Micro grain
+ * 2. Very faint paper fibers
+ * 3. Slight tonal variation
+ *
+ * The goal is:
+ *
+ *     real paper
+ *
+ * NOT:
+ *
+ *     Photoshop/noise filter
+ * =========================================================
+ */
+
 function drawPaperTexture(context) {
   context.save();
 
-  for (
-    let y = 0;
-    y < A4_HEIGHT;
-    y += 8
-  ) {
-    for (
-      let x = 0;
-      x < A4_WIDTH;
-      x += 8
-    ) {
+  /*
+   * ---------------------------------------------------------
+   * 1. VERY SUBTLE MICRO GRAIN
+   * ---------------------------------------------------------
+   *
+   * Small low-opacity points create microscopic
+   * paper irregularity.
+   */
+
+  for (let y = 0; y < A4_HEIGHT; y += 6) {
+    for (let x = 0; x < A4_WIDTH; x += 6) {
       const value =
         Math.sin(
           x * 12.9898 +
           y * 78.233
         ) * 43758.5453;
 
-      const fractional =
-        value -
-        Math.floor(value);
+      const normalized =
+        value - Math.floor(value);
 
-      if (fractional > 0.72) {
+      if (normalized > 0.68) {
         context.fillStyle =
-          "rgba(80, 80, 80, 0.025)";
+          `rgba(70, 65, 55, ${
+            0.008 +
+            normalized * 0.010
+          })`;
 
         context.fillRect(
           x,
@@ -534,6 +573,121 @@ function drawPaperTexture(context) {
       }
     }
   }
+
+  /*
+   * ---------------------------------------------------------
+   * 2. VERY FAINT PAPER FIBERS
+   * ---------------------------------------------------------
+   *
+   * Fibers are longer than grain and should be
+   * barely visible.
+   */
+
+  for (let index = 0; index < 180; index++) {
+    const seed =
+      Math.sin(
+        index * 91.731
+      ) * 43758.5453;
+
+    const normalized =
+      seed - Math.floor(seed);
+
+    const x =
+      normalized * A4_WIDTH;
+
+    const secondSeed =
+      Math.sin(
+        index * 47.173
+      ) * 43758.5453;
+
+    const secondNormalized =
+      secondSeed -
+      Math.floor(secondSeed);
+
+    const y =
+      secondNormalized * A4_HEIGHT;
+
+    const length =
+      8 +
+      normalized * 20;
+
+    const angle =
+      (
+        secondNormalized -
+        0.5
+      ) * 0.35;
+
+    context.save();
+
+    context.translate(
+      x,
+      y
+    );
+
+    context.rotate(angle);
+
+    context.strokeStyle =
+      "rgba(120, 110, 95, 0.018)";
+
+    context.lineWidth = 0.45;
+
+    context.beginPath();
+
+    context.moveTo(
+      0,
+      0
+    );
+
+    context.lineTo(
+      length,
+      0
+    );
+
+    context.stroke();
+
+    context.restore();
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * 3. EXTREMELY SUBTLE PAPER TONALITY
+   * ---------------------------------------------------------
+   *
+   * Adds warmth without making the paper visibly beige.
+   */
+
+  const paperGradient =
+    context.createLinearGradient(
+      0,
+      0,
+      A4_WIDTH,
+      A4_HEIGHT
+    );
+
+  paperGradient.addColorStop(
+    0,
+    "rgba(255, 252, 244, 0.018)"
+  );
+
+  paperGradient.addColorStop(
+    0.5,
+    "rgba(255, 255, 255, 0)"
+  );
+
+  paperGradient.addColorStop(
+    1,
+    "rgba(245, 240, 228, 0.018)"
+  );
+
+  context.fillStyle =
+    paperGradient;
+
+  context.fillRect(
+    0,
+    0,
+    A4_WIDTH,
+    A4_HEIGHT
+  );
 
   context.restore();
 }
@@ -613,6 +767,157 @@ function measureTextWithSpacing(
   }
 
   return width;
+}
+
+/*
+ * =========================================================
+ * WIDTH-AWARE TEXT WRAPPING
+ * =========================================================
+ *
+ * STEP 22
+ *
+ * Wrap text using actual rendered glyph widths.
+ *
+ * Important:
+ * We measure the text using the currently loaded
+ * handwriting font rather than estimating width from
+ * character count.
+ * =========================================================
+ */
+
+function wrapTextByRenderedWidth(
+  context,
+  text,
+  maxWidth,
+  {
+    letterSpacing = 0,
+    wordSpacing = 4,
+    fontSize = 22,
+    fontFamily,
+  } = {}
+) {
+  if (!text) {
+    return [""];
+  }
+
+  /*
+   * Make absolutely sure measurement uses the
+   * selected handwriting font.
+   */
+
+  context.font =
+    `${fontSize}px "${fontFamily}"`;
+
+  /*
+   * -------------------------------------------------------
+   * Measure a string using actual Canvas glyph metrics.
+   * -------------------------------------------------------
+   */
+
+  const getWidth = (value) => {
+    return measureTextWithSpacing(
+      context,
+      value,
+      letterSpacing,
+      wordSpacing
+    );
+  };
+
+  const lines = [];
+
+  let currentLine = "";
+
+  /*
+   * Keep normal spaces between words.
+   */
+
+  const words = text.split(/\s+/);
+
+  for (const word of words) {
+    if (!word) {
+      continue;
+    }
+
+    const candidate =
+      currentLine
+        ? `${currentLine} ${word}`
+        : word;
+
+    /*
+     * Entire candidate fits.
+     */
+
+    if (getWidth(candidate) <= maxWidth) {
+      currentLine = candidate;
+      continue;
+    }
+
+    /*
+     * Push the current line if it contains text.
+     */
+
+    if (currentLine) {
+      lines.push(currentLine);
+      currentLine = "";
+    }
+
+    /*
+     * -----------------------------------------------------
+     * LONG WORD HANDLING
+     * -----------------------------------------------------
+     *
+     * A single word may itself be wider than the page.
+     *
+     * Break it using actual glyph widths.
+     */
+
+    if (getWidth(word) <= maxWidth) {
+      currentLine = word;
+      continue;
+    }
+
+    let partialWord = "";
+
+    for (const character of word) {
+      const candidateCharacter =
+        partialWord + character;
+
+      /*
+       * No word spacing inside a word.
+       */
+
+      const characterWidth =
+        measureTextWithSpacing(
+          context,
+          candidateCharacter,
+          letterSpacing,
+          0
+        );
+
+      if (
+        characterWidth <= maxWidth
+      ) {
+        partialWord =
+          candidateCharacter;
+      } else {
+        if (partialWord) {
+          lines.push(partialWord);
+        }
+
+        partialWord = character;
+      }
+    }
+
+    currentLine = partialWord;
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines.length
+    ? lines
+    : [""];
 }
 
 /*
@@ -1079,9 +1384,7 @@ function HandwritingCanvas({
      * =======================================================
      */
 
-    function createPages(
-      loadedFontFamily
-    ) {
+    function createPages(loadedFontFamily) {
       const pageCanvases = [];
 
       const size =
@@ -1090,33 +1393,29 @@ function HandwritingCanvas({
         22;
 
       const lineHeight =
-        size *
-        lineSpacing;
-
-      const availableWidth =
-        A4_WIDTH -
-        margins.left -
-        margins.right;
+        size * lineSpacing;
 
       /*
-       * Measurement canvas
-       */
+      * =====================================================
+      * MEASUREMENT CANVAS
+      * =====================================================
+      *
+      * IMPORTANT:
+      * The handwriting font has already been loaded before
+      * this function is called.
+      *
+      * Canvas measureText() therefore gives us the actual
+      * rendered width of the selected handwriting font.
+      */
 
       const measurementCanvas =
-        document.createElement(
-          "canvas"
-        );
+        document.createElement("canvas");
 
-      measurementCanvas.width =
-        A4_WIDTH;
-
-      measurementCanvas.height =
-        A4_HEIGHT;
+      measurementCanvas.width = A4_WIDTH;
+      measurementCanvas.height = A4_HEIGHT;
 
       const measurementContext =
-        measurementCanvas.getContext(
-          "2d"
-        );
+        measurementCanvas.getContext("2d");
 
       if (!measurementContext) {
         return;
@@ -1126,94 +1425,96 @@ function HandwritingCanvas({
         `${size}px "${loadedFontFamily}"`;
 
       /*
-       * =====================================================
-       * BUILD LINES
-       * =====================================================
-       */
+      * =====================================================
+      * AVAILABLE TEXT WIDTH
+      * =====================================================
+      */
+
+      const availableWidth =
+        A4_WIDTH -
+        margins.left -
+        margins.right -
+        6;
+
+      /*
+      * =====================================================
+      * STEP 22
+      * WIDTH-AWARE TEXT WRAPPING
+      * =====================================================
+      *
+      * Uses the actual rendered width of each glyph.
+      *
+      * We deliberately use the same font that will be used
+      * for final rendering.
+      */
 
       const lines = [];
 
       const paragraphs =
-        String(text).split("\n");
+        String(text ?? "").split("\n");
 
-      paragraphs.forEach(
-        (paragraph) => {
-          if (!paragraph.trim()) {
-            lines.push("");
-            return;
-          }
+      paragraphs.forEach((paragraph) => {
+        /*
+        * Preserve completely blank lines.
+        */
+        if (!paragraph.trim()) {
+          lines.push("");
+          return;
+        }
 
-          const words =
-            paragraph.split(/\s+/);
-
-          let currentLine = "";
-
-          words.forEach(
-            (word) => {
-              const testLine =
-                currentLine
-                  ? `${currentLine} ${word}`
-                  : word;
-
-              const measuredWidth =
-                measureTextWithSpacing(
-                  measurementContext,
-                  testLine,
-                  letterSpacing,
-                  wordSpacing
-                );
-
-              if (
-                measuredWidth >
-                  availableWidth &&
-                currentLine
-              ) {
-                lines.push(
-                  currentLine
-                );
-
-                currentLine =
-                  word;
-              } else {
-                currentLine =
-                  testLine;
-              }
+        const wrappedLines =
+          wrapTextByRenderedWidth(
+            measurementContext,
+            paragraph,
+            availableWidth,
+            {
+              letterSpacing,
+              wordSpacing,
+              fontSize: size,
+              fontFamily: loadedFontFamily,
             }
           );
 
-          if (currentLine) {
-            lines.push(
-              currentLine
-            );
-          }
-        }
-      );
+        lines.push(...wrappedLines);
+      });
 
       /*
-       * =====================================================
-       * FIRST PAGE
-       * =====================================================
-       */
+      * =====================================================
+      * EMPTY DOCUMENT
+      * =====================================================
+      */
+
+      if (lines.length === 0) {
+        lines.push("");
+      }
+
+      /*
+      * =====================================================
+      * STEP 23
+      * PAGE CREATION
+      * =====================================================
+      */
 
       let currentPage =
-        document.createElement(
-          "canvas"
-        );
+        document.createElement("canvas");
 
-      currentPage.width =
-        A4_WIDTH;
-
-      currentPage.height =
-        A4_HEIGHT;
+      currentPage.width = A4_WIDTH;
+      currentPage.height = A4_HEIGHT;
 
       let pageContext =
-        currentPage.getContext(
-          "2d"
-        );
+        currentPage.getContext("2d");
 
       if (!pageContext) {
         return;
       }
+
+      /*
+      * Page number starts at 1.
+      *
+      * This is also used by deterministic ink variation.
+      */
+
+      let pageNumber = 1;
 
       setupPage(
         pageContext,
@@ -1221,120 +1522,141 @@ function HandwritingCanvas({
         size
       );
 
-      let y =
-        margins.top;
+      let y = margins.top;
+
+      /*
+      * Global character index.
+      *
+      * Keeping this continuous prevents the same character
+      * from receiving the same variation merely because it
+      * moved to another line.
+      */
 
       let characterIndex = 0;
 
       /*
-       * =====================================================
-       * DRAW LINES
-       * =====================================================
-       */
+      * =====================================================
+      * DRAW / PAGINATE
+      * =====================================================
+      */
 
-      lines.forEach(
-        (line) => {
+      for (const line of lines) {
+        /*
+        * -----------------------------------------------------
+        * STEP 23 — AUTOMATIC PAGE BREAK
+        * -----------------------------------------------------
+        */
+
+        if (
+          y + lineHeight >
+          A4_HEIGHT - margins.bottom
+        ) {
           /*
-           * New page
-           */
+          * Store completed page.
+          */
 
-          if (
-            y + lineHeight >
-            A4_HEIGHT -
-              margins.bottom
-          ) {
-            pageCanvases.push(
-              currentPage
-            );
+          pageCanvases.push(currentPage);
 
-            currentPage =
-              document.createElement(
-                "canvas"
-              );
+          /*
+          * Create next A4 page.
+          */
 
-            currentPage.width =
-              A4_WIDTH;
+          currentPage =
+            document.createElement("canvas");
 
-            currentPage.height =
-              A4_HEIGHT;
+          currentPage.width = A4_WIDTH;
+          currentPage.height = A4_HEIGHT;
 
-            pageContext =
-              currentPage.getContext(
-                "2d"
-              );
+          pageContext =
+            currentPage.getContext("2d");
 
-            if (!pageContext) {
-              return;
-            }
-
-            setupPage(
-              pageContext,
-              loadedFontFamily,
-              size
-            );
-
-            y =
-              margins.top;
+          if (!pageContext) {
+            break;
           }
 
           /*
-           * Draw line
-           */
+          * Increment page number BEFORE rendering
+          * the new page.
+          */
 
-          if (line) {
-            const ink =
-              getInkConfiguration(
-                inkStyle
-              );
+          pageNumber += 1;
 
-            drawTextWithVariation(
-              pageContext,
-              line,
-              margins.left,
-              y,
-              {
-                letterSpacing,
-                wordSpacing,
-                naturalVariation,
-                startIndex:
-                  characterIndex,
-                baseFontSize:
-                  size,
-                fontFamily:
-                  loadedFontFamily,
-                inkVariations:
-                  ink.variations,
+          setupPage(
+            pageContext,
+            loadedFontFamily,
+            size
+          );
 
-                documentId,
-
-                pageNumber,
-
-                inkStyle,
-              }
-            );
-          }
-
-          characterIndex +=
-            line.length + 1;
-
-          y += lineHeight;
+          y = margins.top;
         }
-      );
+
+        /*
+        * -----------------------------------------------------
+        * DRAW CURRENT LINE
+        * -----------------------------------------------------
+        */
+
+        if (line) {
+          const ink =
+            getInkConfiguration(inkStyle);
+
+          drawTextWithVariation(
+            pageContext,
+            line,
+            margins.left,
+            y,
+            {
+              letterSpacing,
+              wordSpacing,
+              naturalVariation,
+              startIndex: characterIndex,
+              baseFontSize: size,
+              fontFamily: loadedFontFamily,
+              inkVariations: ink.variations,
+
+              /*
+              * Step 18 deterministic ink variation.
+              */
+
+              documentId,
+              pageNumber,
+              inkStyle,
+            }
+          );
+        }
+
+        /*
+        * Move character index forward.
+        *
+        * +1 represents the logical separator between
+        * rendered lines.
+        */
+
+        characterIndex +=
+          line.length + 1;
+
+        /*
+        * Move down to next handwriting line.
+        */
+
+        y += lineHeight;
+      }
 
       /*
-       * =====================================================
-       * FINAL PAGE
-       * =====================================================
-       */
+      * =====================================================
+      * FINAL PAGE
+      * =====================================================
+      */
 
-      pageCanvases.push(
-        currentPage
-      );
+      pageCanvases.push(currentPage);
+
+      /*
+      * Only update React state if the effect has not
+      * been cancelled.
+      */
 
       if (!cancelled) {
-        setPages(
-          pageCanvases
-        );
+        setPages(pageCanvases);
       }
     }
 
@@ -1414,6 +1736,7 @@ function HandwritingCanvas({
     };
   }, [
     text,
+    documentId,
     style,
     fontSize,
     inkColor,
