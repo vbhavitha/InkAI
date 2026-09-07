@@ -11,6 +11,13 @@ from pydantic import BaseModel, ConfigDict, Field
 class HandwritingBase(BaseModel):
     """
     Common handwriting-generation settings.
+
+    naturalness is always represented internally as:
+
+        0.0 - 1.0
+
+    The frontend may display naturalness as 0 - 100,
+    but the API/database representation remains 0.0 - 1.0.
     """
 
     style: str = Field(
@@ -99,8 +106,8 @@ class HandwritingDocumentUpdate(
     """
     Schema used when updating handwriting settings.
 
-    All fields are optional so the frontend can change
-    only the settings that were modified.
+    All fields are optional so the frontend can modify
+    only the settings that changed.
     """
 
     style: str | None = Field(
@@ -165,7 +172,7 @@ class HandwritingDocumentResponse(
     HandwritingBase
 ):
     """
-    Schema returned by the API.
+    Schema returned by the handwriting document API.
     """
 
     id: int
@@ -194,9 +201,13 @@ class HandwritingRenderRequest(
     """
     Schema used by the handwriting renderer.
 
-    This corresponds to the frontend request:
+    Endpoint:
 
         POST /api/handwriting/render
+
+    naturalness is represented internally as:
+
+        0.0 - 1.0
     """
 
     document_id: str = Field(
@@ -275,6 +286,8 @@ class HandwritingPDFRequest(
 ):
     """
     Schema used for final handwriting PDF generation.
+
+    The actual PDF renderer remains a placeholder for now.
     """
 
     page_numbers: bool = True

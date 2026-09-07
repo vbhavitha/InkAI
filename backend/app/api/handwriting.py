@@ -15,6 +15,11 @@ from app.handwriting.handwriting_styles import (
     validate_handwriting_styles,
 )
 
+from app.schemas.handwriting_schema import (
+    HandwritingRenderRequest,
+    HandwritingPDFRequest,
+)
+
 
 router = APIRouter(
     prefix="/api/handwriting",
@@ -28,6 +33,11 @@ router = APIRouter(
 
 
 class GlyphVariationRequest(BaseModel):
+    """
+    Request used to generate deterministic glyph variations
+    for a page of handwriting text.
+    """
+
     document_id: str = Field(
         min_length=1,
     )
@@ -43,72 +53,6 @@ class GlyphVariationRequest(BaseModel):
     enable_variation: bool = True
 
 
-class HandwritingRenderRequest(BaseModel):
-    """
-    Request used by the Handwriting Generator frontend.
-
-    naturalness is accepted as either:
-        0.0 - 1.0
-
-    or:
-        0 - 100
-
-    The API normalizes the value to 0.0 - 1.0.
-    """
-
-    document_id: str = Field(
-        min_length=1,
-    )
-
-    style: str = Field(
-        default="neat_student",
-        min_length=1,
-    )
-
-    ink: str = Field(
-        default="blue",
-        min_length=1,
-    )
-
-    paper: str = Field(
-        default="ruled",
-        min_length=1,
-    )
-
-    font_size: float = Field(
-        default=22,
-        ge=8,
-        le=100,
-    )
-
-    naturalness: float = Field(
-        default=0.5,
-        ge=0,
-        le=100,
-    )
-
-    seed: int = Field(
-        default=12345,
-        ge=0,
-    )
-
-
-class HandwritingPDFRequest(HandwritingRenderRequest):
-    """
-    Request used for final PDF generation.
-
-    PDF rendering will be connected to the dedicated
-    handwriting PDF renderer in the next Phase 7 step.
-    """
-
-    page_numbers: bool = True
-
-    quality: str = Field(
-        default="high",
-        min_length=1,
-    )
-
-
 # ============================================================
 # HELPERS
 # ============================================================
@@ -120,7 +64,13 @@ def normalize_naturalness(
     """
     Convert naturalness to the internal 0.0 - 1.0 range.
 
+    Supported input:
+
+        0.0 - 1.0
+        0   - 100
+
     Examples:
+
         0    -> 0.0
         25   -> 0.25
         50   -> 0.50
@@ -183,34 +133,18 @@ def list_handwriting_styles():
             {
                 "id": style_id,
                 "name": style["name"],
-                "description": style[
-                    "description"
-                ],
-                "default_size": style[
-                    "default_size"
-                ],
-                "spacing": style[
-                    "spacing"
-                ],
-                "line_spacing": style[
-                    "line_spacing"
-                ],
-                "category": style[
-                    "category"
-                ],
-                "fonts": style[
-                    "fonts"
-                ],
+                "description": style["description"],
+                "default_size": style["default_size"],
+                "spacing": style["spacing"],
+                "line_spacing": style["line_spacing"],
+                "category": style["category"],
+                "fonts": style["fonts"],
                 "font_variants": style.get(
                     "font_variants",
                     [],
                 ),
             }
-
-            for (
-                style_id,
-                style,
-            ) in styles.items()
+            for style_id, style in styles.items()
         ]
     }
 
@@ -259,14 +193,10 @@ def validate_styles():
     font files exist.
     """
 
-    missing_fonts = (
-        validate_handwriting_styles()
-    )
+    missing_fonts = validate_handwriting_styles()
 
     return {
-        "valid": (
-            len(missing_fonts) == 0
-        ),
+        "valid": len(missing_fonts) == 0,
         "missing_fonts": missing_fonts,
     }
 
@@ -288,7 +218,6 @@ def create_glyph_variation(
     font_variants = []
 
     if request.style_id:
-
         style = get_handwriting_style(
             request.style_id,
         )
@@ -313,9 +242,7 @@ def create_glyph_variation(
         document_id=request.document_id,
         page_number=request.page_number,
         font_variants=font_variants,
-        enable_variation=(
-            request.enable_variation
-        ),
+        enable_variation=request.enable_variation,
     )
 
 
@@ -337,8 +264,8 @@ def render_handwriting(
     This endpoint validates the rendering configuration
     and returns deterministic rendering metadata.
 
-    Later this metadata can be consumed by the backend
-    PDF renderer without changing the frontend API.
+    The backend PDF renderer can consume this metadata
+    later without changing the frontend API.
     """
 
     style = validate_style(
@@ -381,7 +308,8 @@ def get_handwriting_preview(
     """
     Return preview information for a document.
 
-    Actual canvas preview is generated in the browser.
+    Actual handwriting preview rendering is currently
+    performed in the browser using the canvas renderer.
     """
 
     if not document_id:
@@ -410,7 +338,9 @@ def generate_handwriting_pdf(
     Placeholder for the final handwriting PDF renderer.
 
     The dedicated PDF renderer will be implemented
-    separately so that:
+    separately.
+
+    Architecture:
 
         Handwriting Renderer
                  |
@@ -419,7 +349,7 @@ def generate_handwriting_pdf(
        Canvas          PDF
        Preview        Renderer
 
-    This keeps preview rendering independent from
+    Preview rendering remains independent from
     final PDF generation.
     """
 
