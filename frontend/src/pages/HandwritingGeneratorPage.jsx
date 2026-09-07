@@ -13,9 +13,52 @@ import {
 } from "../services/handwritingDocumentService";
 
 
+/*
+ * =========================================================
+ * PHASE 7 — HANDWRITING GENERATOR
+ * =========================================================
+ *
+ * STEP 24
+ *
+ * The Phase 6 document remains structured.
+ *
+ * We do NOT convert it into plain text.
+ *
+ * Pipeline:
+ *
+ * TipTap JSON
+ *      ↓
+ * Document Service
+ *      ↓
+ * Structured Handwriting Document
+ *      ↓
+ * Handwriting Preview
+ *      ↓
+ * Handwriting Renderer
+ *
+ * Supported structures:
+ *
+ * - Heading
+ * - Paragraph
+ * - Bullet list
+ * - Ordered list
+ * - Table
+ * - Image
+ * - Manual page break
+ * =========================================================
+ */
+
+
 function HandwritingGeneratorPage() {
   const location = useLocation();
   const navigate = useNavigate();
+
+
+  /*
+   * =========================================================
+   * SOURCE DOCUMENT
+   * =========================================================
+   */
 
   const document =
     location.state?.document || null;
@@ -64,33 +107,38 @@ function HandwritingGeneratorPage() {
 
   /*
    * =========================================================
-   * CONVERT DOCUMENT
+   * CONVERT PHASE 6 DOCUMENT
    * =========================================================
+   *
+   * The conversion service already understands the
+   * TipTap document structure.
+   *
+   * IMPORTANT:
+   *
+   * Do not use editor.getText().
+   *
+   * The structured representation is what Phase 7 needs.
    */
 
-  const handwritingDocument = useMemo(() => {
+  const handwritingDocument =
+    useMemo(() => {
+      if (!document) {
+        return null;
+      }
 
-    if (!document) {
-      return null;
-    }
+      try {
+        return convertDocumentToHandwritingDocument(
+          document
+        );
+      } catch (error) {
+        console.error(
+          "Failed to prepare handwriting document:",
+          error
+        );
 
-    try {
-
-      return convertDocumentToHandwritingDocument(
-        document
-      );
-
-    } catch (error) {
-
-      console.error(
-        "Failed to prepare handwriting document:",
-        error
-      );
-
-      return null;
-    }
-
-  }, [document]);
+        return null;
+      }
+    }, [document]);
 
 
   /*
@@ -103,7 +151,6 @@ function HandwritingGeneratorPage() {
     !document ||
     !handwritingDocument
   ) {
-
     return (
       <div className="min-h-screen bg-slate-100">
 
@@ -118,7 +165,6 @@ function HandwritingGeneratorPage() {
             px-6
           "
         >
-
           <div className="text-center">
 
             <h1 className="text-2xl font-bold text-slate-900">
@@ -151,7 +197,6 @@ function HandwritingGeneratorPage() {
             </button>
 
           </div>
-
         </main>
 
         <Footer />
@@ -184,7 +229,6 @@ function HandwritingGeneratorPage() {
           bg-white
         "
       >
-
         <div
           className="
             mx-auto
@@ -200,11 +244,10 @@ function HandwritingGeneratorPage() {
 
           <p className="mt-1 text-sm text-slate-600">
             Convert your saved document into handwritten
-            content.
+            content while preserving its formatting.
           </p>
 
         </div>
-
       </header>
 
 
@@ -256,13 +299,19 @@ function HandwritingGeneratorPage() {
 
                 <HandwritingSettings
                   selectedFont={selectedFont}
-                  setSelectedFont={setSelectedFont}
+                  setSelectedFont={
+                    setSelectedFont
+                  }
 
                   selectedPaper={selectedPaper}
-                  setSelectedPaper={setSelectedPaper}
+                  setSelectedPaper={
+                    setSelectedPaper
+                  }
 
                   selectedInk={selectedInk}
-                  setSelectedInk={setSelectedInk}
+                  setSelectedInk={
+                    setSelectedInk
+                  }
                 />
 
               </div>
@@ -277,18 +326,28 @@ function HandwritingGeneratorPage() {
               setFontSize={setFontSize}
 
               letterSpacing={letterSpacing}
-              setLetterSpacing={setLetterSpacing}
+              setLetterSpacing={
+                setLetterSpacing
+              }
 
               lineSpacing={lineSpacing}
-              setLineSpacing={setLineSpacing}
+              setLineSpacing={
+                setLineSpacing
+              }
 
               wordSpacing={wordSpacing}
-              setWordSpacing={setWordSpacing}
+              setWordSpacing={
+                setWordSpacing
+              }
 
               inkOpacity={inkOpacity}
-              setInkOpacity={setInkOpacity}
+              setInkOpacity={
+                setInkOpacity
+              }
 
-              naturalVariation={naturalVariation}
+              naturalVariation={
+                naturalVariation
+              }
               setNaturalVariation={
                 setNaturalVariation
               }
@@ -347,6 +406,13 @@ function HandwritingGeneratorPage() {
                   {handwritingDocument.blocks.length}
                 </div>
 
+                <div>
+                  Structured formatting:{" "}
+                  <span className="font-medium text-emerald-600">
+                    Preserved
+                  </span>
+                </div>
+
               </div>
 
             </div>
@@ -378,8 +444,8 @@ function HandwritingGeneratorPage() {
                 </h2>
 
                 <p className="text-sm text-slate-500">
-                  Adjust the controls to customize your
-                  handwriting.
+                  Headings, lists, tables, page breaks,
+                  and paragraphs are preserved.
                 </p>
 
               </div>
@@ -409,7 +475,12 @@ function HandwritingGeneratorPage() {
             <HandwritingPreview
               document={handwritingDocument}
 
-              documentId={document?.id || document?._id || "inkai-preview-document"}
+              documentId={
+                document?.id ||
+                document?._id ||
+                handwritingDocument.documentId ||
+                "inkai-preview-document"
+              }
 
               font={selectedFont}
 

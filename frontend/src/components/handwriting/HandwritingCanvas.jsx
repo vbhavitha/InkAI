@@ -1,4 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, {
+  useEffect,
+  useState,
+} from "react";
 
 import {
   ZoomIn,
@@ -10,6 +13,7 @@ import {
   getFontUrl,
   getStyleFontFamily,
 } from "../../utils/handwritingUtils";
+
 
 /*
  * =========================================================
@@ -26,6 +30,7 @@ const DEFAULT_MARGIN = {
   bottom: 70,
   left: 70,
 };
+
 
 /*
  * =========================================================
@@ -76,6 +81,7 @@ const INK_STYLES = {
   },
 };
 
+
 function getInkConfiguration(inkStyle) {
   return (
     INK_STYLES[inkStyle] ||
@@ -83,15 +89,10 @@ function getInkConfiguration(inkStyle) {
   );
 }
 
+
 /*
  * =========================================================
- * INK VARIATION HELPERS
- * =========================================================
- *
- * Step 18
- *
- * These functions intentionally use deterministic values.
- * Preview and re-render therefore remain stable.
+ * DETERMINISTIC INK VALUE
  * =========================================================
  */
 
@@ -106,14 +107,17 @@ function deterministicInkValue(
 
   let hash = 2166136261;
 
-  for (let index = 0; index < input.length; index++) {
+  for (
+    let index = 0;
+    index < input.length;
+    index++
+  ) {
     hash ^= input.charCodeAt(index);
 
-    hash =
-      Math.imul(
-        hash,
-        16777619
-      );
+    hash = Math.imul(
+      hash,
+      16777619
+    );
   }
 
   hash >>>= 0;
@@ -129,9 +133,6 @@ function getInkVariation(
   inkStyle,
   naturalVariation
 ) {
-  /*
-   * Variation disabled
-   */
   if (!naturalVariation) {
     return {
       opacityMultiplier: 1,
@@ -139,12 +140,6 @@ function getInkVariation(
       textureStrength: 0,
     };
   }
-
-  /*
-   * =======================================================
-   * PENCIL
-   * =======================================================
-   */
 
   if (inkStyle === "pencil") {
     const opacityRandom =
@@ -172,34 +167,19 @@ function getInkVariation(
       );
 
     return {
-      /*
-       * 88% – 98%
-       */
       opacityMultiplier:
         0.88 +
         opacityRandom * 0.10,
 
-      /*
-       * 82% – 94%
-       */
       darknessMultiplier:
         0.82 +
         darknessRandom * 0.12,
 
-      /*
-       * 2% – 10%
-       */
       textureStrength:
         0.02 +
         textureRandom * 0.08,
     };
   }
-
-  /*
-   * =======================================================
-   * NORMAL INK
-   * =======================================================
-   */
 
   const opacityRandom =
     deterministicInkValue(
@@ -226,27 +206,19 @@ function getInkVariation(
     );
 
   return {
-    /*
-     * 94% – 104%
-     */
     opacityMultiplier:
       0.94 +
       opacityRandom * 0.10,
 
-    /*
-     * 94% – 104%
-     */
     darknessMultiplier:
       0.94 +
       darknessRandom * 0.10,
 
-    /*
-     * 0% – 8%
-     */
     textureStrength:
       textureRandom * 0.08,
   };
 }
+
 
 function adjustInkColor(
   color,
@@ -255,10 +227,6 @@ function adjustInkColor(
   if (!color) {
     return color;
   }
-
-  /*
-   * Convert #RRGGBB into RGB.
-   */
 
   const normalized =
     color.replace("#", "");
@@ -284,13 +252,6 @@ function adjustInkColor(
       normalized.slice(4, 6),
       16
     );
-
-  /*
-   * Darkness multiplier:
-   *
-   * < 1 = lighter
-   * > 1 = darker
-   */
 
   const adjustedRed =
     Math.max(
@@ -342,13 +303,17 @@ function adjustInkColor(
   );
 }
 
+
 /*
  * =========================================================
  * PAPER BACKGROUND
  * =========================================================
  */
 
-function drawPaperBackground(context, paperStyle) {
+function drawPaperBackground(
+  context,
+  paperStyle
+) {
   context.save();
 
   if (paperStyle === "notebook") {
@@ -363,18 +328,6 @@ function drawPaperBackground(context, paperStyle) {
     A4_WIDTH,
     A4_HEIGHT
   );
-
-  context.fillRect(
-    0,
-    0,
-    A4_WIDTH,
-    A4_HEIGHT
-  );
-
-  if (paperStyle === "plain") {
-    context.restore();
-    return;
-  }
 
   if (
     paperStyle === "ruled" ||
@@ -393,13 +346,17 @@ function drawPaperBackground(context, paperStyle) {
   context.restore();
 }
 
+
 /*
  * =========================================================
  * RULED / NOTEBOOK PAPER
  * =========================================================
  */
 
-function drawRuledPaper(context, paperStyle) {
+function drawRuledPaper(
+  context,
+  paperStyle
+) {
   const lineSpacing = 36;
   const startY = 105;
 
@@ -435,7 +392,10 @@ function drawRuledPaper(context, paperStyle) {
 
     context.beginPath();
 
-    context.moveTo(105, 45);
+    context.moveTo(
+      105,
+      45
+    );
 
     context.lineTo(
       105,
@@ -449,6 +409,7 @@ function drawRuledPaper(context, paperStyle) {
 
   context.restore();
 }
+
 
 /*
  * =========================================================
@@ -503,34 +464,10 @@ function drawGraphPaper(context) {
   context.restore();
 }
 
-/*
- * =========================================================
- * PAPER TEXTURE
- * =========================================================
- */
 
 /*
  * =========================================================
- * REALISTIC PAPER TEXTURE
- * =========================================================
- *
- * Step 20
- *
- * The texture is intentionally extremely subtle.
- *
- * Layers:
- *
- * 1. Micro grain
- * 2. Very faint paper fibers
- * 3. Slight tonal variation
- *
- * The goal is:
- *
- *     real paper
- *
- * NOT:
- *
- *     Photoshop/noise filter
+ * PAPER TEXTURE
  * =========================================================
  */
 
@@ -538,16 +475,19 @@ function drawPaperTexture(context) {
   context.save();
 
   /*
-   * ---------------------------------------------------------
-   * 1. VERY SUBTLE MICRO GRAIN
-   * ---------------------------------------------------------
-   *
-   * Small low-opacity points create microscopic
-   * paper irregularity.
+   * Micro grain
    */
 
-  for (let y = 0; y < A4_HEIGHT; y += 6) {
-    for (let x = 0; x < A4_WIDTH; x += 6) {
+  for (
+    let y = 0;
+    y < A4_HEIGHT;
+    y += 6
+  ) {
+    for (
+      let x = 0;
+      x < A4_WIDTH;
+      x += 6
+    ) {
       const value =
         Math.sin(
           x * 12.9898 +
@@ -555,7 +495,8 @@ function drawPaperTexture(context) {
         ) * 43758.5453;
 
       const normalized =
-        value - Math.floor(value);
+        value -
+        Math.floor(value);
 
       if (normalized > 0.68) {
         context.fillStyle =
@@ -574,26 +515,28 @@ function drawPaperTexture(context) {
     }
   }
 
+
   /*
-   * ---------------------------------------------------------
-   * 2. VERY FAINT PAPER FIBERS
-   * ---------------------------------------------------------
-   *
-   * Fibers are longer than grain and should be
-   * barely visible.
+   * Paper fibers
    */
 
-  for (let index = 0; index < 180; index++) {
+  for (
+    let index = 0;
+    index < 180;
+    index++
+  ) {
     const seed =
       Math.sin(
         index * 91.731
       ) * 43758.5453;
 
     const normalized =
-      seed - Math.floor(seed);
+      seed -
+      Math.floor(seed);
 
     const x =
-      normalized * A4_WIDTH;
+      normalized *
+      A4_WIDTH;
 
     const secondSeed =
       Math.sin(
@@ -605,7 +548,8 @@ function drawPaperTexture(context) {
       Math.floor(secondSeed);
 
     const y =
-      secondNormalized * A4_HEIGHT;
+      secondNormalized *
+      A4_HEIGHT;
 
     const length =
       8 +
@@ -648,12 +592,9 @@ function drawPaperTexture(context) {
     context.restore();
   }
 
+
   /*
-   * ---------------------------------------------------------
-   * 3. EXTREMELY SUBTLE PAPER TONALITY
-   * ---------------------------------------------------------
-   *
-   * Adds warmth without making the paper visibly beige.
+   * Paper tonality
    */
 
   const paperGradient =
@@ -692,30 +633,10 @@ function drawPaperTexture(context) {
   context.restore();
 }
 
+
 /*
  * =========================================================
- * DETERMINISTIC VARIATION
- * =========================================================
- *
- * Generates repeatable pseudo-random values.
- *
- * IMPORTANT:
- * The variation is intentionally subtle.
- *
- * Rotation:
- * -2° to +2°
- *
- * Scale:
- * 97% to 103%
- *
- * Vertical offset:
- * -1px to +1px
- *
- * Horizontal offset:
- * approximately -0.3px to +0.3px
- *
- * This keeps the handwriting natural instead
- * of making every character look randomly distorted.
+ * CHARACTER VARIATION
  * =========================================================
  */
 
@@ -737,9 +658,16 @@ function deterministicVariation(
   ) * amount;
 }
 
+
 /*
  * =========================================================
- * MEASURE TEXT WITH SPACING
+ * ACTUAL GLYPH WIDTH
+ * =========================================================
+ *
+ * STEP 22
+ *
+ * Width is measured using Canvas measureText()
+ * with the actual loaded handwriting font.
  * =========================================================
  */
 
@@ -759,7 +687,9 @@ function measureTextWithSpacing(
         character
       ).width;
 
-    if (character === " ") {
+    if (
+      character === " "
+    ) {
       width += wordSpacing;
     } else {
       width += letterSpacing;
@@ -769,21 +699,6 @@ function measureTextWithSpacing(
   return width;
 }
 
-/*
- * =========================================================
- * WIDTH-AWARE TEXT WRAPPING
- * =========================================================
- *
- * STEP 22
- *
- * Wrap text using actual rendered glyph widths.
- *
- * Important:
- * We measure the text using the currently loaded
- * handwriting font rather than estimating width from
- * character count.
- * =========================================================
- */
 
 function wrapTextByRenderedWidth(
   context,
@@ -800,40 +715,34 @@ function wrapTextByRenderedWidth(
     return [""];
   }
 
-  /*
-   * Make absolutely sure measurement uses the
-   * selected handwriting font.
-   */
-
   context.font =
     `${fontSize}px "${fontFamily}"`;
 
-  /*
-   * -------------------------------------------------------
-   * Measure a string using actual Canvas glyph metrics.
-   * -------------------------------------------------------
-   */
-
-  const getWidth = (value) => {
-    return measureTextWithSpacing(
+  const getWidth = (
+    value,
+    spacingForWords = wordSpacing
+  ) =>
+    measureTextWithSpacing(
       context,
       value,
       letterSpacing,
-      wordSpacing
+      spacingForWords
     );
-  };
 
   const lines = [];
 
   let currentLine = "";
 
   /*
-   * Keep normal spaces between words.
+   * Preserve normal word boundaries.
    */
 
-  const words = text.split(/\s+/);
+  const words =
+    text.split(/\s+/);
 
-  for (const word of words) {
+  for (
+    const word of words
+  ) {
     if (!word) {
       continue;
     }
@@ -843,48 +752,47 @@ function wrapTextByRenderedWidth(
         ? `${currentLine} ${word}`
         : word;
 
-    /*
-     * Entire candidate fits.
-     */
+    if (
+      getWidth(candidate) <=
+      maxWidth
+    ) {
+      currentLine =
+        candidate;
 
-    if (getWidth(candidate) <= maxWidth) {
-      currentLine = candidate;
       continue;
     }
 
-    /*
-     * Push the current line if it contains text.
-     */
-
     if (currentLine) {
-      lines.push(currentLine);
+      lines.push(
+        currentLine
+      );
+
       currentLine = "";
     }
 
     /*
-     * -----------------------------------------------------
-     * LONG WORD HANDLING
-     * -----------------------------------------------------
+     * Long word.
      *
-     * A single word may itself be wider than the page.
-     *
-     * Break it using actual glyph widths.
+     * Break using actual glyph widths.
      */
 
-    if (getWidth(word) <= maxWidth) {
+    if (
+      getWidth(word, 0) <=
+      maxWidth
+    ) {
       currentLine = word;
+
       continue;
     }
 
     let partialWord = "";
 
-    for (const character of word) {
+    for (
+      const character of word
+    ) {
       const candidateCharacter =
-        partialWord + character;
-
-      /*
-       * No word spacing inside a word.
-       */
+        partialWord +
+        character;
 
       const characterWidth =
         measureTextWithSpacing(
@@ -895,24 +803,31 @@ function wrapTextByRenderedWidth(
         );
 
       if (
-        characterWidth <= maxWidth
+        characterWidth <=
+        maxWidth
       ) {
         partialWord =
           candidateCharacter;
       } else {
         if (partialWord) {
-          lines.push(partialWord);
+          lines.push(
+            partialWord
+          );
         }
 
-        partialWord = character;
+        partialWord =
+          character;
       }
     }
 
-    currentLine = partialWord;
+    currentLine =
+      partialWord;
   }
 
   if (currentLine) {
-    lines.push(currentLine);
+    lines.push(
+      currentLine
+    );
   }
 
   return lines.length
@@ -920,19 +835,10 @@ function wrapTextByRenderedWidth(
     : [""];
 }
 
+
 /*
  * =========================================================
- * DRAW INDIVIDUAL CHARACTERS
- * =========================================================
- *
- * STEP 11 + STEP 12
- *
- * Each character receives very small
- * independent transformations.
- *
- * The goal is NOT obvious randomness.
- *
- * The goal is subtle human-like inconsistency.
+ * DRAW TEXT WITH NATURAL VARIATION
  * =========================================================
  */
 
@@ -949,7 +855,8 @@ function drawTextWithVariation(
     baseFontSize = 22,
     fontFamily,
     inkVariations = [],
-    documentId = "inkai-preview-document",
+    documentId =
+      "inkai-preview-document",
     pageNumber = 1,
     inkStyle = "blue",
   } = {}
@@ -968,27 +875,24 @@ function drawTextWithVariation(
       startIndex + index;
 
     /*
-     * =======================================================
-     * SPACE
-     * =======================================================
+     * Space
      */
 
-    if (character === " ") {
+    if (
+      character === " "
+    ) {
       context.font =
         `${baseFontSize}px "${fontFamily}"`;
 
       currentX +=
-        context.measureText(" ").width +
+        context.measureText(
+          " "
+        ).width +
         wordSpacing;
 
       continue;
     }
 
-    /*
-     * =======================================================
-     * DEFAULT VALUES
-     * =======================================================
-     */
 
     let rotation = 0;
     let sizeMultiplier = 1;
@@ -996,35 +900,13 @@ function drawTextWithVariation(
     let horizontalOffset = 0;
     let spacingVariation = 0;
 
-    /*
-     * =======================================================
-     * NATURAL VARIATION
-     * =======================================================
-     *
-     * STEP 12
-     *
-     * Keep every value deliberately small.
-     * =======================================================
-     */
 
     if (naturalVariation) {
-      /*
-       * Rotation:
-       *
-       * -2° to +2°
-       */
-
       rotation =
         deterministicVariation(
           characterIndex * 3 + 1,
           4
         );
-
-      /*
-       * Scale:
-       *
-       * 97% to 103%
-       */
 
       sizeMultiplier =
         1 +
@@ -1033,39 +915,17 @@ function drawTextWithVariation(
           0.06
         );
 
-      /*
-       * Vertical offset:
-       *
-       * -1px to +1px
-       */
-
       verticalOffset =
         deterministicVariation(
           characterIndex * 7 + 11,
           2
         );
 
-      /*
-       * Horizontal offset:
-       *
-       * approximately
-       * -0.3px to +0.3px
-       */
-
       horizontalOffset =
         deterministicVariation(
           characterIndex * 11 + 17,
           0.6
         );
-
-      /*
-       * Letter spacing variation:
-       *
-       * approximately
-       * -0.2px to +0.2px
-       *
-       * This is intentionally tiny.
-       */
 
       spacingVariation =
         deterministicVariation(
@@ -1074,29 +934,15 @@ function drawTextWithVariation(
         );
     }
 
-    /*
-     * =======================================================
-     * CHARACTER SIZE
-     * =======================================================
-     */
 
     const characterSize =
       baseFontSize *
       sizeMultiplier;
 
-    /*
-     * =======================================================
-     * INK VARIATION
-     * =======================================================
-     *
-     * Only subtle color changes are used.
-     */
 
     /*
-    * =======================================================
-    * STEP 18 — INK VARIATION
-    * =======================================================
-    */
+     * Ink variation
+     */
 
     const baseInkColor =
       context.__inkaiBaseInkColor;
@@ -1110,12 +956,6 @@ function drawTextWithVariation(
         naturalVariation
       );
 
-    /*
-    * Existing color variation.
-    *
-    * Keep this because it gives the ink
-    * very subtle color differences.
-    */
 
     let characterInk =
       baseInkColor;
@@ -1144,10 +984,6 @@ function drawTextWithVariation(
         ];
     }
 
-    /*
-    * Step 18:
-    * Slight stroke darkness variation.
-    */
 
     characterInk =
       adjustInkColor(
@@ -1155,27 +991,24 @@ function drawTextWithVariation(
         inkVariation.darknessMultiplier
       );
 
-    /*
-     * =======================================================
-     * DRAW CHARACTER
-     * =======================================================
-     */
-
-    /*
-    * =======================================================
-    * STEP 18 — PER CHARACTER OPACITY
-    * =======================================================
-    */
 
     const characterOpacity =
       Math.max(
         0,
         Math.min(
           1,
-          (context.__inkaiBaseOpacity || 1) *
+          (
+            context.__inkaiBaseOpacity ||
+            1
+          ) *
           inkVariation.opacityMultiplier
         )
       );
+
+
+    /*
+     * Draw character
+     */
 
     context.save();
 
@@ -1197,8 +1030,8 @@ function drawTextWithVariation(
 
     context.rotate(
       rotation *
-        Math.PI /
-        180
+      Math.PI /
+      180
     );
 
     context.fillText(
@@ -1207,20 +1040,15 @@ function drawTextWithVariation(
       0
     );
 
+
     /*
-    * =======================================================
-    * STEP 18 — SUBTLE INK TEXTURE
-    * =======================================================
-    *
-    * A very faint secondary pass makes the stroke
-    * feel less perfectly digital.
-    *
-    * The effect is intentionally tiny.
-    */
+     * Subtle texture
+     */
 
     if (
       naturalVariation &&
-      inkVariation.textureStrength > 0
+      inkVariation.textureStrength >
+        0
     ) {
       const textureAlpha =
         characterOpacity *
@@ -1244,10 +1072,9 @@ function drawTextWithVariation(
 
     context.restore();
 
+
     /*
-     * =======================================================
-     * ADVANCE CHARACTER POSITION
-     * =======================================================
+     * Advance actual glyph width.
      */
 
     context.font =
@@ -1267,6 +1094,58 @@ function drawTextWithVariation(
   return currentX;
 }
 
+
+/*
+ * =========================================================
+ * INLINE / BLOCK HELPERS
+ * =========================================================
+ */
+
+function getBlockText(block) {
+  if (!block) {
+    return "";
+  }
+
+  if (
+    typeof block.text ===
+    "string"
+  ) {
+    return block.text;
+  }
+
+  return "";
+}
+
+
+function getListItemText(item) {
+  if (!item) {
+    return "";
+  }
+
+  if (
+    typeof item.text ===
+    "string"
+  ) {
+    return item.text;
+  }
+
+  for (
+    const child of item.content ||
+    []
+  ) {
+    if (
+      child &&
+      typeof child.text ===
+      "string"
+    ) {
+      return child.text;
+    }
+  }
+
+  return "";
+}
+
+
 /*
  * =========================================================
  * COMPONENT
@@ -1274,9 +1153,19 @@ function drawTextWithVariation(
  */
 
 function HandwritingCanvas({
+  document:
+    handwritingDocument = null,
+
+  /*
+   * Backwards compatibility.
+   *
+   * Older callers may still provide text.
+   */
+
   text = "",
 
-  documentId = "inkai-preview-document",
+  documentId =
+    "inkai-preview-document",
 
   style,
 
@@ -1307,6 +1196,42 @@ function HandwritingCanvas({
   const margins =
     DEFAULT_MARGIN;
 
+
+  /*
+   * =========================================================
+   * NORMALIZE DOCUMENT
+   * =========================================================
+   *
+   * Step 24:
+   *
+   * Prefer the structured document.
+   *
+   * Only use plain text as a compatibility fallback.
+   */
+
+  const normalizedDocument =
+    handwritingDocument &&
+    Array.isArray(
+      handwritingDocument.blocks
+    )
+      ? handwritingDocument
+      : {
+          documentId,
+          title:
+            "Untitled Document",
+
+          blocks: [
+            {
+              type:
+                "paragraph",
+
+              text:
+                text || "",
+            },
+          ],
+        };
+
+
   /*
    * =========================================================
    * GENERATE PAGES
@@ -1326,13 +1251,6 @@ function HandwritingCanvas({
       setPages([]);
       return;
     }
-
-    /*
-     * Use the primary font.
-     *
-     * Natural variation is created through
-     * subtle character-level transformations.
-     */
 
     const selectedFontPath =
       fonts[0];
@@ -1355,6 +1273,7 @@ function HandwritingCanvas({
 
     let cancelled = false;
 
+
     async function prepareFont() {
       try {
         await fontFace.load();
@@ -1375,8 +1294,13 @@ function HandwritingCanvas({
           "Failed to load handwriting font:",
           error
         );
+
+        if (!cancelled) {
+          setPages([]);
+        }
       }
     }
+
 
     /*
      * =======================================================
@@ -1384,7 +1308,9 @@ function HandwritingCanvas({
      * =======================================================
      */
 
-    function createPages(loadedFontFamily) {
+    function createPages(
+      loadedFontFamily
+    ) {
       const pageCanvases = [];
 
       const size =
@@ -1392,43 +1318,34 @@ function HandwritingCanvas({
         style.default_size ||
         22;
 
-      const lineHeight =
-        size * lineSpacing;
 
       /*
-      * =====================================================
-      * MEASUREMENT CANVAS
-      * =====================================================
-      *
-      * IMPORTANT:
-      * The handwriting font has already been loaded before
-      * this function is called.
-      *
-      * Canvas measureText() therefore gives us the actual
-      * rendered width of the selected handwriting font.
-      */
+       * Measurement canvas
+       *
+       * The actual selected handwriting font is
+       * already loaded at this point.
+       */
 
       const measurementCanvas =
-        document.createElement("canvas");
+        document.createElement(
+          "canvas"
+        );
 
-      measurementCanvas.width = A4_WIDTH;
-      measurementCanvas.height = A4_HEIGHT;
+      measurementCanvas.width =
+        A4_WIDTH;
+
+      measurementCanvas.height =
+        A4_HEIGHT;
 
       const measurementContext =
-        measurementCanvas.getContext("2d");
+        measurementCanvas.getContext(
+          "2d"
+        );
 
       if (!measurementContext) {
         return;
       }
 
-      measurementContext.font =
-        `${size}px "${loadedFontFamily}"`;
-
-      /*
-      * =====================================================
-      * AVAILABLE TEXT WIDTH
-      * =====================================================
-      */
 
       const availableWidth =
         A4_WIDTH -
@@ -1436,85 +1353,41 @@ function HandwritingCanvas({
         margins.right -
         6;
 
-      /*
-      * =====================================================
-      * STEP 22
-      * WIDTH-AWARE TEXT WRAPPING
-      * =====================================================
-      *
-      * Uses the actual rendered width of each glyph.
-      *
-      * We deliberately use the same font that will be used
-      * for final rendering.
-      */
-
-      const lines = [];
-
-      const paragraphs =
-        String(text ?? "").split("\n");
-
-      paragraphs.forEach((paragraph) => {
-        /*
-        * Preserve completely blank lines.
-        */
-        if (!paragraph.trim()) {
-          lines.push("");
-          return;
-        }
-
-        const wrappedLines =
-          wrapTextByRenderedWidth(
-            measurementContext,
-            paragraph,
-            availableWidth,
-            {
-              letterSpacing,
-              wordSpacing,
-              fontSize: size,
-              fontFamily: loadedFontFamily,
-            }
-          );
-
-        lines.push(...wrappedLines);
-      });
 
       /*
-      * =====================================================
-      * EMPTY DOCUMENT
-      * =====================================================
-      */
-
-      if (lines.length === 0) {
-        lines.push("");
-      }
-
-      /*
-      * =====================================================
-      * STEP 23
-      * PAGE CREATION
-      * =====================================================
-      */
+       * =====================================================
+       * PAGE STATE
+       * =====================================================
+       */
 
       let currentPage =
-        document.createElement("canvas");
+        document.createElement(
+          "canvas"
+        );
 
-      currentPage.width = A4_WIDTH;
-      currentPage.height = A4_HEIGHT;
+      currentPage.width =
+        A4_WIDTH;
+
+      currentPage.height =
+        A4_HEIGHT;
 
       let pageContext =
-        currentPage.getContext("2d");
+        currentPage.getContext(
+          "2d"
+        );
 
       if (!pageContext) {
         return;
       }
 
-      /*
-      * Page number starts at 1.
-      *
-      * This is also used by deterministic ink variation.
-      */
 
       let pageNumber = 1;
+
+      let characterIndex = 0;
+
+      let y =
+        margins.top;
+
 
       setupPage(
         pageContext,
@@ -1522,64 +1395,47 @@ function HandwritingCanvas({
         size
       );
 
-      let y = margins.top;
 
       /*
-      * Global character index.
-      *
-      * Keeping this continuous prevents the same character
-      * from receiving the same variation merely because it
-      * moved to another line.
-      */
+       * =====================================================
+       * PAGE HELPERS
+       * =====================================================
+       */
 
-      let characterIndex = 0;
+      const finishCurrentPage =
+        () => {
+          pageCanvases.push(
+            currentPage
+          );
+        };
 
-      /*
-      * =====================================================
-      * DRAW / PAGINATE
-      * =====================================================
-      */
 
-      for (const line of lines) {
-        /*
-        * -----------------------------------------------------
-        * STEP 23 — AUTOMATIC PAGE BREAK
-        * -----------------------------------------------------
-        */
-
-        if (
-          y + lineHeight >
-          A4_HEIGHT - margins.bottom
-        ) {
-          /*
-          * Store completed page.
-          */
-
-          pageCanvases.push(currentPage);
-
-          /*
-          * Create next A4 page.
-          */
-
+      const startNewPage =
+        () => {
           currentPage =
-            document.createElement("canvas");
+            document.createElement(
+              "canvas"
+            );
 
-          currentPage.width = A4_WIDTH;
-          currentPage.height = A4_HEIGHT;
+          currentPage.width =
+            A4_WIDTH;
+
+          currentPage.height =
+            A4_HEIGHT;
 
           pageContext =
-            currentPage.getContext("2d");
+            currentPage.getContext(
+              "2d"
+            );
 
           if (!pageContext) {
-            break;
+            return false;
           }
 
-          /*
-          * Increment page number BEFORE rendering
-          * the new page.
-          */
-
           pageNumber += 1;
+
+          y =
+            margins.top;
 
           setupPage(
             pageContext,
@@ -1587,78 +1443,1097 @@ function HandwritingCanvas({
             size
           );
 
-          y = margins.top;
-        }
+          return true;
+        };
 
-        /*
-        * -----------------------------------------------------
-        * DRAW CURRENT LINE
-        * -----------------------------------------------------
-        */
 
-        if (line) {
-          const ink =
-            getInkConfiguration(inkStyle);
+      const ensureSpace =
+        (requiredHeight) => {
+          if (
+            y +
+              requiredHeight >
+            A4_HEIGHT -
+              margins.bottom
+          ) {
+            finishCurrentPage();
 
-          drawTextWithVariation(
-            pageContext,
-            line,
-            margins.left,
-            y,
-            {
-              letterSpacing,
-              wordSpacing,
-              naturalVariation,
-              startIndex: characterIndex,
-              baseFontSize: size,
-              fontFamily: loadedFontFamily,
-              inkVariations: ink.variations,
+            return startNewPage();
+          }
 
-              /*
-              * Step 18 deterministic ink variation.
-              */
+          return true;
+        };
 
-              documentId,
-              pageNumber,
-              inkStyle,
+
+      /*
+       * =====================================================
+       * RENDER PARAGRAPH / HEADING
+       * =====================================================
+       */
+
+      const renderTextBlock =
+        (block) => {
+          const isHeading =
+            block.type ===
+            "heading";
+
+          const level =
+            Number(
+              block.level
+            ) || 1;
+
+
+          /*
+           * Heading sizes
+           */
+
+          const headingScale = {
+            1: 1.55,
+            2: 1.35,
+            3: 1.20,
+          };
+
+          const blockFontSize =
+            isHeading
+              ? size *
+                (
+                  headingScale[
+                    level
+                  ] || 1.2
+                )
+              : (
+                  block.fontSize ||
+                  size
+                );
+
+
+          const blockLineSpacing =
+            isHeading
+              ? (
+                  block.lineSpacing ||
+                  1.25
+                )
+              : (
+                  block.lineSpacing ||
+                  lineSpacing
+                );
+
+
+          const blockLineHeight =
+            blockFontSize *
+            blockLineSpacing;
+
+
+          const blockText =
+            getBlockText(
+              block
+            );
+
+
+          /*
+           * Empty paragraph.
+           */
+
+          if (
+            !blockText
+          ) {
+            if (
+              !ensureSpace(
+                blockLineHeight
+              )
+            ) {
+              return;
+            }
+
+            y +=
+              blockLineHeight +
+              (
+                block.paragraphSpacing ||
+                0
+              );
+
+            return;
+          }
+
+
+          measurementContext.font =
+            `${blockFontSize}px "${loadedFontFamily}"`;
+
+
+          const blockIndent =
+            block.leftIndent ||
+            0;
+
+
+          const wrappedLines =
+            wrapTextByRenderedWidth(
+              measurementContext,
+              blockText,
+              Math.max(
+                50,
+                availableWidth -
+                  blockIndent
+              ),
+              {
+                letterSpacing,
+                wordSpacing,
+                fontSize:
+                  blockFontSize,
+                fontFamily:
+                  loadedFontFamily,
+              }
+            );
+
+
+          for (
+            const line of wrappedLines
+          ) {
+            if (
+              !ensureSpace(
+                blockLineHeight
+              )
+            ) {
+              return;
+            }
+
+
+            const ink =
+              getInkConfiguration(
+                inkStyle
+              );
+
+
+            /*
+             * Heading and paragraph both use
+             * the handwriting font.
+             *
+             * The size difference preserves
+             * the semantic hierarchy.
+             */
+
+            drawTextWithVariation(
+              pageContext,
+              line,
+              margins.left +
+                blockIndent,
+              y,
+              {
+                letterSpacing,
+                wordSpacing,
+                naturalVariation,
+
+                startIndex:
+                  characterIndex,
+
+                baseFontSize:
+                  blockFontSize,
+
+                fontFamily:
+                  loadedFontFamily,
+
+                inkVariations:
+                  ink.variations,
+
+                documentId,
+
+                pageNumber,
+
+                inkStyle,
+              }
+            );
+
+
+            characterIndex +=
+              line.length + 1;
+
+            y +=
+              blockLineHeight;
+          }
+
+
+          /*
+           * Paragraph / heading spacing.
+           */
+
+          y +=
+            block.paragraphSpacing ||
+            (isHeading ? 12 : 6);
+        };
+
+
+      /*
+       * =====================================================
+       * RENDER LIST
+       * =====================================================
+       */
+
+      const renderListBlock =
+        (block) => {
+          const isOrdered =
+            block.type ===
+            "orderedList";
+
+          const items =
+            block.items || [];
+
+          const listIndent =
+            block.indent ||
+            28;
+
+          const listFontSize =
+            block.fontSize ||
+            size;
+
+          const listLineHeight =
+            listFontSize *
+            (
+              block.lineSpacing ||
+              lineSpacing
+            );
+
+
+          items.forEach(
+            (item, index) => {
+              const itemText =
+                getListItemText(
+                  item
+                );
+
+              const marker =
+                isOrdered
+                  ? `${index + 1}.`
+                  : "•";
+
+
+              const combinedText =
+                `${marker} ${itemText}`;
+
+
+              measurementContext.font =
+                `${listFontSize}px "${loadedFontFamily}"`;
+
+
+              const wrappedLines =
+                wrapTextByRenderedWidth(
+                  measurementContext,
+                  combinedText,
+                  Math.max(
+                    50,
+                    availableWidth -
+                      listIndent
+                  ),
+                  {
+                    letterSpacing,
+                    wordSpacing,
+                    fontSize:
+                      listFontSize,
+                    fontFamily:
+                      loadedFontFamily,
+                  }
+                );
+
+
+              wrappedLines.forEach(
+                (line) => {
+                  if (
+                    !ensureSpace(
+                      listLineHeight
+                    )
+                  ) {
+                    return;
+                  }
+
+
+                  const ink =
+                    getInkConfiguration(
+                      inkStyle
+                    );
+
+
+                  drawTextWithVariation(
+                    pageContext,
+                    line,
+                    margins.left +
+                      listIndent,
+                    y,
+                    {
+                      letterSpacing,
+                      wordSpacing,
+                      naturalVariation,
+
+                      startIndex:
+                        characterIndex,
+
+                      baseFontSize:
+                        listFontSize,
+
+                      fontFamily:
+                        loadedFontFamily,
+
+                      inkVariations:
+                        ink.variations,
+
+                      documentId,
+
+                      pageNumber,
+
+                      inkStyle,
+                    }
+                  );
+
+
+                  characterIndex +=
+                    line.length + 1;
+
+                  y +=
+                    listLineHeight;
+                }
+              );
+
+
+              y +=
+                block.paragraphSpacing ||
+                4;
             }
           );
+
+          y += 4;
+        };
+
+
+      /*
+       * =====================================================
+       * TABLE HELPERS
+       * =====================================================
+       */
+
+      const getCellText =
+        (cell) => {
+          if (!cell) {
+            return "";
+          }
+
+          if (
+            typeof cell.text ===
+            "string"
+          ) {
+            return cell.text;
+          }
+
+          return "";
+        };
+
+
+      const renderTableBlock =
+        (block) => {
+          const rows =
+            block.rows || [];
+
+          if (!rows.length) {
+            return;
+          }
+
+
+          const cellPadding =
+            block.cellPadding ||
+            8;
+
+          const tableFontSize =
+            block.fontSize ||
+            size;
+
+          const tableLineHeight =
+            tableFontSize *
+            1.35;
+
+
+          /*
+           * Determine column count.
+           */
+
+          const columnCount =
+            rows.reduce(
+              (
+                maximum,
+                row
+              ) =>
+                Math.max(
+                  maximum,
+                  (
+                    row.cells ||
+                    []
+                  ).length
+                ),
+              0
+            );
+
+
+          if (
+            columnCount === 0
+          ) {
+            return;
+          }
+
+
+          /*
+           * Measure the widest content
+           * in each column.
+           */
+
+          const columnWidths =
+            new Array(
+              columnCount
+            ).fill(0);
+
+
+          rows.forEach(
+            (row) => {
+              (
+                row.cells ||
+                []
+              ).forEach(
+                (
+                  cell,
+                  columnIndex
+                ) => {
+                  const cellText =
+                    getCellText(
+                      cell
+                    );
+
+                  measurementContext.font =
+                    `${tableFontSize}px "${loadedFontFamily}"`;
+
+                  const measuredWidth =
+                    measureTextWithSpacing(
+                      measurementContext,
+                      cellText,
+                      letterSpacing,
+                      wordSpacing
+                    );
+
+                  columnWidths[
+                    columnIndex
+                  ] =
+                    Math.max(
+                      columnWidths[
+                        columnIndex
+                      ],
+                      measuredWidth +
+                        cellPadding * 2
+                    );
+                }
+              );
+            }
+          );
+
+
+          /*
+           * Fit table into available width.
+           */
+
+          const totalWidth =
+            columnWidths.reduce(
+              (
+                total,
+                width
+              ) =>
+                total + width,
+              0
+            );
+
+
+          const tableMaxWidth =
+            availableWidth;
+
+
+          if (
+            totalWidth >
+            tableMaxWidth
+          ) {
+            const scale =
+              tableMaxWidth /
+              totalWidth;
+
+            for (
+              let index = 0;
+              index <
+              columnWidths.length;
+              index++
+            ) {
+              columnWidths[
+                index
+              ] *= scale;
+            }
+          }
+
+
+          const tableWidth =
+            columnWidths.reduce(
+              (
+                total,
+                width
+              ) =>
+                total + width,
+              0
+            );
+
+
+          /*
+           * Render each row.
+           */
+
+          rows.forEach(
+            (row) => {
+              const cells =
+                row.cells || [];
+
+
+              let rowHeight =
+                tableLineHeight +
+                cellPadding * 2;
+
+
+              if (
+                !ensureSpace(
+                  rowHeight
+                )
+              ) {
+                return;
+              }
+
+
+              /*
+               * Calculate row height from
+               * wrapped cell content.
+               */
+
+              const wrappedCells =
+                cells.map(
+                  (
+                    cell,
+                    columnIndex
+                  ) => {
+                    const cellText =
+                      getCellText(
+                        cell
+                      );
+
+                    const cellWidth =
+                      Math.max(
+                        30,
+                        (
+                          columnWidths[
+                            columnIndex
+                          ] ||
+                          80
+                        ) -
+                        cellPadding * 2
+                      );
+
+
+                    measurementContext.font =
+                      `${tableFontSize}px "${loadedFontFamily}"`;
+
+
+                    const wrapped =
+                      wrapTextByRenderedWidth(
+                        measurementContext,
+                        cellText,
+                        cellWidth,
+                        {
+                          letterSpacing,
+                          wordSpacing,
+                          fontSize:
+                            tableFontSize,
+                          fontFamily:
+                            loadedFontFamily,
+                        }
+                      );
+
+
+                    return {
+                      cell,
+                      lines:
+                        wrapped,
+                    };
+                  }
+                );
+
+
+              const maximumLines =
+                wrappedCells.reduce(
+                  (
+                    maximum,
+                    item
+                  ) =>
+                    Math.max(
+                      maximum,
+                      item.lines.length
+                    ),
+                  1
+                );
+
+
+              rowHeight =
+                maximumLines *
+                tableLineHeight +
+                cellPadding * 2;
+
+
+              if (
+                !ensureSpace(
+                  rowHeight
+                )
+              ) {
+                return;
+              }
+
+
+              /*
+               * Draw cells.
+               */
+
+              let currentX =
+                margins.left;
+
+
+              wrappedCells.forEach(
+                (
+                  item,
+                  columnIndex
+                ) => {
+                  const cellWidth =
+                    columnWidths[
+                      columnIndex
+                    ] || 80;
+
+
+                  const isHeader =
+                    item.cell?.type ===
+                    "tableHeader";
+
+
+                  /*
+                   * Cell background.
+                   */
+
+                  if (isHeader) {
+                    pageContext.save();
+
+                    pageContext.fillStyle =
+                      "rgba(235, 235, 235, 0.35)";
+
+                    pageContext.fillRect(
+                      currentX,
+                      y,
+                      cellWidth,
+                      rowHeight
+                    );
+
+                    pageContext.restore();
+                  }
+
+
+                  /*
+                   * Cell border.
+                   */
+
+                  pageContext.save();
+
+                  pageContext.strokeStyle =
+                    "rgba(80, 80, 80, 0.45)";
+
+                  pageContext.lineWidth =
+                    0.8;
+
+                  pageContext.strokeRect(
+                    currentX,
+                    y,
+                    cellWidth,
+                    rowHeight
+                  );
+
+                  pageContext.restore();
+
+
+                  /*
+                   * Handwritten cell content.
+                   */
+
+                  item.lines.forEach(
+                    (
+                      cellLine,
+                      lineIndex
+                    ) => {
+                      const ink =
+                        getInkConfiguration(
+                          inkStyle
+                        );
+
+
+                      drawTextWithVariation(
+                        pageContext,
+                        cellLine,
+                        currentX +
+                          cellPadding,
+                        y +
+                          cellPadding +
+                          lineIndex *
+                            tableLineHeight,
+                        {
+                          letterSpacing,
+                          wordSpacing,
+                          naturalVariation,
+
+                          startIndex:
+                            characterIndex,
+
+                          baseFontSize:
+                            tableFontSize,
+
+                          fontFamily:
+                            loadedFontFamily,
+
+                          inkVariations:
+                            ink.variations,
+
+                          documentId,
+
+                          pageNumber,
+
+                          inkStyle,
+                        }
+                      );
+
+
+                      characterIndex +=
+                        cellLine.length +
+                        1;
+                    }
+                  );
+
+
+                  currentX +=
+                    cellWidth;
+                }
+              );
+
+
+              /*
+               * Advance to next row.
+               */
+
+              y +=
+                rowHeight;
+            }
+          );
+
+
+          /*
+           * Table bottom spacing.
+           */
+
+          y += 12;
+        };
+
+
+      /*
+       * =====================================================
+       * RENDER IMAGE
+       * =====================================================
+       *
+       * Images remain structural.
+       *
+       * Actual image loading is intentionally asynchronous,
+       * so we reserve a safe visual placeholder for preview.
+       * PDF image embedding can be handled in Phase 9.
+       */
+
+      const renderImageBlock =
+        (block) => {
+          const imageHeight =
+            Math.min(
+              240,
+              block.height ||
+                180
+            );
+
+          if (
+            !ensureSpace(
+              imageHeight
+            )
+          ) {
+            return;
+          }
+
+
+          pageContext.save();
+
+          pageContext.strokeStyle =
+            "rgba(120, 120, 120, 0.35)";
+
+          pageContext.setLineDash([
+            5,
+            4,
+          ]);
+
+          pageContext.strokeRect(
+            margins.left,
+            y,
+            Math.min(
+              availableWidth,
+              block.width ||
+                availableWidth
+            ),
+            imageHeight
+          );
+
+          pageContext.setLineDash([]);
+
+          pageContext.font =
+            `14px "${loadedFontFamily}"`;
+
+          pageContext.fillStyle =
+            "rgba(90, 90, 90, 0.7)";
+
+          pageContext.fillText(
+            block.alt ||
+              "Image",
+            margins.left + 12,
+            y + 12
+          );
+
+          pageContext.restore();
+
+          y +=
+            imageHeight + 12;
+        };
+
+
+      /*
+       * =====================================================
+       * STRUCTURED DOCUMENT RENDERING
+       * =====================================================
+       *
+       * STEP 24
+       *
+       * We deliberately switch on block.type.
+       *
+       * No flattening.
+       */
+
+      const blocks =
+        normalizedDocument.blocks ||
+        [];
+
+
+      for (
+        const block of blocks
+      ) {
+        if (!block) {
+          continue;
         }
 
-        /*
-        * Move character index forward.
-        *
-        * +1 represents the logical separator between
-        * rendered lines.
-        */
-
-        characterIndex +=
-          line.length + 1;
 
         /*
-        * Move down to next handwriting line.
-        */
+         * ---------------------------------------------------
+         * MANUAL PAGE BREAK
+         * ---------------------------------------------------
+         */
 
-        y += lineHeight;
+        if (
+          block.type ===
+          "pageBreak"
+        ) {
+          finishCurrentPage();
+
+          if (
+            !startNewPage()
+          ) {
+            break;
+          }
+
+          continue;
+        }
+
+
+        /*
+         * ---------------------------------------------------
+         * PARAGRAPH
+         * ---------------------------------------------------
+         */
+
+        if (
+          block.type ===
+          "paragraph"
+        ) {
+          renderTextBlock(
+            block
+          );
+
+          continue;
+        }
+
+
+        /*
+         * ---------------------------------------------------
+         * HEADING
+         * ---------------------------------------------------
+         */
+
+        if (
+          block.type ===
+          "heading"
+        ) {
+          renderTextBlock(
+            block
+          );
+
+          continue;
+        }
+
+
+        /*
+         * ---------------------------------------------------
+         * BULLET LIST
+         * ---------------------------------------------------
+         */
+
+        if (
+          block.type ===
+          "bulletList"
+        ) {
+          renderListBlock(
+            block
+          );
+
+          continue;
+        }
+
+
+        /*
+         * ---------------------------------------------------
+         * ORDERED LIST
+         * ---------------------------------------------------
+         */
+
+        if (
+          block.type ===
+          "orderedList"
+        ) {
+          renderListBlock(
+            block
+          );
+
+          continue;
+        }
+
+
+        /*
+         * ---------------------------------------------------
+         * TABLE
+         * ---------------------------------------------------
+         */
+
+        if (
+          block.type ===
+          "table"
+        ) {
+          renderTableBlock(
+            block
+          );
+
+          continue;
+        }
+
+
+        /*
+         * ---------------------------------------------------
+         * IMAGE
+         * ---------------------------------------------------
+         */
+
+        if (
+          block.type ===
+          "image"
+        ) {
+          renderImageBlock(
+            block
+          );
+
+          continue;
+        }
+
+
+        /*
+         * ---------------------------------------------------
+         * LIST ITEM
+         *
+         * Normally handled by its parent list.
+         * ---------------------------------------------------
+         */
+
+        if (
+          block.type ===
+          "listItem"
+        ) {
+          renderTextBlock({
+            type:
+              "paragraph",
+
+            text:
+              getListItemText(
+                block
+              ),
+          });
+
+          continue;
+        }
+
+
+        /*
+         * ---------------------------------------------------
+         * UNKNOWN BLOCK
+         * ---------------------------------------------------
+         *
+         * We do not silently flatten it.
+         *
+         * This makes future Phase 7 nodes easier to add.
+         * ---------------------------------------------------
+         */
+
+        console.warn(
+          "InkAI handwriting renderer: unsupported block",
+          block.type
+        );
       }
 
-      /*
-      * =====================================================
-      * FINAL PAGE
-      * =====================================================
-      */
-
-      pageCanvases.push(currentPage);
 
       /*
-      * Only update React state if the effect has not
-      * been cancelled.
-      */
+       * =====================================================
+       * FINAL PAGE
+       * =====================================================
+       */
+
+      if (
+        pageCanvases.length === 0 ||
+        pageCanvases[
+          pageCanvases.length - 1
+        ] !== currentPage
+      ) {
+        pageCanvases.push(
+          currentPage
+        );
+      }
+
 
       if (!cancelled) {
-        setPages(pageCanvases);
+        setPages(
+          pageCanvases
+        );
       }
     }
+
 
     /*
      * =======================================================
@@ -1671,28 +2546,17 @@ function HandwritingCanvas({
       loadedFontFamily,
       size
     ) {
-      /*
-       * Paper
-       */
-
       drawPaperBackground(
         context,
         paperStyle
       );
 
-      /*
-       * Ink configuration
-       */
 
       const ink =
         getInkConfiguration(
           inkStyle
         );
 
-      /*
-       * Store base ink color
-       * for the character renderer.
-       */
 
       context.__inkaiFontFamily =
         loadedFontFamily;
@@ -1701,26 +2565,14 @@ function HandwritingCanvas({
         inkColor ||
         ink.base;
 
-      /*
-       * Base font
-       */
-
       context.font =
         `${size}px "${loadedFontFamily}"`;
-
-      /*
-       * Ink opacity
-       */
 
       context.__inkaiBaseOpacity =
         inkOpacity;
 
       context.globalAlpha =
         inkOpacity;
-
-      /*
-       * Text configuration
-       */
 
       context.textBaseline =
         "top";
@@ -1729,13 +2581,15 @@ function HandwritingCanvas({
         "left";
     }
 
+
     prepareFont();
+
 
     return () => {
       cancelled = true;
     };
   }, [
-    text,
+    normalizedDocument,
     documentId,
     style,
     fontSize,
@@ -1747,7 +2601,9 @@ function HandwritingCanvas({
     wordSpacing,
     inkOpacity,
     naturalVariation,
+    text,
   ]);
+
 
   /*
    * =========================================================
@@ -1769,6 +2625,7 @@ function HandwritingCanvas({
     );
   };
 
+
   const zoomOut = () => {
     setZoom(
       (current) =>
@@ -1783,9 +2640,11 @@ function HandwritingCanvas({
     );
   };
 
+
   const resetZoom = () => {
     setZoom(0.8);
   };
+
 
   /*
    * =========================================================
@@ -1809,6 +2668,7 @@ function HandwritingCanvas({
         dark:bg-gray-950
       "
     >
+
       {/* ===================================================
           TOOLBAR
           =================================================== */}
@@ -1828,7 +2688,9 @@ function HandwritingCanvas({
           dark:bg-gray-900
         "
       >
+
         <div>
+
           <p className="text-sm font-semibold text-gray-900 dark:text-white">
             Handwriting Preview
           </p>
@@ -1839,13 +2701,18 @@ function HandwritingCanvas({
               ? "page"
               : "pages"}
           </p>
+
         </div>
 
+
         <div className="flex items-center gap-1">
+
           <button
             type="button"
             onClick={zoomOut}
-            disabled={zoom <= 0.5}
+            disabled={
+              zoom <= 0.5
+            }
             className="
               rounded-lg
               p-2
@@ -1861,6 +2728,7 @@ function HandwritingCanvas({
           >
             <ZoomOut size={18} />
           </button>
+
 
           <button
             type="button"
@@ -1885,10 +2753,13 @@ function HandwritingCanvas({
             %
           </button>
 
+
           <button
             type="button"
             onClick={zoomIn}
-            disabled={zoom >= 1.5}
+            disabled={
+              zoom >= 1.5
+            }
             className="
               rounded-lg
               p-2
@@ -1905,6 +2776,7 @@ function HandwritingCanvas({
             <ZoomIn size={18} />
           </button>
 
+
           <div
             className="
               mx-1
@@ -1914,6 +2786,7 @@ function HandwritingCanvas({
               dark:bg-gray-700
             "
           />
+
 
           <button
             type="button"
@@ -1930,14 +2803,18 @@ function HandwritingCanvas({
           >
             <RotateCcw size={17} />
           </button>
+
         </div>
+
       </div>
+
 
       {/* ===================================================
           PAGES
           =================================================== */}
 
       <div className="flex-1 overflow-auto p-6">
+
         <div
           className="
             flex
@@ -1947,25 +2824,36 @@ function HandwritingCanvas({
             gap-8
           "
         >
+
           {pages.map(
-            (page, index) => (
+            (
+              page,
+              index
+            ) => (
               <div
                 key={index}
-                className="relative shrink-0"
+                className="
+                  relative
+                  shrink-0
+                "
                 style={{
                   width:
                     `${A4_WIDTH * zoom}px`,
+
                   height:
                     `${A4_HEIGHT * zoom}px`,
                 }}
               >
+
                 <img
                   src={page.toDataURL(
                     "image/png"
                   )}
-                  alt={`Handwriting page ${
-                    index + 1
-                  }`}
+                  alt={
+                    `Handwriting page ${
+                      index + 1
+                    }`
+                  }
                   className="
                     absolute
                     left-0
@@ -1978,12 +2866,15 @@ function HandwritingCanvas({
                   style={{
                     width:
                       `${A4_WIDTH}px`,
+
                     height:
                       `${A4_HEIGHT}px`,
+
                     transform:
                       `scale(${zoom})`,
                   }}
                 />
+
 
                 {/* MARGIN GUIDE */}
 
@@ -1997,14 +2888,18 @@ function HandwritingCanvas({
                   style={{
                     width:
                       `${A4_WIDTH}px`,
+
                     height:
                       `${A4_HEIGHT}px`,
+
                     transform:
                       `scale(${zoom})`,
+
                     transformOrigin:
                       "top left",
                   }}
                 >
+
                   <div
                     className="
                       absolute
@@ -2015,19 +2910,24 @@ function HandwritingCanvas({
                     style={{
                       left:
                         margins.left,
+
                       top:
                         margins.top,
+
                       width:
                         A4_WIDTH -
                         margins.left -
                         margins.right,
+
                       height:
                         A4_HEIGHT -
                         margins.top -
                         margins.bottom,
                     }}
                   />
+
                 </div>
+
 
                 {/* PAGE NUMBER */}
 
@@ -2046,9 +2946,11 @@ function HandwritingCanvas({
                   Page{" "}
                   {index + 1}
                 </div>
+
               </div>
             )
           )}
+
 
           {pages.length === 0 && (
             <div
@@ -2064,10 +2966,14 @@ function HandwritingCanvas({
               Preparing handwriting preview...
             </div>
           )}
+
         </div>
+
       </div>
+
     </div>
   );
 }
+
 
 export default HandwritingCanvas;
