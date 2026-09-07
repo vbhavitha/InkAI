@@ -8,10 +8,11 @@ import HandwritingSettings from "../components/handwriting/HandwritingSettings";
 import HandwritingPreview from "../components/handwriting/HandwritingPreview";
 import HandwritingControls from "../components/handwriting/HandwritingControls";
 
+import handwritingPresets from "../data/handwritingPresets";
+
 import {
   convertDocumentToHandwritingDocument,
 } from "../services/handwritingDocumentService";
-
 
 /*
  * =========================================================
@@ -30,11 +31,7 @@ import {
  *      ↓
  * Handwriting Renderer
  *
- * IMPORTANT:
- *
- * We never use editor.getText().
- *
- * Structured blocks are preserved:
+ * Structured document blocks remain preserved:
  *
  * - Heading
  * - Paragraph
@@ -42,17 +39,18 @@ import {
  * - Ordered list
  * - Table
  * - Image
- * - Manual page break
+ * - Page break
  *
- * Phase 7 additions:
+ * Phase 7:
  *
  * - Handwriting presets
- * - Deterministic random seed
- * - Randomize button
+ * - Multiple pages
+ * - Page selection
  * - Naturalness 0–100
+ * - Deterministic random seed
+ * - Randomize handwriting
  * - Assignment mode
- * - Preview configuration
- * - Page selection state
+ * - Handwriting preview
  * - PDF generation hook
  * =========================================================
  */
@@ -60,100 +58,14 @@ import {
 
 /*
  * =========================================================
- * HANDWRITING PRESETS
+ * PRESET HELPERS
  * =========================================================
  */
 
-const HANDWRITING_PRESETS = {
-  neat_student: {
-    id: "neat_student",
-    name: "Neat Student",
-
-    font: "neat",
-    variation: 20,
-
-    letterSpacing: 0,
-    wordSpacing: 4,
-    lineSpacing: 1.5,
-
-    ink: "blue",
-    paper: "ruled",
-
-    fontSize: 22,
-    inkOpacity: 0.9,
-  },
-
-  school_notebook: {
-    id: "school_notebook",
-    name: "School Notebook",
-
-    font: "notebook",
-    variation: 45,
-
-    letterSpacing: 0,
-    wordSpacing: 4,
-    lineSpacing: 1.5,
-
-    ink: "blue",
-    paper: "ruled",
-
-    fontSize: 22,
-    inkOpacity: 0.9,
-  },
-
-  cursive: {
-    id: "cursive",
-    name: "Cursive",
-
-    font: "cursive",
-    variation: 20,
-
-    letterSpacing: 0.2,
-    wordSpacing: 5,
-    lineSpacing: 1.55,
-
-    ink: "black",
-    paper: "plain",
-
-    fontSize: 23,
-    inkOpacity: 0.9,
-  },
-
-  messy_notes: {
-    id: "messy_notes",
-    name: "Messy Notes",
-
-    font: "casual",
-    variation: 80,
-
-    letterSpacing: 0.4,
-    wordSpacing: 6,
-    lineSpacing: 1.65,
-
-    ink: "blue",
-    paper: "notebook",
-
-    fontSize: 22,
-    inkOpacity: 0.84,
-  },
-
-  pencil: {
-    id: "pencil",
-    name: "Pencil",
-
-    font: "pencil_writing",
-    variation: 45,
-
-    letterSpacing: 0,
-    wordSpacing: 4,
-    lineSpacing: 1.5,
-
-    ink: "gray",
-    paper: "notebook",
-
-    fontSize: 22,
-    inkOpacity: 0.72,
-  },
+const getPreset = (presetId) => {
+  return handwritingPresets.find(
+    (preset) => preset.id === presetId
+  );
 };
 
 
@@ -170,7 +82,10 @@ function createRandomSeed() {
 }
 
 
-function getDocumentId(document, handwritingDocument) {
+function getDocumentId(
+  document,
+  handwritingDocument
+) {
   return (
     document?.id ||
     document?._id ||
@@ -192,9 +107,9 @@ function HandwritingGeneratorPage() {
 
 
   /*
-   * =========================================================
+   * =======================================================
    * SOURCE DOCUMENT
-   * =========================================================
+   * =======================================================
    */
 
   const sourceDocument =
@@ -202,15 +117,16 @@ function HandwritingGeneratorPage() {
 
 
   /*
-   * =========================================================
-   * CONVERT PHASE 6 DOCUMENT
-   * =========================================================
+   * =======================================================
+   * CONVERT DOCUMENT
+   * =======================================================
    *
    * IMPORTANT:
    *
    * The document remains structured.
    *
-   * We do not flatten it to text.
+   * We do NOT use editor.getText().
+   * We do NOT flatten the document.
    */
 
   const handwritingDocument = useMemo(() => {
@@ -234,225 +150,342 @@ function HandwritingGeneratorPage() {
 
 
   /*
-   * =========================================================
+   * =======================================================
    * DOCUMENT ID
-   * =========================================================
+   * =======================================================
    */
 
-  const documentId = useMemo(
-    () =>
-      getDocumentId(
-        sourceDocument,
-        handwritingDocument
-      ),
-    [
+  const documentId = useMemo(() => {
+    return getDocumentId(
       sourceDocument,
-      handwritingDocument,
-    ]
+      handwritingDocument
+    );
+  }, [
+    sourceDocument,
+    handwritingDocument,
+  ]);
+
+
+  /*
+   * =======================================================
+   * DEFAULT PRESET
+   * =======================================================
+   */
+
+  const defaultPreset =
+    getPreset("school_notebook");
+
+
+  /*
+   * =======================================================
+   * PRESET STATE
+   * =======================================================
+   */
+
+  const [
+    selectedPreset,
+    setSelectedPreset,
+  ] = useState(
+    defaultPreset?.id ||
+      "school_notebook"
   );
 
 
   /*
-   * =========================================================
-   * PRESET
-   * =========================================================
+   * =======================================================
+   * HANDWRITING SETTINGS
+   * =======================================================
    */
 
-  const [selectedPreset, setSelectedPreset] =
-    useState("school_notebook");
+  const [
+    selectedFont,
+    setSelectedFont,
+  ] = useState(
+    defaultPreset?.font ||
+      "school_notebook"
+  );
+
+
+  const [
+    selectedPaper,
+    setSelectedPaper,
+  ] = useState(
+    defaultPreset?.paper ||
+      "ruled"
+  );
+
+
+  const [
+    selectedInk,
+    setSelectedInk,
+  ] = useState(
+    defaultPreset?.ink ||
+      "blue"
+  );
 
 
   /*
-   * =========================================================
-   * BASIC HANDWRITING SETTINGS
-   * =========================================================
+   * =======================================================
+   * FONT SIZE
+   * =======================================================
    */
 
-  const [selectedFont, setSelectedFont] =
-    useState(
-      HANDWRITING_PRESETS.school_notebook.font
-    );
-
-  const [selectedPaper, setSelectedPaper] =
-    useState(
-      HANDWRITING_PRESETS.school_notebook.paper
-    );
-
-  const [selectedInk, setSelectedInk] =
-    useState(
-      HANDWRITING_PRESETS.school_notebook.ink
-    );
+  const [
+    fontSize,
+    setFontSize,
+  ] = useState(
+    defaultPreset?.fontSize ??
+      22
+  );
 
 
   /*
-   * =========================================================
-   * HANDWRITING CONTROLS
-   * =========================================================
+   * =======================================================
+   * LETTER SPACING
+   * =======================================================
    */
 
-  const [fontSize, setFontSize] =
-    useState(
-      HANDWRITING_PRESETS.school_notebook.fontSize
-    );
-
-  const [letterSpacing, setLetterSpacing] =
-    useState(
-      HANDWRITING_PRESETS.school_notebook.letterSpacing
-    );
-
-  const [lineSpacing, setLineSpacing] =
-    useState(
-      HANDWRITING_PRESETS.school_notebook.lineSpacing
-    );
-
-  const [wordSpacing, setWordSpacing] =
-    useState(
-      HANDWRITING_PRESETS.school_notebook.wordSpacing
-    );
-
-  const [inkOpacity, setInkOpacity] =
-    useState(
-      HANDWRITING_PRESETS.school_notebook.inkOpacity
-    );
+  const [
+    letterSpacing,
+    setLetterSpacing,
+  ] = useState(
+    defaultPreset?.letterSpacing ??
+      0
+  );
 
 
   /*
-   * =========================================================
+   * =======================================================
+   * LINE SPACING
+   * =======================================================
+   */
+
+  const [
+    lineSpacing,
+    setLineSpacing,
+  ] = useState(
+    defaultPreset?.lineSpacing ??
+      1.5
+  );
+
+
+  /*
+   * =======================================================
+   * WORD SPACING
+   * =======================================================
+   */
+
+  const [
+    wordSpacing,
+    setWordSpacing,
+  ] = useState(
+    defaultPreset?.wordSpacing ??
+      5
+  );
+
+
+  /*
+   * =======================================================
+   * INK OPACITY
+   * =======================================================
+   */
+
+  const [
+    inkOpacity,
+    setInkOpacity,
+  ] = useState(
+    defaultPreset?.inkOpacity ??
+      0.9
+  );
+
+
+  /*
+   * =======================================================
    * NATURALNESS
-   * =========================================================
+   * =======================================================
    *
-   * 0   = almost perfectly uniform
-   * 25  = very subtle variation
+   * 0   = very uniform
+   * 25  = subtle variation
    * 50  = natural handwriting
    * 75  = clearly human variation
    * 100 = strong irregularity
-   *
-   * The renderer is responsible for interpreting this
-   * value and applying it to:
-   *
-   * - rotation
-   * - scale
-   * - baseline
-   * - spacing
-   * - glyph selection
-   * - ink variation
    */
 
-  const [naturalness, setNaturalness] =
-    useState(
-      HANDWRITING_PRESETS.school_notebook.variation
-    );
+  const [
+    naturalness,
+    setNaturalness,
+  ] = useState(
+    defaultPreset?.naturalness ??
+      50
+  );
 
 
   /*
-   * =========================================================
-   * LEGACY NATURAL VARIATION FLAG
-   * =========================================================
+   * =======================================================
+   * NATURAL VARIATION
+   * =======================================================
    *
-   * Kept for compatibility with the current renderer.
-   *
-   * Naturalness is now the primary control.
+   * Kept for compatibility with
+   * existing handwriting renderer.
    */
 
-  const [naturalVariation, setNaturalVariation] =
-    useState(true);
+  const [
+    naturalVariation,
+    setNaturalVariation,
+  ] = useState(
+    defaultPreset?.naturalVariation ??
+      true
+  );
 
 
   /*
-   * =========================================================
+   * =======================================================
    * DETERMINISTIC RANDOM SEED
-   * =========================================================
+   * =======================================================
    *
-   * The same:
+   * Same:
    *
    * Document ID
    * + Style
    * + Seed
    *
-   * should always produce the same handwriting.
+   * produces the same handwriting realization.
    */
 
-  const [randomSeed, setRandomSeed] =
-    useState(12345);
+  const [
+    randomSeed,
+    setRandomSeed,
+  ] = useState(
+    defaultPreset?.seed ??
+      12345
+  );
 
 
   /*
-   * =========================================================
-   * PAGE STATE
-   * =========================================================
-   *
-   * HandwritingPreview / HandwritingCanvas can update this
-   * when multiple pages are generated.
+   * =======================================================
+   * GENERATED PAGES
+   * =======================================================
    */
 
-  const [pages, setPages] =
-    useState([]);
-
-  const [selectedPage, setSelectedPage] =
-    useState(0);
+  const [
+    pages,
+    setPages,
+  ] = useState([]);
 
 
   /*
-   * =========================================================
+   * =======================================================
+   * SELECTED PAGE
+   * =======================================================
+   */
+
+  const [
+    selectedPage,
+    setSelectedPage,
+  ] = useState(0);
+
+
+  /*
+   * =======================================================
    * ASSIGNMENT MODE
-   * =========================================================
+   * =======================================================
    */
 
-  const [assignmentMode, setAssignmentMode] =
-    useState(false);
+  const [
+    assignmentMode,
+    setAssignmentMode,
+  ] = useState(false);
 
-  const [assignmentDetails, setAssignmentDetails] =
-    useState({
-      studentName: "",
-      rollNumber: "",
-      subject: "",
-      className: "",
-      teacher: "",
-      assignmentTitle: "",
-    });
+
+  const [
+    assignmentDetails,
+    setAssignmentDetails,
+  ] = useState({
+    studentName: "",
+    rollNumber: "",
+    subject: "",
+    className: "",
+    teacher: "",
+    assignmentTitle: "",
+  });
+
+
+  /*
+   * =======================================================
+   * GENERATION STATE
+   * =======================================================
+   */
+
+  const [
+    isGenerating,
+    setIsGenerating,
+  ] = useState(false);
 
 
   /*
    * =========================================================
-   * PREVIEW STATUS
-   * =========================================================
-   */
-
-  const [isGenerating, setIsGenerating] =
-    useState(false);
-
-
-  /*
-   * =========================================================
-   * PRESET APPLICATION
+   * APPLY PRESET
    * =========================================================
    */
 
   const applyPreset = (presetId) => {
-    const preset =
-      HANDWRITING_PRESETS[presetId];
+    const preset = getPreset(presetId);
 
     if (!preset) {
       return;
     }
 
-    setSelectedPreset(presetId);
+    setSelectedPreset(
+      preset.id
+    );
 
-    setSelectedFont(preset.font);
-    setSelectedPaper(preset.paper);
-    setSelectedInk(preset.ink);
+    setSelectedFont(
+      preset.font
+    );
 
-    setFontSize(preset.fontSize);
-    setLetterSpacing(preset.letterSpacing);
-    setWordSpacing(preset.wordSpacing);
-    setLineSpacing(preset.lineSpacing);
-    setInkOpacity(preset.inkOpacity);
+    setSelectedPaper(
+      preset.paper
+    );
 
-    setNaturalness(preset.variation);
+    setSelectedInk(
+      preset.ink
+    );
+
+    setFontSize(
+      preset.fontSize
+    );
+
+    setLetterSpacing(
+      preset.letterSpacing
+    );
+
+    setLineSpacing(
+      preset.lineSpacing
+    );
+
+    setWordSpacing(
+      preset.wordSpacing
+    );
+
+    setInkOpacity(
+      preset.inkOpacity
+    );
+
+    setNaturalness(
+      preset.naturalness
+    );
 
     setNaturalVariation(
-      preset.variation > 0
+      preset.naturalVariation ??
+        true
     );
+
+    setRandomSeed(
+      preset.seed ??
+        12345
+    );
+
+    setSelectedPage(0);
   };
 
 
@@ -465,20 +498,19 @@ function HandwritingGeneratorPage() {
    *
    * Randomize changes ONLY the seed.
    *
-   * It does NOT change:
+   * It does not change:
    *
-   * - document text
+   * - document
+   * - text
    * - headings
    * - lists
    * - tables
    * - images
    * - formatting
-   * - selected font
-   * - selected paper
-   * - selected ink
-   *
-   * The renderer uses the new seed to produce a different
-   * deterministic handwriting realization.
+   * - font
+   * - paper
+   * - ink
+   * - naturalness
    */
 
   const handleRandomize = () => {
@@ -492,11 +524,13 @@ function HandwritingGeneratorPage() {
 
   /*
    * =========================================================
-   * NATURALNESS HANDLER
+   * NATURALNESS
    * =========================================================
    */
 
-  const handleNaturalnessChange = (value) => {
+  const handleNaturalnessChange = (
+    value
+  ) => {
     const numericValue =
       Number(value);
 
@@ -505,13 +539,17 @@ function HandwritingGeneratorPage() {
         0,
         Math.min(
           100,
-          Number.isFinite(numericValue)
+          Number.isFinite(
+            numericValue
+          )
             ? numericValue
             : 0
         )
       );
 
-    setNaturalness(safeValue);
+    setNaturalness(
+      safeValue
+    );
 
     setNaturalVariation(
       safeValue > 0
@@ -528,20 +566,32 @@ function HandwritingGeneratorPage() {
   const handlePagesChange = (
     generatedPages
   ) => {
-    if (!Array.isArray(generatedPages)) {
+    if (
+      !Array.isArray(
+        generatedPages
+      )
+    ) {
       return;
     }
 
-    setPages(generatedPages);
+    setPages(
+      generatedPages
+    );
 
-    setSelectedPage((current) =>
-      Math.min(
-        current,
-        Math.max(
-          generatedPages.length - 1,
-          0
-        )
-      )
+    setSelectedPage(
+      (currentPage) => {
+        const maxPage =
+          Math.max(
+            generatedPages.length -
+              1,
+            0
+          );
+
+        return Math.min(
+          currentPage,
+          maxPage
+        );
+      }
     );
   };
 
@@ -552,7 +602,9 @@ function HandwritingGeneratorPage() {
    * =========================================================
    */
 
-  const handlePageSelect = (pageIndex) => {
+  const handlePageSelect = (
+    pageIndex
+  ) => {
     if (
       pageIndex < 0 ||
       pageIndex >= pages.length
@@ -560,7 +612,9 @@ function HandwritingGeneratorPage() {
       return;
     }
 
-    setSelectedPage(pageIndex);
+    setSelectedPage(
+      pageIndex
+    );
   };
 
 
@@ -574,10 +628,12 @@ function HandwritingGeneratorPage() {
     field,
     value
   ) => {
-    setAssignmentDetails((current) => ({
-      ...current,
-      [field]: value,
-    }));
+    setAssignmentDetails(
+      (current) => ({
+        ...current,
+        [field]: value,
+      })
+    );
   };
 
 
@@ -586,26 +642,19 @@ function HandwritingGeneratorPage() {
    * GENERATE PDF
    * =========================================================
    *
-   * The actual PDF renderer will be connected here.
-   *
-   * Preview rendering and PDF rendering remain separate.
+   * The backend PDF renderer is currently
+   * a Phase 7 hook.
    */
 
   const handleGeneratePDF = async () => {
-    if (!handwritingDocument) {
+    if (
+      !handwritingDocument
+    ) {
       return;
     }
 
     try {
       setIsGenerating(true);
-
-      /*
-       * PDF generation endpoint will be connected in the
-       * handwritingService implementation.
-       *
-       * For now this intentionally does not flatten the
-       * document or generate a fake PDF.
-       */
 
       console.log(
         "Generate handwriting PDF",
@@ -616,6 +665,10 @@ function HandwritingGeneratorPage() {
           ink: selectedInk,
           paper: selectedPaper,
           fontSize,
+          letterSpacing,
+          lineSpacing,
+          wordSpacing,
+          inkOpacity,
           naturalness:
             naturalness / 100,
           seed: randomSeed,
@@ -624,6 +677,10 @@ function HandwritingGeneratorPage() {
         }
       );
 
+      /*
+       * PDF service can be connected here
+       * when the backend PDF renderer is ready.
+       */
     } catch (error) {
       console.error(
         "Failed to generate handwriting PDF:",
@@ -647,7 +704,6 @@ function HandwritingGeneratorPage() {
   ) {
     return (
       <div className="min-h-screen bg-slate-100">
-
         <Navbar />
 
         <main
@@ -677,7 +733,8 @@ function HandwritingGeneratorPage() {
                 text-slate-600
               "
             >
-              Return to the editor and try again.
+              Return to the editor and
+              try again.
             </p>
 
             <button
@@ -705,7 +762,6 @@ function HandwritingGeneratorPage() {
         </main>
 
         <Footer />
-
       </div>
     );
   }
@@ -772,9 +828,9 @@ function HandwritingGeneratorPage() {
                   text-slate-600
                 "
               >
-                Convert your saved document into
-                handwritten content while preserving
-                its formatting.
+                Convert your saved document
+                into handwritten content while
+                preserving its formatting.
               </p>
 
             </div>
@@ -793,6 +849,7 @@ function HandwritingGeneratorPage() {
               "
             >
               Document ID:{" "}
+
               <span
                 className="
                   font-medium
@@ -856,25 +913,26 @@ function HandwritingGeneratorPage() {
               "
             >
 
-              <div
+              <h2
                 className="
-                  flex
-                  items-center
-                  justify-between
+                  text-lg
+                  font-semibold
+                  text-slate-900
                 "
               >
+                Handwriting Style
+              </h2>
 
-                <h2
-                  className="
-                    text-lg
-                    font-semibold
-                    text-slate-900
-                  "
-                >
-                  Handwriting Style
-                </h2>
 
-              </div>
+              <p
+                className="
+                  mt-1
+                  text-xs
+                  text-slate-500
+                "
+              >
+                Choose a handwriting preset.
+              </p>
 
 
               <div
@@ -886,67 +944,82 @@ function HandwritingGeneratorPage() {
                 "
               >
 
-                {Object.values(
-                  HANDWRITING_PRESETS
-                ).map((preset) => (
-
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() =>
-                      applyPreset(
-                        preset.id
-                      )
-                    }
-                    className={`
-                      rounded-lg
-                      border
-                      px-4
-                      py-3
-                      text-left
-                      transition
-                      ${
-                        selectedPreset ===
-                        preset.id
-                          ? `
-                            border-indigo-500
-                            bg-indigo-50
-                            text-indigo-700
-                          `
-                          : `
-                            border-slate-200
-                            bg-white
-                            text-slate-700
-                            hover:bg-slate-50
-                          `
+                {handwritingPresets.map(
+                  (preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() =>
+                        applyPreset(
+                          preset.id
+                        )
                       }
-                    `}
-                  >
+                      className={`
+                        rounded-lg
+                        border
+                        px-4
+                        py-3
+                        text-left
+                        transition
 
-                    <div
-                      className="
-                        text-sm
-                        font-semibold
-                      "
+                        ${
+                          selectedPreset ===
+                          preset.id
+                            ? `
+                              border-indigo-500
+                              bg-indigo-50
+                              text-indigo-700
+                            `
+                            : `
+                              border-slate-200
+                              bg-white
+                              text-slate-700
+                              hover:bg-slate-50
+                            `
+                        }
+                      `}
                     >
-                      {preset.name}
-                    </div>
 
-                    <div
-                      className="
-                        mt-1
-                        text-xs
-                        text-slate-500
-                      "
-                    >
-                      {preset.font} ·{" "}
-                      {preset.ink} ink ·{" "}
-                      {preset.paper} paper
-                    </div>
+                      <div
+                        className="
+                          text-sm
+                          font-semibold
+                        "
+                      >
+                        {preset.name}
+                      </div>
 
-                  </button>
 
-                ))}
+                      <div
+                        className="
+                          mt-1
+                          text-xs
+                          leading-5
+                          text-slate-500
+                        "
+                      >
+                        {preset.description}
+                      </div>
+
+
+                      <div
+                        className="
+                          mt-2
+                          text-[11px]
+                          text-slate-400
+                        "
+                      >
+                        {preset.font}
+                        {" · "}
+                        {preset.ink}
+                        {" ink · "}
+                        {preset.paper}
+                        {" paper"}
+                      </div>
+
+                    </button>
+                  )
+                )}
 
               </div>
 
@@ -1012,80 +1085,79 @@ function HandwritingGeneratorPage() {
                 HANDWRITING CONTROLS
                 ================================================= */}
 
-            <HandwritingControls
+            <div
+              className="
+                rounded-xl
+                border
+                border-slate-200
+                bg-white
+                p-6
+                shadow-sm
+              "
+            >
 
-              fontSize={
-                fontSize
-              }
+              <HandwritingControls
 
-              setFontSize={
-                setFontSize
-              }
+                fontSize={
+                  fontSize
+                }
+                setFontSize={
+                  setFontSize
+                }
 
-              letterSpacing={
-                letterSpacing
-              }
+                letterSpacing={
+                  letterSpacing
+                }
+                setLetterSpacing={
+                  setLetterSpacing
+                }
 
-              setLetterSpacing={
-                setLetterSpacing
-              }
+                lineSpacing={
+                  lineSpacing
+                }
+                setLineSpacing={
+                  setLineSpacing
+                }
 
-              lineSpacing={
-                lineSpacing
-              }
+                wordSpacing={
+                  wordSpacing
+                }
+                setWordSpacing={
+                  setWordSpacing
+                }
 
-              setLineSpacing={
-                setLineSpacing
-              }
+                inkOpacity={
+                  inkOpacity
+                }
+                setInkOpacity={
+                  setInkOpacity
+                }
 
-              wordSpacing={
-                wordSpacing
-              }
+                naturalVariation={
+                  naturalVariation
+                }
+                setNaturalVariation={
+                  setNaturalVariation
+                }
 
-              setWordSpacing={
-                setWordSpacing
-              }
+                naturalness={
+                  naturalness
+                }
+                setNaturalness={
+                  handleNaturalnessChange
+                }
 
-              inkOpacity={
-                inkOpacity
-              }
+                onRandomize={
+                  handleRandomize
+                }
 
-              setInkOpacity={
-                setInkOpacity
-              }
+                randomSeed={
+                  randomSeed
+                }
 
-              naturalVariation={
-                naturalVariation
-              }
+              />
 
-              setNaturalVariation={
-                setNaturalVariation
-              }
-
-              /*
-               * New Phase 7 controls.
-               *
-               * Existing HandwritingControls can ignore
-               * these until it is updated.
-               */
-
-              naturalness={
-                naturalness
-              }
-
-              setNaturalness={
-                handleNaturalnessChange
-              }
-
-              onRandomize={
-                handleRandomize
-              }
-
-              randomSeed={
-                randomSeed
-              }
-
-            />
+            </div>
 
 
             {/* =================================================
@@ -1137,6 +1209,7 @@ function HandwritingGeneratorPage() {
 
                 </div>
 
+
                 <button
                   type="button"
                   onClick={() =>
@@ -1154,6 +1227,7 @@ function HandwritingGeneratorPage() {
                     w-11
                     rounded-full
                     transition
+
                     ${
                       assignmentMode
                         ? "bg-indigo-600"
@@ -1172,6 +1246,7 @@ function HandwritingGeneratorPage() {
                       bg-white
                       shadow
                       transition
+
                       ${
                         assignmentMode
                           ? "left-6"
@@ -1223,12 +1298,9 @@ function HandwritingGeneratorPage() {
                       field,
                       label,
                     ]) => (
-
                       <label
                         key={field}
-                        className="
-                          block
-                        "
+                        className="block"
                       >
 
                         <span
@@ -1250,7 +1322,9 @@ function HandwritingGeneratorPage() {
                               field
                             ]
                           }
-                          onChange={(event) =>
+                          onChange={(
+                            event
+                          ) =>
                             updateAssignmentDetail(
                               field,
                               event.target
@@ -1278,7 +1352,6 @@ function HandwritingGeneratorPage() {
                         />
 
                       </label>
-
                     )
                   )}
 
@@ -1303,39 +1376,29 @@ function HandwritingGeneratorPage() {
               "
             >
 
-              <div
-                className="
-                  flex
-                  items-center
-                  justify-between
-                  gap-3
-                "
-              >
+              <div>
 
-                <div>
+                <h3
+                  className="
+                    text-sm
+                    font-semibold
+                    text-slate-900
+                  "
+                >
+                  Handwriting Variation
+                </h3>
 
-                  <h3
-                    className="
-                      text-sm
-                      font-semibold
-                      text-slate-900
-                    "
-                  >
-                    Handwriting Variation
-                  </h3>
-
-                  <p
-                    className="
-                      mt-1
-                      text-xs
-                      text-slate-500
-                    "
-                  >
-                    Change the handwriting realization
-                    without changing your document.
-                  </p>
-
-                </div>
+                <p
+                  className="
+                    mt-1
+                    text-xs
+                    text-slate-500
+                  "
+                >
+                  Change the handwriting
+                  realization without changing
+                  your document.
+                </p>
 
               </div>
 
@@ -1377,6 +1440,7 @@ function HandwritingGeneratorPage() {
                 "
               >
                 Seed:{" "}
+
                 <span
                   className="
                     font-mono
@@ -1416,6 +1480,7 @@ function HandwritingGeneratorPage() {
                 Document
               </h3>
 
+
               <p
                 className="
                   mt-2
@@ -1426,6 +1491,7 @@ function HandwritingGeneratorPage() {
               >
                 {handwritingDocument.title}
               </p>
+
 
               <div
                 className="
@@ -1438,17 +1504,24 @@ function HandwritingGeneratorPage() {
 
                 <div>
                   Words:{" "}
-                  {handwritingDocument.wordCount}
+                  {
+                    handwritingDocument.wordCount
+                  }
                 </div>
 
                 <div>
                   Characters:{" "}
-                  {handwritingDocument.characterCount}
+                  {
+                    handwritingDocument.characterCount
+                  }
                 </div>
 
                 <div>
                   Blocks:{" "}
-                  {handwritingDocument.blocks.length}
+                  {
+                    handwritingDocument.blocks
+                      ?.length || 0
+                  }
                 </div>
 
                 <div>
@@ -1458,6 +1531,7 @@ function HandwritingGeneratorPage() {
 
                 <div>
                   Structured formatting:{" "}
+
                   <span
                     className="
                       font-medium
@@ -1514,9 +1588,9 @@ function HandwritingGeneratorPage() {
                     text-slate-500
                   "
                 >
-                  Headings, lists, tables, images,
-                  page breaks, and paragraphs are
-                  preserved.
+                  Headings, lists, tables,
+                  images, page breaks, and
+                  paragraphs are preserved.
                 </p>
 
               </div>
@@ -1539,6 +1613,7 @@ function HandwritingGeneratorPage() {
                   font-medium
                   text-white
                   transition
+
                   ${
                     isGenerating
                       ? `
@@ -1550,6 +1625,7 @@ function HandwritingGeneratorPage() {
                         hover:bg-indigo-500
                       `
                   }
+
                   disabled:cursor-not-allowed
                   disabled:opacity-50
                 `}
@@ -1566,7 +1642,7 @@ function HandwritingGeneratorPage() {
                 PAGE NAVIGATION
                 ================================================= */}
 
-            {pages.length > 1 && (
+            {pages.length > 0 && (
               <div
                 className="
                   mb-5
@@ -1605,7 +1681,8 @@ function HandwritingGeneratorPage() {
                     "
                   >
                     Page{" "}
-                    {selectedPage + 1}{" "}
+                    {selectedPage + 1}
+                    {" "}
                     of{" "}
                     {pages.length}
                   </span>
@@ -1623,8 +1700,10 @@ function HandwritingGeneratorPage() {
                 >
 
                   {pages.map(
-                    (page, index) => {
-
+                    (
+                      page,
+                      index
+                    ) => {
                       const pageSource =
                         typeof page ===
                         "string"
@@ -1653,6 +1732,7 @@ function HandwritingGeneratorPage() {
                             border-2
                             bg-slate-50
                             transition
+
                             ${
                               selectedPage ===
                               index
@@ -1676,7 +1756,9 @@ function HandwritingGeneratorPage() {
 
                           {pageSource ? (
                             <img
-                              src={pageSource}
+                              src={
+                                pageSource
+                              }
                               alt={
                                 `Page ${
                                   index + 1
@@ -1705,6 +1787,7 @@ function HandwritingGeneratorPage() {
                               {index + 1}
                             </div>
                           )}
+
 
                           <span
                             className="
@@ -1735,10 +1818,11 @@ function HandwritingGeneratorPage() {
 
 
             {/* =================================================
-                PREVIEW
+                HANDWRITING PREVIEW
                 ================================================= */}
 
             <HandwritingPreview
+
               document={
                 handwritingDocument
               }

@@ -1,7 +1,12 @@
 const handwritingPresets = [
+  // ============================================================
+  // NEAT STUDENT
+  // ============================================================
   {
     id: "neat_student",
+
     name: "Neat Student",
+
     description:
       "Clean, consistent handwriting suitable for notes and assignments.",
 
@@ -28,9 +33,14 @@ const handwritingPresets = [
     seed: 12345,
   },
 
+  // ============================================================
+  // SCHOOL NOTEBOOK
+  // ============================================================
   {
     id: "school_notebook",
+
     name: "School Notebook",
+
     description:
       "Natural classroom-style handwriting with moderate variation.",
 
@@ -57,9 +67,14 @@ const handwritingPresets = [
     seed: 12345,
   },
 
+  // ============================================================
+  // CURSIVE
+  // ============================================================
   {
     id: "cursive",
+
     name: "Cursive",
+
     description:
       "Smooth flowing handwriting with a clean cursive appearance.",
 
@@ -86,9 +101,14 @@ const handwritingPresets = [
     seed: 12345,
   },
 
+  // ============================================================
+  // MESSY NOTES
+  // ============================================================
   {
     id: "messy_notes",
+
     name: "Messy Notes",
+
     description:
       "Loose and irregular handwriting designed to resemble quick notes.",
 
@@ -115,9 +135,14 @@ const handwritingPresets = [
     seed: 12345,
   },
 
+  // ============================================================
+  // PENCIL
+  // ============================================================
   {
     id: "pencil",
+
     name: "Pencil",
+
     description:
       "Soft gray pencil-style handwriting with subtle texture.",
 
