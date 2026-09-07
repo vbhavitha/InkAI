@@ -190,10 +190,56 @@ export async function deleteHandwritingDocument(
   return handleResponse(response);
 }
 
+// ============================================================
+// CONVERT DOCUMENT TO HANDWRITING DOCUMENT
+// ============================================================
+
+export function convertDocumentToHandwritingDocument(document) {
+  if (!document) {
+    return null;
+  }
+
+  const content =
+    document.content ||
+    document.content_json ||
+    document.data ||
+    document.document_content ||
+    null;
+
+  return {
+    documentId:
+      document.id ||
+      document.document_id ||
+      document._id ||
+      "inkai-preview-document",
+
+    title:
+      document.title ||
+      "Untitled Document",
+
+    content,
+
+    blocks:
+      document.blocks ||
+      content?.content ||
+      [],
+
+    metadata: {
+      ...(
+        document.metadata &&
+        typeof document.metadata === "object"
+          ? document.metadata
+          : {}
+      ),
+    },
+  };
+}
+
 
 export default {
   createHandwritingDocument,
   getHandwritingDocument,
   updateHandwritingDocument,
   deleteHandwritingDocument,
+  convertDocumentToHandwritingDocument,
 };
