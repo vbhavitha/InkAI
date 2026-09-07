@@ -20,6 +20,8 @@ from app.api.ocr import router as ocr_router
 from app.api.documents import router as documents_router
 from app.api.handwriting import router as handwriting_router
 
+from app.api.assignments import router as assignments_router
+
 from app.api.handwriting_documents import (
     router as handwriting_documents_router,
 )
@@ -128,6 +130,8 @@ app.include_router(
 app.include_router(
     handwriting_router
 )
+
+app.include_router(assignments_router)
 
 app.include_router(
     handwriting_documents_router

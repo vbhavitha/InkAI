@@ -67,6 +67,16 @@ export function normalizePhase6Document(document) {
     document.data ||
     null;
 
+  if (typeof content === "string") {
+    try {
+        content = JSON.parse(content);
+    } catch {
+        throw new Error(
+        "The saved Phase 6 document contains invalid JSON."
+        );
+    }
+    }
+
   if (!content) {
     return null;
   }
