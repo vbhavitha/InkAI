@@ -1,12 +1,25 @@
-import { useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import {
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 
 import AssignmentForm from "../components/assignment/AssignmentForm";
 import AssignmentTemplates from "../components/assignment/AssignmentTemplates";
 import PaperSelector from "../components/assignment/PaperSelector";
 import PageSettings from "../components/assignment/PageSettings";
-import WritingArea from "../components/assignment/WritingArea";
 import AssignmentHeader from "../components/assignment/AssignmentHeader";
 import TitleSettings from "../components/assignment/TitleSettings";
+
+import {
+  getPhase6Document,
+  createHandwritingAssignmentPayload,
+} from "../services/assignmentService";
 
 import {
   getPaperConfig,
@@ -214,6 +227,40 @@ function AssignmentPage() {
     DEFAULT_ASSIGNMENT
   );
 
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const [phase6Document, setPhase6Document] =
+    useState(
+      location.state?.document || null
+    );
+
+  const [
+    isLoadingDocument,
+    setIsLoadingDocument,
+  ] = useState(false);
+
+  const [
+    documentError,
+    setDocumentError,
+  ] = useState("");
+
+  const [
+    handwriting,
+    setHandwriting,
+  ] = useState({
+    style: "school_notebook",
+    font: "school_notebook",
+    ink: "blue",
+    paper: "ruled",
+    naturalness: 65,
+    fontSize: 22,
+    lineSpacing: 1.5,
+    letterSpacing: 0.5,
+    wordSpacing: 5,
+    seed: 12345,
+  });
+
   /* ==========================================================
      UPDATE ASSIGNMENT
   ========================================================== */
@@ -234,6 +281,103 @@ function AssignmentPage() {
       ...assignment,
     };
   }, [assignment]);
+
+  useEffect(() => {
+    const documentId =
+      location.state?.documentId;
+
+    if (
+      phase6Document ||
+      !documentId
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadDocument() {
+      try {
+        setIsLoadingDocument(true);
+        setDocumentError("");
+
+        const document =
+          await getPhase6Document(
+            documentId
+          );
+
+        if (!cancelled) {
+          setPhase6Document(
+            document
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Failed to load Phase 6 document:",
+          error
+        );
+
+        if (!cancelled) {
+          setDocumentError(
+            error.message ||
+              "Unable to load the document."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingDocument(false);
+        }
+      }
+    }
+
+    loadDocument();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    location.state,
+    phase6Document,
+  ]);
+
+  /* ==========================================================
+     STEP 12.2 / 12.8 — GENERATE HANDWRITING
+  ========================================================== */
+
+  const handleGenerateHandwriting = () => {
+    if (!phase6Document) {
+      setDocumentError(
+        "Phase 6 document is not available."
+      );
+      return;
+    }
+
+    try {
+      const payload =
+        createHandwritingAssignmentPayload({
+          phase6Document,
+          assignment,
+          handwriting,
+        });
+
+      navigate("/handwriting", {
+        state: {
+          document: payload.document,
+          assignment: payload.assignment,
+          handwriting: payload.handwriting,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Failed to prepare handwriting assignment:",
+        error
+      );
+
+      setDocumentError(
+        error?.message ||
+          "Unable to prepare the assignment for handwriting generation."
+      );
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -314,6 +458,8 @@ function AssignmentPage() {
             />
 
           </div>
+
+
 
           {/* =================================================
               PAPER STYLE
@@ -562,6 +708,11 @@ function AssignmentPage() {
             }
           />
 
+          <HandwritingStyleSettings
+            value={handwriting}
+            onChange={setHandwriting}
+          />
+
           {/* =================================================
               HEADER SETTINGS
           ================================================== */}
@@ -720,6 +871,45 @@ function AssignmentPage() {
 
           </details>
 
+          {/* =================================================
+              STEP 12.8 — GENERATE HANDWRITTEN ASSIGNMENT
+          ================================================== */}
+
+          <div className="mt-6 border-t border-white/10 pt-5">
+            <button
+              type="button"
+              onClick={handleGenerateHandwriting}
+              disabled={
+                !phase6Document ||
+                isLoadingDocument
+              }
+              className="
+                w-full
+                rounded-xl
+                bg-indigo-600
+                px-5
+                py-3
+                text-sm
+                font-semibold
+                text-white
+                transition
+                hover:bg-indigo-500
+                disabled:cursor-not-allowed
+                disabled:opacity-50
+              "
+            >
+              {isLoadingDocument
+                ? "Loading Document..."
+                : "Generate Handwritten Assignment"}
+            </button>
+
+            {documentError && (
+              <p className="mt-2 text-xs text-red-400">
+                {documentError}
+              </p>
+            )}
+          </div>
+
         </section>
 
         {/* ===================================================
@@ -765,6 +955,7 @@ function AssignmentPage() {
 
             <AssignmentPreview
               data={previewData}
+              phase6Document={phase6Document}
             />
 
           </div>
@@ -777,11 +968,303 @@ function AssignmentPage() {
   );
 }
 
+function StructuredDocumentPreview({
+  nodes = [],
+  bodyFontClass = "text-sm",
+}) {
+  if (!Array.isArray(nodes)) {
+    return null;
+  }
+
+  return (
+    <div
+      className={`space-y-3 ${bodyFontClass}`}
+    >
+      {nodes.map(
+        (node, index) => (
+          <StructuredNode
+            key={
+              node.attrs?.uid ||
+              `${node.type}-${index}`
+            }
+            node={node}
+          />
+        )
+      )}
+    </div>
+  );
+}
+
+function StructuredNode({ node }) {
+  if (!node) {
+    return null;
+  }
+
+  switch (node.type) {
+    case "heading":
+      return (
+        <h2
+          className="font-bold"
+          style={{
+            fontSize:
+              node.attrs?.level === 1
+                ? "1.5rem"
+                : node.attrs?.level === 2
+                ? "1.25rem"
+                : "1.1rem",
+          }}
+        >
+          <InlineContent
+            content={node.content}
+          />
+        </h2>
+      );
+
+    case "paragraph":
+      return (
+        <p>
+          <InlineContent
+            content={node.content}
+          />
+        </p>
+      );
+
+    case "bulletList":
+      return (
+        <ul className="list-disc pl-6">
+          {(node.content || []).map(
+            (item, index) => (
+              <li key={index}>
+                {(item.content || []).map(
+                  (child, childIndex) => (
+                    <StructuredNode
+                      key={childIndex}
+                      node={child}
+                    />
+                  )
+                )}
+              </li>
+            )
+          )}
+        </ul>
+      );
+
+    case "orderedList":
+      return (
+        <ol className="list-decimal pl-6">
+          {(node.content || []).map(
+            (item, index) => (
+              <li key={index}>
+                {(item.content || []).map(
+                  (child, childIndex) => (
+                    <StructuredNode
+                      key={childIndex}
+                      node={child}
+                    />
+                  )
+                )}
+              </li>
+            )
+          )}
+        </ol>
+      );
+
+    case "table":
+      return (
+        <table className="w-full border-collapse border border-slate-300">
+          <tbody>
+            {(node.content || []).map(
+              (row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {(row.content || []).map(
+                    (cell, cellIndex) => (
+                      <td
+                        key={cellIndex}
+                        className="border border-slate-300 px-2 py-1"
+                      >
+                        {(cell.content || []).map(
+                          (
+                            child,
+                            childIndex
+                          ) => (
+                            <StructuredNode
+                              key={
+                                childIndex
+                              }
+                              node={
+                                child
+                              }
+                            />
+                          )
+                        )}
+                      </td>
+                    )
+                  )}
+                </tr>
+              )
+            )}
+          </tbody>
+        </table>
+      );
+
+    case "image":
+      return (
+        <div className="my-4">
+          <img
+            src={
+              node.attrs?.src
+            }
+            alt={
+              node.attrs?.alt ||
+              ""
+            }
+            style={{
+              width:
+                node.attrs?.width ||
+                "auto",
+              maxWidth: "100%",
+            }}
+            className="rounded"
+          />
+        </div>
+      );
+
+    case "pageBreak":
+      return (
+        <div
+          className="my-6 border-t-2 border-dashed border-slate-300"
+          aria-label="Page break"
+        />
+      );
+
+    case "hardBreak":
+      return <br />;
+
+    default:
+      return (
+        <div>
+          {(node.content || []).map(
+            (child, index) => (
+              <StructuredNode
+                key={index}
+                node={child}
+              />
+            )
+          )}
+        </div>
+      );
+  }
+}
+
+function InlineContent({
+  content = [],
+}) {
+  return (
+    <>
+      {content.map(
+        (node, index) => {
+          if (
+            node.type === "hardBreak"
+          ) {
+            return (
+              <br
+                key={index}
+              />
+            );
+          }
+
+          if (
+            node.type !== "text"
+          ) {
+            return null;
+          }
+
+          let element = (
+            <span>
+              {node.text}
+            </span>
+          );
+
+          const marks =
+            node.marks || [];
+
+          for (
+            const mark of marks
+          ) {
+            if (
+              mark.type ===
+              "bold"
+            ) {
+              element = (
+                <strong
+                  key={`${index}-bold`}
+                >
+                  {element}
+                </strong>
+              );
+            }
+
+            if (
+              mark.type ===
+              "italic"
+            ) {
+              element = (
+                <em
+                  key={`${index}-italic`}
+                >
+                  {element}
+                </em>
+              );
+            }
+
+            if (
+              mark.type ===
+              "underline"
+            ) {
+              element = (
+                <u
+                  key={`${index}-underline`}
+                >
+                  {element}
+                </u>
+              );
+            }
+
+            if (
+              mark.type ===
+              "strike"
+            ) {
+              element = (
+                <s
+                  key={`${index}-strike`}
+                >
+                  {element}
+                </s>
+              );
+            }
+          }
+
+          return (
+            <span key={index}>
+              {element}
+            </span>
+          );
+        }
+      )}
+    </>
+  );
+}
+
 /* ============================================================
    ASSIGNMENT PREVIEW
 ============================================================ */
 
-function AssignmentPreview({ data }) {
+function AssignmentPreview({ data, phase6Document, }) {
+
+  const structuredBlocks =
+    phase6Document?.content?.content ||
+    phase6Document?.blocks ||
+    [];
 
   /* ----------------------------------------------------------
      Orientation
@@ -1054,10 +1537,9 @@ function AssignmentPreview({ data }) {
 
           {/* Content */}
 
-          <WritingArea
-            paperStyle={data.paperStyle}
-            content={data.content}
-            fontSizeClass={bodySize}
+          <StructuredDocumentPreview
+            nodes={structuredBlocks}
+            bodyFontClass={bodySize}
           />
 
         </div>
@@ -1116,13 +1598,9 @@ function AssignmentPreview({ data }) {
 
           {/* Assignment Content */}
 
-          <WritingArea
-            paperStyle={data.paperStyle}
-            content={
-              data.content ||
-              "Your assignment content will appear here as you type."
-            }
-            fontSizeClass={bodySize}
+          <StructuredDocumentPreview
+            nodes={structuredBlocks}
+            bodyFontClass={bodySize}
           />
 
         </div>
@@ -1238,6 +1716,13 @@ function AssignmentPreview({ data }) {
 
           </div>
 
+          <div className="mt-10 w-full text-left">
+            <StructuredDocumentPreview
+              nodes={structuredBlocks}
+              bodyFontClass={bodySize}
+            />
+          </div>
+
         </div>
 
         <Footer />
@@ -1290,13 +1775,9 @@ function AssignmentPreview({ data }) {
 
         {/* Homework Content */}
 
-        <WritingArea
-          paperStyle={data.paperStyle}
-          content={
-            data.content ||
-            "Your homework content will appear here as you type."
-          }
-          fontSizeClass={bodySize}
+        <StructuredDocumentPreview
+          nodes={structuredBlocks}
+          bodyFontClass={bodySize}
         />
 
       </div>

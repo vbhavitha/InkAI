@@ -104,6 +104,35 @@ def create_document(
 
 
 # ============================================================
+# GET SINGLE DOCUMENT
+# ============================================================
+
+@router.get(
+    "/{document_id}",
+    response_model=DocumentResponse,
+)
+def get_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+):
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.user_id == TEMP_USER_ID,
+        )
+        .first()
+    )
+
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    return convert_document(document)
+
+# ============================================================
 # GET DOCUMENT
 # ============================================================
 

@@ -121,6 +121,14 @@ function HandwritingGeneratorPage() {
   const sourceDocument =
     location.state?.document || null;
 
+  const incomingHandwriting =
+    location.state?.handwriting ||
+    null;
+
+  const incomingAssignment =
+    location.state?.assignment ||
+    null;
+
 
   /*
    * =======================================================
@@ -179,7 +187,10 @@ function HandwritingGeneratorPage() {
    */
 
   const defaultPreset =
-    getPreset("school_notebook");
+    getPreset(
+      incomingHandwriting?.style ||
+        "school_notebook"
+    );
 
 
   /*
@@ -207,6 +218,7 @@ function HandwritingGeneratorPage() {
     selectedFont,
     setSelectedFont,
   ] = useState(
+    incomingHandwriting?.font ||
     defaultPreset?.font ||
       "school_notebook"
   );
@@ -216,6 +228,7 @@ function HandwritingGeneratorPage() {
     selectedPaper,
     setSelectedPaper,
   ] = useState(
+    incomingHandwriting?.paper ||
     defaultPreset?.paper ||
       "ruled"
   );
@@ -225,6 +238,7 @@ function HandwritingGeneratorPage() {
     selectedInk,
     setSelectedInk,
   ] = useState(
+    incomingHandwriting?.ink ||
     defaultPreset?.ink ||
       "blue"
   );
@@ -240,6 +254,7 @@ function HandwritingGeneratorPage() {
     fontSize,
     setFontSize,
   ] = useState(
+    incomingHandwriting?.fontSize ??
     defaultPreset?.fontSize ??
       22
   );
@@ -255,6 +270,7 @@ function HandwritingGeneratorPage() {
     letterSpacing,
     setLetterSpacing,
   ] = useState(
+    incomingHandwriting?.letterSpacing ??
     defaultPreset?.letterSpacing ??
       0
   );
@@ -270,6 +286,7 @@ function HandwritingGeneratorPage() {
     lineSpacing,
     setLineSpacing,
   ] = useState(
+    incomingHandwriting?.lineSpacing ??
     defaultPreset?.lineSpacing ??
       1.5
   );
@@ -285,6 +302,7 @@ function HandwritingGeneratorPage() {
     wordSpacing,
     setWordSpacing,
   ] = useState(
+    incomingHandwriting?.wordSpacing ??
     defaultPreset?.wordSpacing ??
       5
   );
@@ -300,6 +318,7 @@ function HandwritingGeneratorPage() {
     inkOpacity,
     setInkOpacity,
   ] = useState(
+    incomingHandwriting?.inkOpacity ??
     defaultPreset?.inkOpacity ??
       0.9
   );
@@ -321,6 +340,7 @@ function HandwritingGeneratorPage() {
     naturalness,
     setNaturalness,
   ] = useState(
+    incomingHandwriting?.naturalness ??
     defaultPreset?.naturalness ??
       50
   );
@@ -362,6 +382,7 @@ function HandwritingGeneratorPage() {
     randomSeed,
     setRandomSeed,
   ] = useState(
+    incomingHandwriting?.seed ??
     defaultPreset?.seed ??
       12345
   );
