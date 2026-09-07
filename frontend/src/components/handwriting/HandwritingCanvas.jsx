@@ -1,7 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import {
-  ChevronLeft,
-  ChevronRight,
   ZoomIn,
   ZoomOut,
   RotateCcw,
@@ -11,6 +14,7 @@ import {
   getFontUrl,
   getStyleFontFamily,
 } from "../../utils/handwritingUtils";
+
 
 /*
  * =========================================================
@@ -27,6 +31,7 @@ const DEFAULT_MARGIN = {
   bottom: 70,
   left: 70,
 };
+
 
 /*
  * =========================================================
@@ -87,39 +92,67 @@ const INK_STYLES = {
   },
 };
 
+
 function getInkConfiguration(inkStyle) {
-  return INK_STYLES[inkStyle] || INK_STYLES.blue;
+  return (
+    INK_STYLES[inkStyle] ||
+    INK_STYLES.blue
+  );
 }
+
 
 /*
  * =========================================================
  * DETERMINISTIC RANDOMNESS
+ * =========================================================
  *
  * Same:
- * documentId + style + seed + page + character
  *
- * => same handwriting.
+ * documentId
+ * + style
+ * + seed
+ * + page
+ * + character
+ *
+ * produces the same handwriting.
  * =========================================================
  */
 
 function hashString(value) {
-  const input = String(value ?? "");
+  const input = String(
+    value ?? ""
+  );
 
   let hash = 2166136261;
 
-  for (let index = 0; index < input.length; index += 1) {
+  for (
+    let index = 0;
+    index < input.length;
+    index += 1
+  ) {
     hash ^= input.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
+    hash = Math.imul(
+      hash,
+      16777619
+    );
   }
 
   return hash >>> 0;
 }
 
-function deterministicRandom(...values) {
-  const hash = hashString(values.join(":"));
 
-  return hash / 4294967295;
+function deterministicRandom(
+  ...values
+) {
+  const hash = hashString(
+    values.join(":")
+  );
+
+  return (
+    hash / 4294967295
+  );
 }
+
 
 function deterministicVariation(
   documentId,
@@ -130,21 +163,27 @@ function deterministicVariation(
   channel,
   amount = 1
 ) {
-  const random = deterministicRandom(
-    documentId,
-    styleId,
-    seed,
-    pageNumber,
-    characterIndex,
-    channel
-  );
+  const random =
+    deterministicRandom(
+      documentId,
+      styleId,
+      seed,
+      pageNumber,
+      characterIndex,
+      channel
+    );
 
-  return (random - 0.5) * amount;
+  return (
+    (random - 0.5) *
+    amount
+  );
 }
+
 
 /*
  * =========================================================
  * NATURALNESS
+ * =========================================================
  *
  * 0   = perfectly uniform
  * 25  = subtle
@@ -154,19 +193,41 @@ function deterministicVariation(
  * =========================================================
  */
 
-function clampNaturalness(value) {
-  const numeric = Number(value);
+function clampNaturalness(
+  value
+) {
+  const numeric =
+    Number(value);
 
-  if (!Number.isFinite(numeric)) {
+  if (
+    !Number.isFinite(
+      numeric
+    )
+  ) {
     return 0.5;
   }
 
   if (numeric > 1) {
-    return Math.max(0, Math.min(100, numeric)) / 100;
+    return (
+      Math.max(
+        0,
+        Math.min(
+          100,
+          numeric
+        )
+      ) / 100
+    );
   }
 
-  return Math.max(0, Math.min(1, numeric));
+  return Math.max(
+    0,
+    Math.min(
+      1,
+      numeric
+    )
+  );
 }
+
 
 /*
  * =========================================================
@@ -184,7 +245,10 @@ function getInkVariation(
   naturalVariation,
   naturalness
 ) {
-  if (!naturalVariation || naturalness <= 0) {
+  if (
+    !naturalVariation ||
+    naturalness <= 0
+  ) {
     return {
       opacityMultiplier: 1,
       darknessMultiplier: 1,
@@ -192,47 +256,59 @@ function getInkVariation(
     };
   }
 
-  const opacityRandom = deterministicRandom(
-    documentId,
-    styleId,
-    seed,
-    pageNumber,
-    characterIndex,
-    "opacity"
-  );
+  const opacityRandom =
+    deterministicRandom(
+      documentId,
+      styleId,
+      seed,
+      pageNumber,
+      characterIndex,
+      "opacity"
+    );
 
-  const darknessRandom = deterministicRandom(
-    documentId,
-    styleId,
-    seed,
-    pageNumber,
-    characterIndex,
-    "darkness"
-  );
+  const darknessRandom =
+    deterministicRandom(
+      documentId,
+      styleId,
+      seed,
+      pageNumber,
+      characterIndex,
+      "darkness"
+    );
 
-  const textureRandom = deterministicRandom(
-    documentId,
-    styleId,
-    seed,
-    pageNumber,
-    characterIndex,
-    "texture"
-  );
+  const textureRandom =
+    deterministicRandom(
+      documentId,
+      styleId,
+      seed,
+      pageNumber,
+      characterIndex,
+      "texture"
+    );
 
-  if (inkStyle === "pencil") {
+  if (
+    inkStyle === "pencil"
+  ) {
     return {
       opacityMultiplier:
         1 -
         naturalness * 0.12 +
-        opacityRandom * naturalness * 0.08,
+        opacityRandom *
+          naturalness *
+          0.08,
 
       darknessMultiplier:
         1 -
         naturalness * 0.15 +
-        darknessRandom * naturalness * 0.10,
+        darknessRandom *
+          naturalness *
+          0.10,
 
       textureStrength:
-        naturalness * (0.02 + textureRandom * 0.08),
+        naturalness *
+        (0.02 +
+          textureRandom *
+            0.08),
     };
   }
 
@@ -240,17 +316,24 @@ function getInkVariation(
     opacityMultiplier:
       1 -
       naturalness * 0.06 +
-      opacityRandom * naturalness * 0.08,
+      opacityRandom *
+        naturalness *
+        0.08,
 
     darknessMultiplier:
       1 -
       naturalness * 0.04 +
-      darknessRandom * naturalness * 0.08,
+      darknessRandom *
+        naturalness *
+        0.08,
 
     textureStrength:
-      naturalness * textureRandom * 0.08,
+      naturalness *
+      textureRandom *
+      0.08,
   };
 }
+
 
 /*
  * =========================================================
@@ -258,43 +341,94 @@ function getInkVariation(
  * =========================================================
  */
 
-function adjustInkColor(color, darknessMultiplier) {
-  if (!color || typeof color !== "string") {
+function adjustInkColor(
+  color,
+  darknessMultiplier
+) {
+  if (
+    !color ||
+    typeof color !== "string"
+  ) {
     return color;
   }
 
-  const normalized = color.replace("#", "");
+  const normalized =
+    color.replace(
+      "#",
+      ""
+    );
 
-  if (normalized.length !== 6) {
+  if (
+    normalized.length !== 6
+  ) {
     return color;
   }
 
-  const red = parseInt(normalized.slice(0, 2), 16);
-  const green = parseInt(normalized.slice(2, 4), 16);
-  const blue = parseInt(normalized.slice(4, 6), 16);
-
-  const adjustedRed = Math.max(
-    0,
-    Math.min(255, Math.round(red * darknessMultiplier))
+  const red = parseInt(
+    normalized.slice(0, 2),
+    16
   );
 
-  const adjustedGreen = Math.max(
-    0,
-    Math.min(255, Math.round(green * darknessMultiplier))
+  const green = parseInt(
+    normalized.slice(2, 4),
+    16
   );
 
-  const adjustedBlue = Math.max(
-    0,
-    Math.min(255, Math.round(blue * darknessMultiplier))
+  const blue = parseInt(
+    normalized.slice(4, 6),
+    16
   );
+
+  const adjustedRed =
+    Math.max(
+      0,
+      Math.min(
+        255,
+        Math.round(
+          red *
+            darknessMultiplier
+        )
+      )
+    );
+
+  const adjustedGreen =
+    Math.max(
+      0,
+      Math.min(
+        255,
+        Math.round(
+          green *
+            darknessMultiplier
+        )
+      )
+    );
+
+  const adjustedBlue =
+    Math.max(
+      0,
+      Math.min(
+        255,
+        Math.round(
+          blue *
+            darknessMultiplier
+        )
+      )
+    );
 
   return (
     "#" +
-    adjustedRed.toString(16).padStart(2, "0") +
-    adjustedGreen.toString(16).padStart(2, "0") +
-    adjustedBlue.toString(16).padStart(2, "0")
+    adjustedRed
+      .toString(16)
+      .padStart(2, "0") +
+    adjustedGreen
+      .toString(16)
+      .padStart(2, "0") +
+    adjustedBlue
+      .toString(16)
+      .padStart(2, "0")
   );
 }
+
 
 /*
  * =========================================================
@@ -302,11 +436,15 @@ function adjustInkColor(color, darknessMultiplier) {
  * =========================================================
  */
 
-function drawPaperBackground(context, paperStyle) {
+function drawPaperBackground(
+  context,
+  paperStyle
+) {
   context.save();
 
   context.fillStyle =
-    paperStyle === "notebook"
+    paperStyle ===
+    "notebook"
       ? "#fdfcf8"
       : "#fffef9";
 
@@ -321,25 +459,40 @@ function drawPaperBackground(context, paperStyle) {
     paperStyle === "ruled" ||
     paperStyle === "notebook"
   ) {
-    drawRuledPaper(context, paperStyle);
+    drawRuledPaper(
+      context,
+      paperStyle
+    );
   }
 
-  if (paperStyle === "graph") {
-    drawGraphPaper(context);
+  if (
+    paperStyle === "graph"
+  ) {
+    drawGraphPaper(
+      context
+    );
   }
 
-  drawPaperTexture(context, paperStyle);
+  drawPaperTexture(
+    context,
+    paperStyle
+  );
 
   context.restore();
 }
 
-function drawRuledPaper(context, paperStyle) {
+
+function drawRuledPaper(
+  context,
+  paperStyle
+) {
   const lineSpacing = 36;
   const startY = 105;
 
   context.save();
 
   context.lineWidth = 1;
+
   context.strokeStyle =
     "rgba(100, 130, 170, 0.28)";
 
@@ -349,32 +502,57 @@ function drawRuledPaper(context, paperStyle) {
     y += lineSpacing
   ) {
     context.beginPath();
-    context.moveTo(45, y);
-    context.lineTo(A4_WIDTH - 45, y);
+
+    context.moveTo(
+      45,
+      y
+    );
+
+    context.lineTo(
+      A4_WIDTH - 45,
+      y
+    );
+
     context.stroke();
   }
 
-  if (paperStyle === "notebook") {
+  if (
+    paperStyle ===
+    "notebook"
+  ) {
     context.strokeStyle =
       "rgba(190, 80, 80, 0.45)";
 
     context.lineWidth = 1.2;
 
     context.beginPath();
-    context.moveTo(105, 45);
-    context.lineTo(105, A4_HEIGHT - 45);
+
+    context.moveTo(
+      105,
+      45
+    );
+
+    context.lineTo(
+      105,
+      A4_HEIGHT - 45
+    );
+
     context.stroke();
   }
 
   context.restore();
 }
 
-function drawGraphPaper(context) {
+
+function drawGraphPaper(
+  context
+) {
   const gridSize = 25;
 
   context.save();
 
   context.lineWidth = 0.7;
+
   context.strokeStyle =
     "rgba(100, 130, 170, 0.22)";
 
@@ -384,8 +562,17 @@ function drawGraphPaper(context) {
     x += gridSize
   ) {
     context.beginPath();
-    context.moveTo(x, 0);
-    context.lineTo(x, A4_HEIGHT);
+
+    context.moveTo(
+      x,
+      0
+    );
+
+    context.lineTo(
+      x,
+      A4_HEIGHT
+    );
+
     context.stroke();
   }
 
@@ -395,18 +582,33 @@ function drawGraphPaper(context) {
     y += gridSize
   ) {
     context.beginPath();
-    context.moveTo(0, y);
-    context.lineTo(A4_WIDTH, y);
+
+    context.moveTo(
+      0,
+      y
+    );
+
+    context.lineTo(
+      A4_WIDTH,
+      y
+    );
+
     context.stroke();
   }
 
   context.restore();
 }
 
-function drawPaperTexture(context, paperStyle) {
+
+function drawPaperTexture(
+  context,
+  paperStyle
+) {
   if (
-    paperStyle !== "notebook" &&
-    paperStyle !== "plain"
+    paperStyle !==
+      "notebook" &&
+    paperStyle !==
+      "plain"
   ) {
     return;
   }
@@ -414,25 +616,40 @@ function drawPaperTexture(context, paperStyle) {
   context.save();
 
   /*
-   * Micro grain
+   * Micro grain.
    */
 
-  for (let y = 0; y < A4_HEIGHT; y += 6) {
-    for (let x = 0; x < A4_WIDTH; x += 6) {
+  for (
+    let y = 0;
+    y < A4_HEIGHT;
+    y += 6
+  ) {
+    for (
+      let x = 0;
+      x < A4_WIDTH;
+      x += 6
+    ) {
       const value =
         Math.sin(
           x * 12.9898 +
             y * 78.233
-        ) * 43758.5453;
+        ) *
+        43758.5453;
 
       const normalized =
-        value - Math.floor(value);
+        value -
+        Math.floor(
+          value
+        );
 
-      if (normalized > 0.68) {
+      if (
+        normalized > 0.68
+      ) {
         context.fillStyle =
           `rgba(70,65,55,${
             0.008 +
-            normalized * 0.010
+            normalized *
+              0.010
           })`;
 
         context.fillRect(
@@ -446,57 +663,89 @@ function drawPaperTexture(context, paperStyle) {
   }
 
   /*
-   * Paper fibers
+   * Paper fibers.
    */
 
-  for (let index = 0; index < 180; index += 1) {
+  for (
+    let index = 0;
+    index < 180;
+    index += 1
+  ) {
     const seed =
-      Math.sin(index * 91.731) *
+      Math.sin(
+        index * 91.731
+      ) *
       43758.5453;
 
     const normalized =
-      seed - Math.floor(seed);
+      seed -
+      Math.floor(seed);
 
     const x =
-      normalized * A4_WIDTH;
+      normalized *
+      A4_WIDTH;
 
     const secondSeed =
-      Math.sin(index * 47.173) *
+      Math.sin(
+        index * 47.173
+      ) *
       43758.5453;
 
     const secondNormalized =
       secondSeed -
-      Math.floor(secondSeed);
+      Math.floor(
+        secondSeed
+      );
 
     const y =
-      secondNormalized * A4_HEIGHT;
+      secondNormalized *
+      A4_HEIGHT;
 
     const length =
-      8 + normalized * 20;
+      8 +
+      normalized * 20;
 
     const angle =
-      (secondNormalized - 0.5) * 0.35;
+      (secondNormalized -
+        0.5) *
+      0.35;
 
     context.save();
 
-    context.translate(x, y);
-    context.rotate(angle);
+    context.translate(
+      x,
+      y
+    );
+
+    context.rotate(
+      angle
+    );
 
     context.strokeStyle =
       "rgba(120,110,95,0.018)";
 
-    context.lineWidth = 0.45;
+    context.lineWidth =
+      0.45;
 
     context.beginPath();
-    context.moveTo(0, 0);
-    context.lineTo(length, 0);
+
+    context.moveTo(
+      0,
+      0
+    );
+
+    context.lineTo(
+      length,
+      0
+    );
+
     context.stroke();
 
     context.restore();
   }
 
   /*
-   * Paper tonality
+   * Paper tonality.
    */
 
   const gradient =
@@ -522,7 +771,8 @@ function drawPaperTexture(context, paperStyle) {
     "rgba(245,240,228,0.018)"
   );
 
-  context.fillStyle = gradient;
+  context.fillStyle =
+    gradient;
 
   context.fillRect(
     0,
@@ -533,6 +783,7 @@ function drawPaperTexture(context, paperStyle) {
 
   context.restore();
 }
+
 
 /*
  * =========================================================
@@ -548,18 +799,30 @@ function measureTextWithSpacing(
 ) {
   let width = 0;
 
-  for (const character of String(text ?? "")) {
-    width += context.measureText(character).width;
+  for (
+    const character of String(
+      text ?? ""
+    )
+  ) {
+    width +=
+      context.measureText(
+        character
+      ).width;
 
-    if (character === " ") {
-      width += wordSpacing;
+    if (
+      character === " "
+    ) {
+      width +=
+        wordSpacing;
     } else {
-      width += letterSpacing;
+      width +=
+        letterSpacing;
     }
   }
 
   return width;
 }
+
 
 function wrapTextByRenderedWidth(
   context,
@@ -572,7 +835,9 @@ function wrapTextByRenderedWidth(
     fontFamily,
   } = {}
 ) {
-  const value = String(text ?? "");
+  const value = String(
+    text ?? ""
+  );
 
   if (!value) {
     return [""];
@@ -583,7 +848,8 @@ function wrapTextByRenderedWidth(
 
   const getWidth = (
     line,
-    currentWordSpacing = wordSpacing
+    currentWordSpacing =
+      wordSpacing
   ) =>
     measureTextWithSpacing(
       context,
@@ -593,29 +859,40 @@ function wrapTextByRenderedWidth(
     );
 
   const lines = [];
-  const words = value.split(/\s+/);
+
+  const words =
+    value.split(/\s+/);
 
   let currentLine = "";
 
-  for (const word of words) {
+  for (
+    const word of words
+  ) {
     if (!word) {
       continue;
     }
 
-    const candidate = currentLine
-      ? `${currentLine} ${word}`
-      : word;
+    const candidate =
+      currentLine
+        ? `${currentLine} ${word}`
+        : word;
 
     if (
-      getWidth(candidate) <=
-      maxWidth
+      getWidth(
+        candidate
+      ) <= maxWidth
     ) {
-      currentLine = candidate;
+      currentLine =
+        candidate;
+
       continue;
     }
 
     if (currentLine) {
-      lines.push(currentLine);
+      lines.push(
+        currentLine
+      );
+
       currentLine = "";
     }
 
@@ -624,18 +901,25 @@ function wrapTextByRenderedWidth(
      */
 
     if (
-      getWidth(word, 0) <=
-      maxWidth
+      getWidth(
+        word,
+        0
+      ) <= maxWidth
     ) {
-      currentLine = word;
+      currentLine =
+        word;
+
       continue;
     }
 
     let partialWord = "";
 
-    for (const character of word) {
+    for (
+      const character of word
+    ) {
       const candidateCharacter =
-        partialWord + character;
+        partialWord +
+        character;
 
       const characterWidth =
         measureTextWithSpacing(
@@ -652,19 +936,27 @@ function wrapTextByRenderedWidth(
         partialWord =
           candidateCharacter;
       } else {
-        if (partialWord) {
-          lines.push(partialWord);
+        if (
+          partialWord
+        ) {
+          lines.push(
+            partialWord
+          );
         }
 
-        partialWord = character;
+        partialWord =
+          character;
       }
     }
 
-    currentLine = partialWord;
+    currentLine =
+      partialWord;
   }
 
   if (currentLine) {
-    lines.push(currentLine);
+    lines.push(
+      currentLine
+    );
   }
 
   return lines.length
@@ -672,18 +964,19 @@ function wrapTextByRenderedWidth(
     : [""];
 }
 
+
 /*
  * =========================================================
  * TEXT EXTRACTION
- *
- * Supports the normalized document produced by
- * handwritingDocumentService.js as well as TipTap-like
- * content structures.
  * =========================================================
  */
 
-function extractInlineText(content) {
-  if (!Array.isArray(content)) {
+function extractInlineText(
+  content
+) {
+  if (
+    !Array.isArray(content)
+  ) {
     return "";
   }
 
@@ -694,13 +987,16 @@ function extractInlineText(content) {
       }
 
       if (
-        typeof node.text === "string"
+        typeof node.text ===
+        "string"
       ) {
         return node.text;
       }
 
       if (
-        Array.isArray(node.content)
+        Array.isArray(
+          node.content
+        )
       ) {
         return extractInlineText(
           node.content
@@ -712,25 +1008,32 @@ function extractInlineText(content) {
     .join("");
 }
 
-function getBlockText(block) {
+
+function getBlockText(
+  block
+) {
   if (!block) {
     return "";
   }
 
   if (
-    typeof block.text === "string"
+    typeof block.text ===
+    "string"
   ) {
     return block.text;
   }
 
   if (
-    typeof block.content === "string"
+    typeof block.content ===
+    "string"
   ) {
     return block.content;
   }
 
   if (
-    Array.isArray(block.content)
+    Array.isArray(
+      block.content
+    )
   ) {
     return extractInlineText(
       block.content
@@ -740,19 +1043,25 @@ function getBlockText(block) {
   return "";
 }
 
-function getListItemText(item) {
+
+function getListItemText(
+  item
+) {
   if (!item) {
     return "";
   }
 
   if (
-    typeof item.text === "string"
+    typeof item.text ===
+    "string"
   ) {
     return item.text;
   }
 
   if (
-    Array.isArray(item.content)
+    Array.isArray(
+      item.content
+    )
   ) {
     return extractInlineText(
       item.content
@@ -762,19 +1071,25 @@ function getListItemText(item) {
   return "";
 }
 
-function getCellText(cell) {
+
+function getCellText(
+  cell
+) {
   if (!cell) {
     return "";
   }
 
   if (
-    typeof cell.text === "string"
+    typeof cell.text ===
+    "string"
   ) {
     return cell.text;
   }
 
   if (
-    Array.isArray(cell.content)
+    Array.isArray(
+      cell.content
+    )
   ) {
     return extractInlineText(
       cell.content
@@ -783,6 +1098,7 @@ function getCellText(cell) {
 
   return "";
 }
+
 
 /*
  * =========================================================
@@ -804,7 +1120,8 @@ function drawTextWithVariation(
     baseFontSize = 22,
     fontFamily,
     inkVariations = [],
-    documentId = "inkai-preview-document",
+    documentId =
+      "inkai-preview-document",
     styleId = "default",
     seed = 12345,
     pageNumber = 1,
@@ -814,14 +1131,17 @@ function drawTextWithVariation(
   let currentX = x;
 
   const effectiveNaturalness =
-    clampNaturalness(naturalness);
+    clampNaturalness(
+      naturalness
+    );
 
   for (
     let index = 0;
     index < text.length;
     index += 1
   ) {
-    const character = text[index];
+    const character =
+      text[index];
 
     const characterIndex =
       startIndex + index;
@@ -830,12 +1150,16 @@ function drawTextWithVariation(
      * Spaces.
      */
 
-    if (character === " ") {
+    if (
+      character === " "
+    ) {
       context.font =
         `${baseFontSize}px "${fontFamily}"`;
 
       currentX +=
-        context.measureText(" ").width +
+        context.measureText(
+          " "
+        ).width +
         wordSpacing;
 
       continue;
@@ -860,7 +1184,8 @@ function drawTextWithVariation(
           characterIndex,
           "rotation",
           0.5 +
-            effectiveNaturalness * 2.5
+            effectiveNaturalness *
+              2.5
         );
 
       sizeMultiplier =
@@ -873,7 +1198,8 @@ function drawTextWithVariation(
           characterIndex,
           "scale",
           0.008 +
-            effectiveNaturalness * 0.045
+            effectiveNaturalness *
+              0.045
         );
 
       verticalOffset =
@@ -885,7 +1211,8 @@ function drawTextWithVariation(
           characterIndex,
           "baseline",
           0.5 +
-            effectiveNaturalness * 4
+            effectiveNaturalness *
+              4
         );
 
       horizontalOffset =
@@ -897,7 +1224,8 @@ function drawTextWithVariation(
           characterIndex,
           "offset",
           0.15 +
-            effectiveNaturalness * 1.2
+            effectiveNaturalness *
+              1.2
         );
 
       spacingVariation =
@@ -909,7 +1237,8 @@ function drawTextWithVariation(
           characterIndex,
           "spacing",
           0.15 +
-            effectiveNaturalness * 1.2
+            effectiveNaturalness *
+              1.2
         );
     }
 
@@ -960,7 +1289,8 @@ function drawTextWithVariation(
         inkVariations[
           Math.min(
             variationIndex,
-            inkVariations.length - 1
+            inkVariations.length -
+              1
           )
         ];
     }
@@ -972,7 +1302,8 @@ function drawTextWithVariation(
       );
 
     const baseOpacity =
-      context.__inkaiBaseOpacity ?? 1;
+      context.__inkaiBaseOpacity ??
+      1;
 
     const characterOpacity =
       Math.max(
@@ -995,15 +1326,20 @@ function drawTextWithVariation(
     context.fillStyle =
       characterInk;
 
-    context.textBaseline = "top";
+    context.textBaseline =
+      "top";
 
     context.translate(
-      currentX + horizontalOffset,
-      y + verticalOffset
+      currentX +
+        horizontalOffset,
+      y +
+        verticalOffset
     );
 
     context.rotate(
-      rotation * Math.PI / 180
+      rotation *
+        Math.PI /
+        180
     );
 
     context.fillText(
@@ -1017,7 +1353,8 @@ function drawTextWithVariation(
      */
 
     if (
-      inkVariation.textureStrength > 0
+      inkVariation.textureStrength >
+      0
     ) {
       context.globalAlpha =
         characterOpacity *
@@ -1059,6 +1396,7 @@ function drawTextWithVariation(
   return currentX;
 }
 
+
 /*
  * =========================================================
  * COMPONENT
@@ -1069,23 +1407,39 @@ function HandwritingCanvas({
   /*
    * Structured TipTap document.
    */
+
   document:
     handwritingDocument = null,
 
   /*
    * Backwards-compatible plain text.
    */
+
   text = "",
+
+  /*
+   * Stable document identifier.
+   */
 
   documentId =
     "inkai-preview-document",
 
+  /*
+   * Resolved handwriting font.
+   */
+
   style,
 
   /*
-   * Style ID is separate from the font object.
+   * Style/preset identifier.
    */
-  handwritingStyle = "school_notebook",
+
+  handwritingStyle =
+    "school_notebook",
+
+  /*
+   * Basic appearance.
+   */
 
   fontSize = 22,
 
@@ -1094,6 +1448,10 @@ function HandwritingCanvas({
   paperStyle = "plain",
 
   inkStyle = "blue",
+
+  /*
+   * Handwriting controls.
+   */
 
   letterSpacing = 0,
 
@@ -1106,33 +1464,63 @@ function HandwritingCanvas({
   naturalVariation = true,
 
   /*
-   * 0–1 or 0–100 are both accepted.
+   * Naturalness accepts 0–1 or 0–100.
    */
+
   naturalness = 0.5,
 
   /*
    * Deterministic random seed.
    */
+
   seed = 12345,
 
   /*
    * Assignment mode.
    */
+
   assignmentMode = false,
 
   assignmentDetails = {},
 
   /*
-   * Multi-page selection.
+   * =========================================================
+   * CONTROLLED PAGE SELECTION
+   * =========================================================
+   *
+   * selectedPage belongs to the parent.
+   *
+   * This component does NOT create a second selected-page
+   * state.
    */
+
   selectedPage = 0,
+
+  /*
+   * Generated pages are sent to the parent.
+   */
 
   onPagesChange,
 
+  /*
+   * Page selection is sent to the parent.
+   */
+
   onPageSelect,
 }) {
+  /*
+   * Zoom is local because zoom is purely a visual
+   * canvas-preview setting.
+   */
+
   const [zoom, setZoom] =
     useState(0.8);
+
+  /*
+   * This state contains generated page data only.
+   *
+   * It is NOT the selected page state.
+   */
 
   const [pages, setPages] =
     useState([]);
@@ -1141,18 +1529,21 @@ function HandwritingCanvas({
     DEFAULT_MARGIN;
 
   const normalizedNaturalness =
-    clampNaturalness(naturalness);
+    clampNaturalness(
+      naturalness
+    );
 
   const normalizedSeed =
-    Number.isFinite(Number(seed))
+    Number.isFinite(
+      Number(seed)
+    )
       ? Number(seed)
       : 12345;
 
   /*
-   * Keep normalized document stable.
-   *
-   * This prevents an object created by the parent
-   * from continuously retriggering the renderer.
+   * =========================================================
+   * NORMALIZED DOCUMENT
+   * =========================================================
    */
 
   const normalizedDocument =
@@ -1168,7 +1559,9 @@ function HandwritingCanvas({
 
       return {
         documentId,
-        title: "Untitled Document",
+        title:
+          "Untitled Document",
+
         blocks: [
           {
             type: "paragraph",
@@ -1182,6 +1575,7 @@ function HandwritingCanvas({
       text,
     ]);
 
+
   /*
    * =========================================================
    * PAGE GENERATION
@@ -1191,6 +1585,14 @@ function HandwritingCanvas({
   useEffect(() => {
     if (!style) {
       setPages([]);
+
+      if (
+        typeof onPagesChange ===
+        "function"
+      ) {
+        onPagesChange([]);
+      }
+
       return undefined;
     }
 
@@ -1201,6 +1603,14 @@ function HandwritingCanvas({
 
     if (!fonts.length) {
       setPages([]);
+
+      if (
+        typeof onPagesChange ===
+        "function"
+      ) {
+        onPagesChange([]);
+      }
+
       return undefined;
     }
 
@@ -1225,6 +1635,13 @@ function HandwritingCanvas({
 
     let cancelled = false;
 
+
+    /*
+     * =======================================================
+     * PREPARE FONT
+     * =======================================================
+     */
+
     async function prepareFont() {
       try {
         await fontFace.load();
@@ -1247,8 +1664,7 @@ function HandwritingCanvas({
         );
 
         /*
-         * We still attempt to render using the
-         * browser's fallback font.
+         * Fallback rendering is still attempted.
          */
 
         if (!cancelled) {
@@ -1259,6 +1675,7 @@ function HandwritingCanvas({
       }
     }
 
+
     /*
      * =======================================================
      * CREATE PAGES
@@ -1268,12 +1685,20 @@ function HandwritingCanvas({
     function createPages(
       loadedFontFamily
     ) {
-      const pageCanvases = [];
+      const pageCanvases =
+        [];
 
       const size =
         Number(fontSize) ||
-        Number(style.default_size) ||
+        Number(
+          style.default_size
+        ) ||
         22;
+
+
+      /*
+       * Measurement canvas.
+       */
 
       const measurementCanvas =
         document.createElement(
@@ -1291,15 +1716,19 @@ function HandwritingCanvas({
           "2d"
         );
 
-      if (!measurementContext) {
+      if (
+        !measurementContext
+      ) {
         return;
       }
+
 
       const availableWidth =
         A4_WIDTH -
         margins.left -
         margins.right -
         6;
+
 
       /*
        * =====================================================
@@ -1334,13 +1763,16 @@ function HandwritingCanvas({
       let y =
         margins.top;
 
-      let pageHasContent = false;
+      let pageHasContent =
+        false;
+
 
       setupPage(
         pageContext,
         loadedFontFamily,
         size
       );
+
 
       /*
        * =====================================================
@@ -1351,13 +1783,15 @@ function HandwritingCanvas({
       function finishCurrentPage() {
         if (
           pageHasContent ||
-          pageCanvases.length === 0
+          pageCanvases.length ===
+            0
         ) {
           pageCanvases.push(
             currentPage
           );
         }
       }
+
 
       function startNewPage() {
         currentPage =
@@ -1385,7 +1819,8 @@ function HandwritingCanvas({
         y =
           margins.top;
 
-        pageHasContent = false;
+        pageHasContent =
+          false;
 
         setupPage(
           pageContext,
@@ -1396,11 +1831,13 @@ function HandwritingCanvas({
         return true;
       }
 
+
       function ensureSpace(
         requiredHeight
       ) {
         if (
-          y + requiredHeight >
+          y +
+            requiredHeight >
           A4_HEIGHT -
             margins.bottom
         ) {
@@ -1412,6 +1849,7 @@ function HandwritingCanvas({
         return true;
       }
 
+
       /*
        * =====================================================
        * TEXT BLOCK
@@ -1422,7 +1860,8 @@ function HandwritingCanvas({
         block
       ) {
         const isHeading =
-          block.type === "heading";
+          block.type ===
+          "heading";
 
         const level =
           Number(
@@ -1443,12 +1882,14 @@ function HandwritingCanvas({
           isHeading
             ? size *
               (
-                headingScale[level] ||
-                1.2
+                headingScale[
+                  level
+                ] || 1.2
               )
             : Number(
                 block.fontSize ||
-                  block.attrs?.fontSize ||
+                  block.attrs
+                    ?.fontSize ||
                   size
               );
 
@@ -1456,12 +1897,14 @@ function HandwritingCanvas({
           isHeading
             ? Number(
                 block.lineSpacing ||
-                  block.attrs?.lineSpacing ||
+                  block.attrs
+                    ?.lineSpacing ||
                   1.25
               )
             : Number(
                 block.lineSpacing ||
-                  block.attrs?.lineSpacing ||
+                  block.attrs
+                    ?.lineSpacing ||
                   lineSpacing
               );
 
@@ -1470,7 +1913,10 @@ function HandwritingCanvas({
           blockLineSpacing;
 
         const blockText =
-          getBlockText(block);
+          getBlockText(
+            block
+          );
+
 
         /*
          * Empty paragraph.
@@ -1492,10 +1938,12 @@ function HandwritingCanvas({
                 0
             );
 
-          pageHasContent = true;
+          pageHasContent =
+            true;
 
           return;
         }
+
 
         measurementContext.font =
           `${blockFontSize}px "${loadedFontFamily}"`;
@@ -1503,7 +1951,8 @@ function HandwritingCanvas({
         const blockIndent =
           Number(
             block.leftIndent ||
-              block.attrs?.leftIndent ||
+              block.attrs
+                ?.leftIndent ||
               0
           );
 
@@ -1525,6 +1974,7 @@ function HandwritingCanvas({
                 loadedFontFamily,
             }
           );
+
 
         for (
           const line of wrappedLines
@@ -1554,29 +2004,20 @@ function HandwritingCanvas({
               naturalVariation,
               naturalness:
                 normalizedNaturalness,
-
               startIndex:
                 characterIndex,
-
               baseFontSize:
                 blockFontSize,
-
               fontFamily:
                 loadedFontFamily,
-
               inkVariations:
                 ink.variations,
-
               documentId,
-
               styleId:
                 handwritingStyle,
-
               seed:
                 normalizedSeed,
-
               pageNumber,
-
               inkStyle,
             }
           );
@@ -1587,16 +2028,23 @@ function HandwritingCanvas({
           y +=
             blockLineHeight;
 
-          pageHasContent = true;
+          pageHasContent =
+            true;
         }
 
         y +=
           Number(
             block.paragraphSpacing ||
-              block.attrs?.paragraphSpacing ||
-              (isHeading ? 12 : 6)
+              block.attrs
+                ?.paragraphSpacing ||
+              (
+                isHeading
+                  ? 12
+                  : 6
+              )
           );
       }
+
 
       /*
        * =====================================================
@@ -1612,9 +2060,13 @@ function HandwritingCanvas({
           "orderedList";
 
         const items =
-          Array.isArray(block.items)
+          Array.isArray(
+            block.items
+          )
             ? block.items
-            : Array.isArray(block.content)
+            : Array.isArray(
+                block.content
+              )
               ? block.content
               : [];
 
@@ -1628,7 +2080,8 @@ function HandwritingCanvas({
         const listFontSize =
           Number(
             block.fontSize ||
-              block.attrs?.fontSize ||
+              block.attrs
+                ?.fontSize ||
               size
           );
 
@@ -1636,7 +2089,8 @@ function HandwritingCanvas({
           listFontSize *
           Number(
             block.lineSpacing ||
-              block.attrs?.lineSpacing ||
+              block.attrs
+                ?.lineSpacing ||
               lineSpacing
           );
 
@@ -1647,10 +2101,16 @@ function HandwritingCanvas({
               1
           );
 
+
         items.forEach(
-          (item, index) => {
+          (
+            item,
+            index
+          ) => {
             const itemText =
-              getListItemText(item);
+              getListItemText(
+                item
+              );
 
             const marker =
               isOrdered
@@ -1709,29 +2169,20 @@ function HandwritingCanvas({
                     naturalVariation,
                     naturalness:
                       normalizedNaturalness,
-
                     startIndex:
                       characterIndex,
-
                     baseFontSize:
                       listFontSize,
-
                     fontFamily:
                       loadedFontFamily,
-
                     inkVariations:
                       ink.variations,
-
                     documentId,
-
                     styleId:
                       handwritingStyle,
-
                     seed:
                       normalizedSeed,
-
                     pageNumber,
-
                     inkStyle,
                   }
                 );
@@ -1742,7 +2193,8 @@ function HandwritingCanvas({
                 y +=
                   listLineHeight;
 
-                pageHasContent = true;
+                pageHasContent =
+                  true;
               }
             );
 
@@ -1757,6 +2209,7 @@ function HandwritingCanvas({
         y += 4;
       }
 
+
       /*
        * =====================================================
        * TABLE
@@ -1767,9 +2220,13 @@ function HandwritingCanvas({
         block
       ) {
         const rows =
-          Array.isArray(block.rows)
+          Array.isArray(
+            block.rows
+          )
             ? block.rows
-            : Array.isArray(block.content)
+            : Array.isArray(
+                block.content
+              )
               ? block.content
               : [];
 
@@ -1779,13 +2236,15 @@ function HandwritingCanvas({
 
         const cellPadding =
           Number(
-            block.cellPadding || 8
+            block.cellPadding ||
+              8
           );
 
         const tableFontSize =
           Number(
             block.fontSize ||
-              block.attrs?.fontSize ||
+              block.attrs
+                ?.fontSize ||
               size
           );
 
@@ -1794,7 +2253,10 @@ function HandwritingCanvas({
 
         const columnCount =
           rows.reduce(
-            (maximum, row) =>
+            (
+              maximum,
+              row
+            ) =>
               Math.max(
                 maximum,
                 (
@@ -1809,6 +2271,7 @@ function HandwritingCanvas({
         if (!columnCount) {
           return;
         }
+
 
         /*
          * Calculate column widths.
@@ -1832,7 +2295,9 @@ function HandwritingCanvas({
                 columnIndex
               ) => {
                 const cellText =
-                  getCellText(cell);
+                  getCellText(
+                    cell
+                  );
 
                 measurementContext.font =
                   `${tableFontSize}px "${loadedFontFamily}"`;
@@ -1853,7 +2318,8 @@ function HandwritingCanvas({
                       columnIndex
                     ],
                     measuredWidth +
-                      cellPadding * 2,
+                      cellPadding *
+                        2,
                     70
                   );
               }
@@ -1861,13 +2327,17 @@ function HandwritingCanvas({
           }
         );
 
+
         /*
          * Fit table into page.
          */
 
         const totalWidth =
           columnWidths.reduce(
-            (total, width) =>
+            (
+              total,
+              width
+            ) =>
               total + width,
             0
           );
@@ -1886,10 +2356,12 @@ function HandwritingCanvas({
             columnWidths.length;
             index += 1
           ) {
-            columnWidths[index] *=
-              scale;
+            columnWidths[
+              index
+            ] *= scale;
           }
         }
+
 
         /*
          * Render rows.
@@ -1912,7 +2384,9 @@ function HandwritingCanvas({
                   columnIndex
                 ) => {
                   const cellText =
-                    getCellText(cell);
+                    getCellText(
+                      cell
+                    );
 
                   const cellWidth =
                     Math.max(
@@ -1922,11 +2396,13 @@ function HandwritingCanvas({
                           columnIndex
                         ] || 80
                       ) -
-                        cellPadding * 2
+                        cellPadding *
+                          2
                     );
 
                   return {
                     cell,
+
                     lines:
                       wrapTextByRenderedWidth(
                         measurementContext,
@@ -1947,7 +2423,10 @@ function HandwritingCanvas({
 
             const maximumLines =
               wrappedCells.reduce(
-                (maximum, item) =>
+                (
+                  maximum,
+                  item
+                ) =>
                   Math.max(
                     maximum,
                     item.lines.length
@@ -1986,8 +2465,10 @@ function HandwritingCanvas({
 
                 const isHeader =
                   cellType ===
-                  "tableHeader" ||
-                  item.cell?.header === true;
+                    "tableHeader" ||
+                  item.cell?.header ===
+                    true;
+
 
                 /*
                  * Header background.
@@ -2009,6 +2490,7 @@ function HandwritingCanvas({
                   pageContext.restore();
                 }
 
+
                 /*
                  * Border.
                  */
@@ -2029,6 +2511,7 @@ function HandwritingCanvas({
                 );
 
                 pageContext.restore();
+
 
                 /*
                  * Cell text.
@@ -2059,37 +2542,30 @@ function HandwritingCanvas({
                         naturalVariation,
                         naturalness:
                           normalizedNaturalness,
-
                         startIndex:
                           characterIndex,
-
                         baseFontSize:
                           tableFontSize,
-
                         fontFamily:
                           loadedFontFamily,
-
                         inkVariations:
                           ink.variations,
-
                         documentId,
-
                         styleId:
                           handwritingStyle,
-
                         seed:
                           normalizedSeed,
-
                         pageNumber,
-
                         inkStyle,
                       }
                     );
 
                     characterIndex +=
-                      cellLine.length + 1;
+                      cellLine.length +
+                      1;
 
-                    pageHasContent = true;
+                    pageHasContent =
+                      true;
                   }
                 );
 
@@ -2105,14 +2581,14 @@ function HandwritingCanvas({
         y += 12;
       }
 
+
       /*
        * =====================================================
        * IMAGE
        * =====================================================
        *
-       * The preview reserves space and shows a clean
-       * placeholder. Actual PDF image embedding belongs
-       * to the PDF renderer.
+       * Preview reserves space and displays a clean
+       * placeholder.
        */
 
       function renderImageBlock(
@@ -2123,7 +2599,8 @@ function HandwritingCanvas({
             240,
             Number(
               block.height ||
-                block.attrs?.height ||
+                block.attrs
+                  ?.height ||
                 180
             )
           );
@@ -2141,7 +2618,8 @@ function HandwritingCanvas({
             availableWidth,
             Number(
               block.width ||
-                block.attrs?.width ||
+                block.attrs
+                  ?.width ||
                 availableWidth
             )
           );
@@ -2163,7 +2641,9 @@ function HandwritingCanvas({
           imageHeight
         );
 
-        pageContext.setLineDash([]);
+        pageContext.setLineDash(
+          []
+        );
 
         pageContext.font =
           `14px "${loadedFontFamily}"`;
@@ -2187,8 +2667,10 @@ function HandwritingCanvas({
         y +=
           imageHeight + 12;
 
-        pageHasContent = true;
+        pageHasContent =
+          true;
       }
+
 
       /*
        * =====================================================
@@ -2202,14 +2684,16 @@ function HandwritingCanvas({
         }
 
         const details =
-          assignmentDetails || {};
+          assignmentDetails ||
+          {};
 
         const title =
           details.assignmentTitle ||
           details.title ||
           "Assignment";
 
-        const headerHeight = 145;
+        const headerHeight =
+          145;
 
         if (
           !ensureSpace(
@@ -2218,6 +2702,7 @@ function HandwritingCanvas({
         ) {
           return;
         }
+
 
         /*
          * Assignment title.
@@ -2250,7 +2735,9 @@ function HandwritingCanvas({
 
         pageContext.restore();
 
-        y += size * 1.8;
+        y +=
+          size * 1.8;
+
 
         /*
          * Details.
@@ -2283,9 +2770,12 @@ function HandwritingCanvas({
         const visibleRows =
           detailRows.filter(
             ([, value]) =>
-              value !== undefined &&
+              value !==
+                undefined &&
               value !== null &&
-              String(value).trim()
+              String(
+                value
+              ).trim()
           );
 
         pageContext.save();
@@ -2297,7 +2787,9 @@ function HandwritingCanvas({
           "top";
 
         visibleRows.forEach(
-          ([label, value]) => {
+          (
+            [label, value]
+          ) => {
             pageContext.font =
               `${Math.round(
                 size * 0.72
@@ -2324,8 +2816,10 @@ function HandwritingCanvas({
 
         y += 15;
 
-        pageHasContent = true;
+        pageHasContent =
+          true;
       }
+
 
       /*
        * =====================================================
@@ -2340,11 +2834,13 @@ function HandwritingCanvas({
           ? normalizedDocument.blocks
           : [];
 
+
       /*
-       * Assignment header goes before content.
+       * Assignment header comes first.
        */
 
       renderAssignmentHeader();
+
 
       for (
         const block of blocks
@@ -2352,6 +2848,7 @@ function HandwritingCanvas({
         if (!block) {
           continue;
         }
+
 
         /*
          * ---------------------------------------------------
@@ -2363,12 +2860,9 @@ function HandwritingCanvas({
           block.type ===
           "pageBreak"
         ) {
-          /*
-           * Don't create a blank page when a page break
-           * appears before any content.
-           */
-
-          if (pageHasContent) {
+          if (
+            pageHasContent
+          ) {
             finishCurrentPage();
 
             if (
@@ -2380,6 +2874,7 @@ function HandwritingCanvas({
 
           continue;
         }
+
 
         /*
          * ---------------------------------------------------
@@ -2398,6 +2893,7 @@ function HandwritingCanvas({
           continue;
         }
 
+
         /*
          * ---------------------------------------------------
          * HEADING
@@ -2414,6 +2910,7 @@ function HandwritingCanvas({
 
           continue;
         }
+
 
         /*
          * ---------------------------------------------------
@@ -2432,6 +2929,7 @@ function HandwritingCanvas({
           continue;
         }
 
+
         /*
          * ---------------------------------------------------
          * ORDERED LIST
@@ -2448,6 +2946,7 @@ function HandwritingCanvas({
 
           continue;
         }
+
 
         /*
          * ---------------------------------------------------
@@ -2466,6 +2965,7 @@ function HandwritingCanvas({
           continue;
         }
 
+
         /*
          * ---------------------------------------------------
          * IMAGE
@@ -2483,11 +2983,10 @@ function HandwritingCanvas({
           continue;
         }
 
+
         /*
          * ---------------------------------------------------
          * LIST ITEM
-         *
-         * Normally handled by the parent list.
          * ---------------------------------------------------
          */
 
@@ -2496,7 +2995,8 @@ function HandwritingCanvas({
           "listItem"
         ) {
           renderTextBlock({
-            type: "paragraph",
+            type:
+              "paragraph",
             text:
               getListItemText(
                 block
@@ -2505,6 +3005,7 @@ function HandwritingCanvas({
 
           continue;
         }
+
 
         /*
          * ---------------------------------------------------
@@ -2518,17 +3019,21 @@ function HandwritingCanvas({
         ) {
           if (
             ensureSpace(
-              size * lineSpacing
+              size *
+                lineSpacing
             )
           ) {
             y +=
-              size * lineSpacing;
+              size *
+              lineSpacing;
 
-            pageHasContent = true;
+            pageHasContent =
+              true;
           }
 
           continue;
         }
+
 
         /*
          * ---------------------------------------------------
@@ -2542,6 +3047,7 @@ function HandwritingCanvas({
         );
       }
 
+
       /*
        * =====================================================
        * FINAL PAGE
@@ -2550,7 +3056,8 @@ function HandwritingCanvas({
 
       if (
         pageHasContent ||
-        pageCanvases.length === 0
+        pageCanvases.length ===
+          0
       ) {
         pageCanvases.push(
           currentPage
@@ -2561,10 +3068,20 @@ function HandwritingCanvas({
         return;
       }
 
+
       /*
-       * Convert to serializable page objects.
+       * =====================================================
+       * SERIALIZE PAGES
+       * =====================================================
        *
-       * This is useful for thumbnails and parent state.
+       * Internal page objects contain the canvas.
+       *
+       * Parent receives only:
+       *
+       * {
+       *   pageNumber,
+       *   dataUrl
+       * }
        */
 
       const renderedPages =
@@ -2585,12 +3102,22 @@ function HandwritingCanvas({
           })
         );
 
+
+      /*
+       * =====================================================
+       * UPDATE INTERNAL GENERATED PAGES
+       * =====================================================
+       */
+
       setPages(
         renderedPages
       );
 
+
       /*
-       * Notify parent.
+       * =====================================================
+       * SEND PAGES TO PARENT
+       * =====================================================
        */
 
       if (
@@ -2602,29 +3129,15 @@ function HandwritingCanvas({
             (page) => ({
               pageNumber:
                 page.pageNumber,
+
               dataUrl:
                 page.dataUrl,
             })
           )
         );
       }
-
-      /*
-       * Keep selected page inside bounds.
-       */
-
-      if (
-        typeof onPageSelect ===
-          "function" &&
-        renderedPages.length > 0 &&
-        selectedPage >=
-          renderedPages.length
-      ) {
-        onPageSelect(
-          renderedPages.length - 1
-        );
-      }
     }
+
 
     /*
      * =======================================================
@@ -2670,11 +3183,18 @@ function HandwritingCanvas({
         "left";
     }
 
+
+    /*
+     * Start rendering.
+     */
+
     prepareFont();
+
 
     return () => {
       cancelled = true;
     };
+
   }, [
     normalizedDocument,
     documentId,
@@ -2693,11 +3213,8 @@ function HandwritingCanvas({
     normalizedSeed,
     assignmentMode,
     assignmentDetails,
-    text,
-    onPagesChange,
-    onPageSelect,
-    selectedPage,
   ]);
+
 
   /*
    * =========================================================
@@ -2712,12 +3229,14 @@ function HandwritingCanvas({
           1.5,
           Number(
             (
-              current + 0.1
+              current +
+              0.1
             ).toFixed(2)
           )
         )
     );
   };
+
 
   const zoomOut = () => {
     setZoom(
@@ -2726,28 +3245,37 @@ function HandwritingCanvas({
           0.5,
           Number(
             (
-              current - 0.1
+              current -
+              0.1
             ).toFixed(2)
           )
         )
     );
   };
 
+
   const resetZoom = () => {
     setZoom(0.8);
   };
 
+
   /*
    * =========================================================
-   * PAGE NAVIGATION
+   * CONTROLLED PAGE DISPLAY
    * =========================================================
+   *
+   * The parent owns selectedPage.
+   *
+   * Canvas only derives which generated page should be
+   * displayed.
    */
 
   const safeSelectedPage =
     Math.max(
       0,
       Math.min(
-        selectedPage,
+        Number(selectedPage) ||
+          0,
         Math.max(
           pages.length - 1,
           0
@@ -2756,49 +3284,27 @@ function HandwritingCanvas({
     );
 
   const currentPage =
-    pages[safeSelectedPage];
+    pages[
+      safeSelectedPage
+    ];
 
-  const goToPreviousPage =
-    () => {
-      if (
-        safeSelectedPage <= 0
-      ) {
-        return;
-      }
-
-      if (
-        typeof onPageSelect ===
-        "function"
-      ) {
-        onPageSelect(
-          safeSelectedPage - 1
-        );
-      }
-    };
-
-  const goToNextPage =
-    () => {
-      if (
-        safeSelectedPage >=
-        pages.length - 1
-      ) {
-        return;
-      }
-
-      if (
-        typeof onPageSelect ===
-        "function"
-      ) {
-        onPageSelect(
-          safeSelectedPage + 1
-        );
-      }
-    };
 
   /*
    * =========================================================
    * UI
    * =========================================================
+   *
+   * IMPORTANT:
+   *
+   * There is deliberately NO:
+   *
+   * - Previous page button
+   * - Next page button
+   * - Page counter
+   * - Thumbnail strip
+   *
+   * Those responsibilities now belong exclusively to
+   * PageNavigator.jsx.
    */
 
   return (
@@ -2817,6 +3323,7 @@ function HandwritingCanvas({
         dark:bg-gray-950
       "
     >
+
       {/* ===================================================
           TOOLBAR
           =================================================== */}
@@ -2836,109 +3343,48 @@ function HandwritingCanvas({
           dark:bg-gray-900
         "
       >
+
         <div>
-          <p className="text-sm font-semibold text-gray-900 dark:text-white">
+          <p
+            className="
+              text-sm
+              font-semibold
+              text-gray-900
+              dark:text-white
+            "
+          >
             Handwriting Preview
           </p>
 
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {pages.length}{" "}
-            {pages.length === 1
-              ? "page"
-              : "pages"}
+          <p
+            className="
+              text-xs
+              text-gray-500
+              dark:text-gray-400
+            "
+          >
+            Canvas preview
           </p>
         </div>
 
-        <div className="flex items-center gap-1">
-          {/* Previous page */}
 
-          <button
-            type="button"
-            onClick={
-              goToPreviousPage
-            }
-            disabled={
-              safeSelectedPage <= 0
-            }
-            className="
-              rounded-lg
-              p-2
-              text-gray-600
-              transition
-              hover:bg-gray-100
-              disabled:cursor-not-allowed
-              disabled:opacity-30
-              dark:text-gray-300
-              dark:hover:bg-gray-800
-            "
-            title="Previous page"
-          >
-            <ChevronLeft
-              size={18}
-            />
-          </button>
+        {/* Zoom controls only */}
 
-          {/* Page indicator */}
-
-          <span
-            className="
-              min-w-[70px]
-              text-center
-              text-xs
-              font-medium
-              text-gray-600
-              dark:text-gray-300
-            "
-          >
-            {pages.length
-              ? `${safeSelectedPage + 1} / ${pages.length}`
-              : "—"}
-          </span>
-
-          {/* Next page */}
-
-          <button
-            type="button"
-            onClick={
-              goToNextPage
-            }
-            disabled={
-              safeSelectedPage >=
-              pages.length - 1
-            }
-            className="
-              rounded-lg
-              p-2
-              text-gray-600
-              transition
-              hover:bg-gray-100
-              disabled:cursor-not-allowed
-              disabled:opacity-30
-              dark:text-gray-300
-              dark:hover:bg-gray-800
-            "
-            title="Next page"
-          >
-            <ChevronRight
-              size={18}
-            />
-          </button>
-
-          <div
-            className="
-              mx-1
-              h-5
-              w-px
-              bg-gray-200
-              dark:bg-gray-700
-            "
-          />
+        <div
+          className="
+            flex
+            items-center
+            gap-1
+          "
+        >
 
           {/* Zoom out */}
 
           <button
             type="button"
-            onClick={zoomOut}
+            onClick={
+              zoomOut
+            }
             disabled={
               zoom <= 0.5
             }
@@ -2954,15 +3400,21 @@ function HandwritingCanvas({
               dark:hover:bg-gray-800
             "
             title="Zoom out"
+            aria-label="Zoom out"
           >
-            <ZoomOut size={18} />
+            <ZoomOut
+              size={18}
+            />
           </button>
 
-          {/* Zoom */}
+
+          {/* Zoom percentage */}
 
           <button
             type="button"
-            onClick={resetZoom}
+            onClick={
+              resetZoom
+            }
             className="
               min-w-[64px]
               rounded-lg
@@ -2983,11 +3435,14 @@ function HandwritingCanvas({
             %
           </button>
 
+
           {/* Zoom in */}
 
           <button
             type="button"
-            onClick={zoomIn}
+            onClick={
+              zoomIn
+            }
             disabled={
               zoom >= 1.5
             }
@@ -3003,9 +3458,15 @@ function HandwritingCanvas({
               dark:hover:bg-gray-800
             "
             title="Zoom in"
+            aria-label="Zoom in"
           >
-            <ZoomIn size={18} />
+            <ZoomIn
+              size={18}
+            />
           </button>
+
+
+          {/* Reset zoom */}
 
           <div
             className="
@@ -3017,11 +3478,11 @@ function HandwritingCanvas({
             "
           />
 
-          {/* Reset */}
-
           <button
             type="button"
-            onClick={resetZoom}
+            onClick={
+              resetZoom
+            }
             className="
               rounded-lg
               p-2
@@ -3031,119 +3492,37 @@ function HandwritingCanvas({
               dark:hover:bg-gray-800
             "
             title="Reset zoom"
+            aria-label="Reset zoom"
           >
             <RotateCcw
               size={17}
             />
           </button>
+
         </div>
       </div>
 
-      {/* ===================================================
-          PAGE THUMBNAILS
-          =================================================== */}
-
-      {pages.length > 1 && (
-        <div
-          className="
-            flex
-            shrink-0
-            gap-3
-            overflow-x-auto
-            border-b
-            border-gray-200
-            bg-white
-            px-4
-            py-3
-            dark:border-gray-800
-            dark:bg-gray-900
-          "
-        >
-          {pages.map(
-            (
-              page,
-              index
-            ) => {
-              const isSelected =
-                index ===
-                safeSelectedPage;
-
-              return (
-                <button
-                  key={
-                    page.pageNumber
-                  }
-                  type="button"
-                  onClick={() =>
-                    typeof onPageSelect ===
-                    "function"
-                      ? onPageSelect(
-                          index
-                        )
-                      : undefined
-                  }
-                  className={`
-                    relative
-                    shrink-0
-                    overflow-hidden
-                    rounded-md
-                    border-2
-                    bg-white
-                    shadow-sm
-                    transition
-                    ${
-                      isSelected
-                        ? "border-indigo-500 shadow-md"
-                        : "border-gray-200 hover:border-gray-400"
-                    }
-                  `}
-                  title={`Page ${index + 1}`}
-                >
-                  <img
-                    src={
-                      page.dataUrl
-                    }
-                    alt={`Page ${
-                      index + 1
-                    } thumbnail`}
-                    className="
-                      block
-                      h-24
-                      w-[68px]
-                      object-cover
-                      object-top
-                    "
-                  />
-
-                  <span
-                    className="
-                      absolute
-                      bottom-0
-                      left-0
-                      right-0
-                      bg-black/50
-                      py-0.5
-                      text-center
-                      text-[9px]
-                      font-medium
-                      text-white
-                    "
-                  >
-                    {index + 1}
-                  </span>
-                </button>
-              );
-            }
-          )}
-        </div>
-      )}
 
       {/* ===================================================
           MAIN PAGE
           =================================================== */}
 
-      <div className="flex-1 overflow-auto p-6">
-        <div className="flex min-w-max justify-center">
+      <div
+        className="
+          flex-1
+          overflow-auto
+          p-6
+        "
+      >
+
+        <div
+          className="
+            flex
+            min-w-max
+            justify-center
+          "
+        >
+
           {currentPage ? (
             <div
               className="
@@ -3153,10 +3532,16 @@ function HandwritingCanvas({
               style={{
                 width:
                   `${A4_WIDTH * zoom}px`,
+
                 height:
                   `${A4_HEIGHT * zoom}px`,
               }}
             >
+
+              {/* =================================================
+                  RENDERED HANDWRITING PAGE
+                  ================================================= */}
+
               <img
                 src={
                   currentPage.dataUrl
@@ -3176,12 +3561,15 @@ function HandwritingCanvas({
                 style={{
                   width:
                     `${A4_WIDTH}px`,
+
                   height:
                     `${A4_HEIGHT}px`,
+
                   transform:
                     `scale(${zoom})`,
                 }}
               />
+
 
               {/* =================================================
                   MARGIN GUIDE
@@ -3197,14 +3585,18 @@ function HandwritingCanvas({
                 style={{
                   width:
                     `${A4_WIDTH}px`,
+
                   height:
                     `${A4_HEIGHT}px`,
+
                   transform:
                     `scale(${zoom})`,
+
                   transformOrigin:
                     "top left",
                 }}
               >
+
                 <div
                   className="
                     absolute
@@ -3230,10 +3622,16 @@ function HandwritingCanvas({
                       margins.bottom,
                   }}
                 />
+
               </div>
 
+
               {/* =================================================
-                  PAGE NUMBER
+                  PAGE LABEL
+                  =================================================
+                  
+                  This is only a small visual label under the
+                  displayed canvas. It is NOT navigation.
                   ================================================= */}
 
               <div
@@ -3251,8 +3649,10 @@ function HandwritingCanvas({
                 Page{" "}
                 {safeSelectedPage + 1}
               </div>
+
             </div>
           ) : (
+
             <div
               className="
                 flex
@@ -3261,15 +3661,21 @@ function HandwritingCanvas({
                 justify-center
                 text-sm
                 text-gray-500
+                dark:text-gray-400
               "
             >
               Preparing handwriting preview...
             </div>
+
           )}
+
         </div>
+
       </div>
+
     </div>
   );
 }
+
 
 export default HandwritingCanvas;

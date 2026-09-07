@@ -3,6 +3,7 @@ import React, { useMemo } from "react";
 import handwritingFonts from "../../data/handwritingFonts";
 
 import HandwritingCanvas from "./HandwritingCanvas";
+import PageNavigator from "./PageNavigator";
 
 
 /*
@@ -16,7 +17,8 @@ import HandwritingCanvas from "./HandwritingCanvas";
  * 2. Resolving the selected handwriting font
  * 3. Passing the COMPLETE structured document to the canvas
  * 4. Passing deterministic rendering configuration
- * 5. Passing page-selection / page-generation callbacks
+ * 5. Displaying the PageNavigator
+ * 6. Passing page selection / page generation callbacks
  *
  * IMPORTANT:
  *
@@ -32,7 +34,13 @@ import HandwritingCanvas from "./HandwritingCanvas";
  *      ↓
  * HandwritingPreview
  *      ↓
- * HandwritingCanvas
+ * ┌───────────────────────┐
+ * │    PageNavigator      │
+ * └───────────┬───────────┘
+ *             ↓
+ * ┌───────────────────────┐
+ * │   HandwritingCanvas   │
+ * └───────────────────────┘
  *
  * Supported structures:
  *
@@ -49,28 +57,53 @@ import HandwritingCanvas from "./HandwritingCanvas";
  * =========================================================
  */
 
+
 function HandwritingPreview({
+  /*
+   * =========================================================
+   * STRUCTURED DOCUMENT
+   * =========================================================
+   */
+
   document,
 
+
   /*
-   * Stable document identifier.
+   * =========================================================
+   * DOCUMENT ID
+   * =========================================================
+   *
+   * Used for deterministic rendering.
    */
+
   documentId,
 
-  /*
-   * Selected handwriting font.
-   */
-  font,
 
   /*
-   * Paper / ink.
+   * =========================================================
+   * SELECTED FONT
+   * =========================================================
    */
+
+  font,
+
+
+  /*
+   * =========================================================
+   * PAPER / INK
+   * =========================================================
+   */
+
   paper,
   ink,
 
+
   /*
-   * Basic handwriting settings.
+   * =========================================================
+   * BASIC HANDWRITING SETTINGS
+   * =========================================================
    */
+
   fontSize = 22,
   letterSpacing = 0,
   lineSpacing = 1.5,
@@ -78,35 +111,50 @@ function HandwritingPreview({
   inkOpacity = 0.9,
   naturalVariation = true,
 
-  /*
-   * =========================================================
-   * PHASE 7 SETTINGS
-   * =========================================================
-   */
 
   /*
-   * Naturalness is normalized to:
+   * =========================================================
+   * PHASE 7 — NATURALNESS
+   * =========================================================
+   *
+   * Expected range:
    *
    * 0.0 → 1.0
+   *
+   * 0.0 = uniform
+   * 0.25 = subtle
+   * 0.50 = natural
+   * 0.75 = noticeable
+   * 1.0 = strong
    */
+
   naturalness = 0.5,
 
+
   /*
-   * Deterministic randomization seed.
+   * =========================================================
+   * DETERMINISTIC RANDOM SEED
+   * =========================================================
    */
+
   seed = 12345,
 
-  /*
-   * Preset/style identifier.
-   *
-   * Example:
-   * school_notebook
-   */
-  style = "school_notebook",
 
   /*
-   * Assignment Mode.
+   * =========================================================
+   * PRESET / STYLE
+   * =========================================================
    */
+
+  style = "school_notebook",
+
+
+  /*
+   * =========================================================
+   * ASSIGNMENT MODE
+   * =========================================================
+   */
+
   assignmentMode = false,
 
   assignmentDetails = {
@@ -118,25 +166,31 @@ function HandwritingPreview({
     assignmentTitle: "",
   },
 
+
   /*
    * =========================================================
    * PAGE CONTROLS
    * =========================================================
+   *
+   * pages:
+   *   Array containing generated page previews.
+   *
+   * selectedPage:
+   *   Zero-based selected page index.
+   *
+   * onPagesChange:
+   *   Called by HandwritingCanvas whenever pages change.
+   *
+   * onPageSelect:
+   *   Called when the user selects a page.
    */
 
-  /*
-   * Currently selected page.
-   */
+  pages = [],
+
   selectedPage = 0,
 
-  /*
-   * Called whenever the renderer creates/recreates pages.
-   */
   onPagesChange,
 
-  /*
-   * Called when the user selects a page.
-   */
   onPageSelect,
 }) {
 
@@ -181,6 +235,9 @@ function HandwritingPreview({
           bg-white
           text-sm
           text-slate-500
+          dark:border-slate-800
+          dark:bg-slate-900
+          dark:text-slate-400
         "
       >
         No document available.
@@ -209,6 +266,9 @@ function HandwritingPreview({
           bg-red-50
           text-sm
           text-red-600
+          dark:border-red-900
+          dark:bg-red-950
+          dark:text-red-400
         "
       >
         No handwriting font available.
@@ -247,23 +307,25 @@ function HandwritingPreview({
    * NORMALIZE NATURALNESS
    * =========================================================
    *
-   * The page normally supplies a value between 0 and 1.
+   * Protect the renderer from invalid values.
    *
-   * This extra protection prevents accidental values such
-   * as 50 or -1 from reaching the renderer.
+   * Expected input:
+   *
+   * 0.0 → 1.0
    */
 
-  const normalizedNaturalness = Math.max(
-    0,
-    Math.min(
-      1,
-      Number.isFinite(
-        Number(naturalness)
+  const normalizedNaturalness =
+    Math.max(
+      0,
+      Math.min(
+        1,
+        Number.isFinite(
+          Number(naturalness)
+        )
+          ? Number(naturalness)
+          : 0.5
       )
-        ? Number(naturalness)
-        : 0.5
-    )
-  );
+    );
 
 
   /*
@@ -271,8 +333,8 @@ function HandwritingPreview({
    * NORMALIZE SEED
    * =========================================================
    *
-   * JavaScript numbers are used because the renderer needs
-   * a deterministic numeric seed.
+   * Ensures the renderer always receives a
+   * deterministic numeric seed.
    */
 
   const normalizedSeed =
@@ -285,208 +347,333 @@ function HandwritingPreview({
 
   /*
    * =========================================================
-   * CANVAS
+   * SAFE SELECTED PAGE
    * =========================================================
    *
-   * IMPORTANT:
+   * Prevents an invalid selected page from being passed
+   * to the navigation component or canvas.
+   */
+
+  const safeSelectedPage =
+    pages.length > 0
+      ? Math.max(
+          0,
+          Math.min(
+            Number(selectedPage) || 0,
+            pages.length - 1
+          )
+        )
+      : 0;
+
+
+  /*
+   * =========================================================
+   * PAGE SELECTION HANDLER
+   * =========================================================
    *
-   * Do NOT pass:
+   * PageNavigator calls this handler.
    *
-   *      text={...}
+   * The parent page remains the source of truth because
+   * onPageSelect is forwarded to it.
+   */
+
+  const handlePageSelect = (
+    pageIndex
+  ) => {
+    if (
+      !Number.isInteger(
+        pageIndex
+      )
+    ) {
+      return;
+    }
+
+    if (
+      pageIndex < 0 ||
+      pageIndex >= pages.length
+    ) {
+      return;
+    }
+
+    if (
+      typeof onPageSelect ===
+      "function"
+    ) {
+      onPageSelect(
+        pageIndex
+      );
+    }
+  };
+
+
+  /*
+   * =========================================================
+   * PAGE GENERATION HANDLER
+   * =========================================================
    *
-   * here.
+   * HandwritingCanvas creates/recreates pages.
    *
-   * The canvas receives the complete structured document.
+   * Forward those pages to the parent.
+   */
+
+  const handlePagesChange = (
+    generatedPages
+  ) => {
+    if (
+      !Array.isArray(
+        generatedPages
+      )
+    ) {
+      return;
+    }
+
+    if (
+      typeof onPagesChange ===
+      "function"
+    ) {
+      onPagesChange(
+        generatedPages
+      );
+    }
+  };
+
+
+  /*
+   * =========================================================
+   * RENDER
+   * =========================================================
    */
 
   return (
-    <HandwritingCanvas
+    <div
+      className="
+        overflow-hidden
+        rounded-xl
+        border
+        border-slate-200
+        bg-white
+        shadow-sm
+        dark:border-slate-800
+        dark:bg-slate-900
+      "
+    >
 
-      /*
-       * =====================================================
-       * STRUCTURED DOCUMENT
-       * =====================================================
-       *
-       * This is the critical Phase 7 change.
-       *
-       * The renderer can now distinguish:
-       *
-       * heading
-       * paragraph
-       * bulletList
-       * orderedList
-       * table
-       * image
-       * pageBreak
-       */
+      {/* =====================================================
+          PAGE NAVIGATOR
+          ===================================================== */}
 
-      document={
-        document
-      }
+      <PageNavigator
+        pages={
+          pages
+        }
 
+        selectedPage={
+          safeSelectedPage
+        }
 
-      /*
-       * =====================================================
-       * DOCUMENT ID
-       * =====================================================
-       */
-
-      documentId={
-        stableDocumentId
-      }
+        onPageSelect={
+          handlePageSelect
+        }
+      />
 
 
-      /*
-       * =====================================================
-       * FONT
-       * =====================================================
-       */
+      {/* =====================================================
+          HANDWRITING CANVAS
+          ===================================================== */}
 
-      style={
-        selectedFontObject
-      }
+      <div
+        className="
+          bg-slate-100
+          p-4
+          dark:bg-slate-950
+        "
+      >
 
+        <HandwritingCanvas
 
-      /*
-       * =====================================================
-       * PRESET / STYLE ID
-       * =====================================================
-       *
-       * This is separate from the resolved font object.
-       *
-       * The deterministic renderer can therefore use:
-       *
-       * Document ID
-       * + Style
-       * + Seed
-       */
+          /*
+           * ===================================================
+           * STRUCTURED DOCUMENT
+           * ===================================================
+           *
+           * IMPORTANT:
+           *
+           * We pass the complete structured document.
+           *
+           * We do NOT pass:
+           *
+           * text={document.text}
+           *
+           * and we do NOT flatten the TipTap document.
+           */
 
-      handwritingStyle={
-        style
-      }
-
-
-      /*
-       * =====================================================
-       * BASIC APPEARANCE
-       * =====================================================
-       */
-
-      fontSize={
-        fontSize
-      }
-
-      paperStyle={
-        paper
-      }
-
-      inkStyle={
-        ink
-      }
+          document={
+            document
+          }
 
 
-      /*
-       * =====================================================
-       * HANDWRITING CONTROLS
-       * =====================================================
-       */
+          /*
+           * ===================================================
+           * DOCUMENT ID
+           * ===================================================
+           */
 
-      letterSpacing={
-        letterSpacing
-      }
-
-      lineSpacing={
-        lineSpacing
-      }
-
-      wordSpacing={
-        wordSpacing
-      }
-
-      inkOpacity={
-        inkOpacity
-      }
+          documentId={
+            stableDocumentId
+          }
 
 
-      /*
-       * =====================================================
-       * LEGACY NATURAL VARIATION
-       * =====================================================
-       *
-       * Kept for compatibility with the existing canvas.
-       */
+          /*
+           * ===================================================
+           * FONT
+           * ===================================================
+           *
+           * HandwritingCanvas expects the resolved
+           * handwriting font object.
+           */
 
-      naturalVariation={
-        naturalVariation
-      }
-
-
-      /*
-       * =====================================================
-       * PHASE 7 NATURALNESS
-       * =====================================================
-       *
-       * 0.0 → uniform
-       * 0.25 → subtle
-       * 0.50 → natural
-       * 0.75 → noticeable
-       * 1.0 → strong
-       */
-
-      naturalness={
-        normalizedNaturalness
-      }
+          style={
+            selectedFontObject
+          }
 
 
-      /*
-       * =====================================================
-       * DETERMINISTIC RANDOM SEED
-       * =====================================================
-       *
-       * Randomize in the parent changes this value.
-       *
-       * The document itself does NOT change.
-       */
+          /*
+           * ===================================================
+           * HANDWRITING STYLE / PRESET
+           * ===================================================
+           *
+           * This is separate from the font object.
+           */
 
-      seed={
-        normalizedSeed
-      }
+          handwritingStyle={
+            style
+          }
 
 
-      /*
-       * =====================================================
-       * ASSIGNMENT MODE
-       * =====================================================
-       */
+          /*
+           * ===================================================
+           * BASIC APPEARANCE
+           * ===================================================
+           */
 
-      assignmentMode={
-        assignmentMode
-      }
+          fontSize={
+            fontSize
+          }
 
-      assignmentDetails={
-        assignmentDetails
-      }
+          paperStyle={
+            paper
+          }
+
+          inkStyle={
+            ink
+          }
 
 
-      /*
-       * =====================================================
-       * PAGE NAVIGATION
-       * =====================================================
-       */
+          /*
+           * ===================================================
+           * HANDWRITING CONTROLS
+           * ===================================================
+           */
 
-      selectedPage={
-        selectedPage
-      }
+          letterSpacing={
+            letterSpacing
+          }
 
-      onPagesChange={
-        onPagesChange
-      }
+          lineSpacing={
+            lineSpacing
+          }
 
-      onPageSelect={
-        onPageSelect
-      }
+          wordSpacing={
+            wordSpacing
+          }
 
-    />
+          inkOpacity={
+            inkOpacity
+          }
+
+
+          /*
+           * ===================================================
+           * LEGACY NATURAL VARIATION
+           * ===================================================
+           *
+           * Kept for compatibility with the current canvas.
+           */
+
+          naturalVariation={
+            naturalVariation
+          }
+
+
+          /*
+           * ===================================================
+           * PHASE 7 — NATURALNESS
+           * ===================================================
+           */
+
+          naturalness={
+            normalizedNaturalness
+          }
+
+
+          /*
+           * ===================================================
+           * DETERMINISTIC SEED
+           * ===================================================
+           */
+
+          seed={
+            normalizedSeed
+          }
+
+
+          /*
+           * ===================================================
+           * ASSIGNMENT MODE
+           * ===================================================
+           */
+
+          assignmentMode={
+            assignmentMode
+          }
+
+          assignmentDetails={
+            assignmentDetails
+          }
+
+
+          /*
+           * ===================================================
+           * PAGE STATE
+           * ===================================================
+           */
+
+          selectedPage={
+            safeSelectedPage
+          }
+
+
+          /*
+           * ===================================================
+           * PAGE CALLBACKS
+           * ===================================================
+           *
+           * Canvas → Preview → Generator Page
+           */
+
+          onPagesChange={
+            handlePagesChange
+          }
+
+          onPageSelect={
+            handlePageSelect
+          }
+
+        />
+
+      </div>
+
+    </div>
   );
 }
 
