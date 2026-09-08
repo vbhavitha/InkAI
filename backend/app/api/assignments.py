@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict
+from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
 from app.assignments.assignment_service import AssignmentService
 from app.assignments.page_layout import PageConfig
+from app.assignments.pdf_renderer import AssignmentPDFRenderer
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+from app.database.database import get_db
 
 
 # ============================================================
@@ -44,6 +50,27 @@ class AssignmentRequest(BaseModel):
     )
 
     page: Dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+class AssignmentGenerateRequest(BaseModel):
+    document_id: str
+
+    template: str = "college_assignment"
+
+    paper: str = "ruled"
+
+    handwriting_style: str = "school_notebook"
+
+    ink: str = "blue"
+
+    page_numbers: bool = True
+
+    assignment: Dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+    handwriting: Dict[str, Any] = Field(
         default_factory=dict
     )
 
@@ -243,3 +270,163 @@ def paginate_assignment(
                 f"{error}"
             ),
         )
+
+@router.post("/generate")
+def generate_assignment(
+    request: AssignmentGenerateRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Generate a high-resolution assignment PDF.
+
+    The browser preview is NOT used as the PDF source.
+
+    The assignment is rebuilt and rendered on the backend.
+    """
+
+    try:
+        # ---------------------------------------------------------
+        # 1. Load the source document
+        # ---------------------------------------------------------
+
+        from app.api.documents import get_document
+
+        document = get_document(
+            request.document_id
+        )
+
+        if not document:
+            raise HTTPException(
+                status_code=404,
+                detail="Document not found.",
+            )
+
+        # ---------------------------------------------------------
+        # 2. Build assignment settings
+        # ---------------------------------------------------------
+
+        assignment = {
+            **request.assignment,
+
+            "template": request.template,
+
+            "paperStyle": request.paper,
+
+            "handwritingStyle": (
+                request.handwriting_style
+            ),
+
+            "ink": request.ink,
+
+            "showPageNumber": (
+                request.page_numbers
+            ),
+        }
+
+        # ---------------------------------------------------------
+        # 3. Build page configuration
+        # ---------------------------------------------------------
+
+        page_config = build_page_config(
+            page=assignment,
+            assignment=assignment,
+        )
+
+        # ---------------------------------------------------------
+        # 4. Paginate structured Phase 6 document
+        # ---------------------------------------------------------
+
+        service = AssignmentService(
+            page_config=page_config
+        )
+
+        result = service.build_assignment(
+            document=document,
+            assignment=assignment,
+        )
+
+        pages = result.get(
+            "pages",
+            [],
+        )
+
+        # ---------------------------------------------------------
+        # 5. Create high-resolution PDF
+        # ---------------------------------------------------------
+
+        output_directory = Path(
+            "generated"
+        ) / "assignments"
+
+        output_directory.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        assignment_id = str(
+            uuid4()
+        )
+
+        output_path = (
+            output_directory
+            / f"{assignment_id}.pdf"
+        )
+
+        renderer = AssignmentPDFRenderer(
+            page_config=page_config
+        )
+
+        renderer.render(
+            pages=pages,
+            output_path=str(
+                output_path
+            ),
+        )
+
+        # ---------------------------------------------------------
+        # 6. Return generation result
+        # ---------------------------------------------------------
+
+        return {
+            "assignment_id": assignment_id,
+            "status": "completed",
+            "pages": len(pages),
+            "download_url": (
+                f"/api/assignments/"
+                f"{assignment_id}/download"
+            ),
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Failed to generate assignment PDF: "
+                f"{error}"
+            ),
+        )
+
+@router.get("/{assignment_id}/download")
+def download_assignment(
+    assignment_id: str,
+):
+    output_path = (
+        Path("generated")
+        / "assignments"
+        / f"{assignment_id}.pdf"
+    )
+
+    if not output_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Generated PDF not found.",
+        )
+
+    return FileResponse(
+        path=str(output_path),
+        media_type="application/pdf",
+        filename="InkAI_Assignment.pdf",
+    )

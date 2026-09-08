@@ -11,6 +11,10 @@ import HandwritingControls from "../components/handwriting/HandwritingControls";
 import handwritingPresets from "../data/handwritingPresets";
 
 import {
+  generateAssignmentPDF,
+} from "../services/assignmentService";
+
+import {
   convertDocumentToHandwritingDocument,
 } from "../services/handwritingDocumentService";
 
@@ -447,11 +451,14 @@ function HandwritingGeneratorPage() {
    * =======================================================
    */
 
-  const [
-    isGenerating,
-    setIsGenerating,
-  ] = useState(false);
+  const [isGenerating, setIsGenerating] =
+    useState(false);
 
+  const [isSaving, setIsSaving] =
+    useState(false);
+
+  const [saveMessage, setSaveMessage] =
+    useState("");
 
   /*
    * =========================================================
@@ -678,44 +685,60 @@ function HandwritingGeneratorPage() {
    */
 
   const handleGeneratePDF = async () => {
-    if (
-      !handwritingDocument
-    ) {
+    if (!handwritingDocument) {
+      setSaveMessage("Handwriting document is not available.");
+      return;
+    }
+
+    if (!documentId) {
+      setSaveMessage("Document ID is missing.");
       return;
     }
 
     try {
       setIsGenerating(true);
+      setSaveMessage("");
 
-      console.log(
-        "Generate handwriting PDF",
-        {
-          documentId,
+      const result = await generateAssignmentPDF({
+        documentId,
+        template: assignmentDetails.template,
+        paper: selectedPaper,
+        handwritingStyle: selectedPreset,
+        ink: selectedInk,
+        pageNumbers: assignmentDetails.showPageNumber,
+
+        assignment: assignmentDetails,
+
+        handwriting: {
           style: selectedPreset,
           font: selectedFont,
-          ink: selectedInk,
           paper: selectedPaper,
-          fontSize,
-          letterSpacing,
-          lineSpacing,
-          wordSpacing,
-          inkOpacity,
-          naturalness:
-            naturalness / 100,
-          seed: randomSeed,
-          assignmentMode,
-          assignmentDetails,
-        }
-      );
+          ink: selectedInk,
 
-      /*
-       * PDF service can be connected here
-       * when the backend PDF renderer is ready.
-       */
+          fontSize,
+          lineSpacing,
+          letterSpacing,
+          wordSpacing,
+
+          inkOpacity,
+          naturalness: naturalness / 100,
+          naturalVariation,
+          seed: randomSeed,
+        },
+      });
+
+      if (result?.download_url) {
+        window.open(result.download_url, "_blank");
+        setSaveMessage("PDF generated successfully.");
+      } else {
+        setSaveMessage("PDF generated, but download link was not returned.");
+      }
+
     } catch (error) {
-      console.error(
-        "Failed to generate handwriting PDF:",
-        error
+      console.error("PDF generation failed:", error);
+
+      setSaveMessage(
+        error?.message || "Failed to generate PDF."
       );
     } finally {
       setIsGenerating(false);

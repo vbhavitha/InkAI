@@ -336,3 +336,65 @@ export async function paginateAssignment({
 
   return handleResponse(response);
 }
+
+export async function generateAssignmentPDF({
+  documentId,
+  template,
+  paper,
+  handwritingStyle,
+  ink,
+  pageNumbers,
+  assignment,
+  handwriting,
+}) {
+  if (!documentId) {
+    throw new Error(
+      "Document ID is required."
+    );
+  }
+
+  const response = await fetch(
+    buildUrl(
+      "/api/assignments/generate"
+    ),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+
+      body: JSON.stringify({
+        document_id: documentId,
+
+        template:
+          template ||
+          "college_assignment",
+
+        paper:
+          paper ||
+          "ruled",
+
+        handwriting_style:
+          handwritingStyle ||
+          "school_notebook",
+
+        ink:
+          ink ||
+          "blue",
+
+        page_numbers:
+          pageNumbers !== false,
+
+        assignment:
+          assignment || {},
+
+        handwriting:
+          handwriting || {},
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
