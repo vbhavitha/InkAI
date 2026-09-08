@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.assignments.assignment_service import (
-    AssignmentService,
-)
-from app.assignments.page_layout import (
-    PageConfig,
-)
+from app.assignments.assignment_service import AssignmentService
+from app.assignments.page_layout import PageConfig
 
+
+# ============================================================
+# ROUTER
+# ============================================================
 
 router = APIRouter(
     prefix="/api/assignments",
@@ -20,16 +20,21 @@ router = APIRouter(
 
 
 # ============================================================
-# REQUEST SCHEMAS
+# REQUEST SCHEMA
 # ============================================================
-
 
 class AssignmentRequest(BaseModel):
     """
-    Phase 8 assignment request.
+    Assignment request received from the Phase 8 frontend.
 
-    The document is the structured TipTap JSON generated
-    by Phase 6.
+    document:
+        Structured TipTap JSON from Phase 6.
+
+    assignment:
+        Assignment metadata and settings.
+
+    page:
+        Page size, orientation and margin settings.
     """
 
     document: Dict[str, Any]
@@ -44,19 +49,20 @@ class AssignmentRequest(BaseModel):
 
 
 # ============================================================
-# PAGE CONFIG
+# PAGE CONFIGURATION
 # ============================================================
 
-
 def build_page_config(
-    page: Optional[Dict[str, Any]] = None,
+    page: Dict[str, Any] | None = None,
+    assignment: Dict[str, Any] | None = None,
 ) -> PageConfig:
-    """
-    Convert frontend page settings into the backend
-    pagination configuration.
-    """
 
     page = page or {}
+    assignment = assignment or {}
+
+    # --------------------------------------------------------
+    # Paper
+    # --------------------------------------------------------
 
     paper_size = page.get(
         "paperSize",
@@ -68,6 +74,10 @@ def build_page_config(
         "portrait",
     )
 
+    # --------------------------------------------------------
+    # Margins
+    # --------------------------------------------------------
+
     margin_preset = page.get(
         "marginPreset",
         "normal",
@@ -78,10 +88,6 @@ def build_page_config(
         or {}
     )
 
-    # --------------------------------------------------------
-    # Default margins
-    # --------------------------------------------------------
-
     margins = {
         "top": 56,
         "right": 50,
@@ -89,11 +95,8 @@ def build_page_config(
         "left": 50,
     }
 
-    # --------------------------------------------------------
-    # Presets
-    # --------------------------------------------------------
-
     if margin_preset == "narrow":
+
         margins = {
             "top": 36,
             "right": 36,
@@ -102,6 +105,7 @@ def build_page_config(
         }
 
     elif margin_preset == "wide":
+
         margins = {
             "top": 72,
             "right": 65,
@@ -110,6 +114,7 @@ def build_page_config(
         }
 
     elif margin_preset == "custom":
+
         margins = {
             "top": custom_margins.get(
                 "top",
@@ -129,43 +134,86 @@ def build_page_config(
             ),
         }
 
+    # --------------------------------------------------------
+    # Footer / Page numbers
+    # --------------------------------------------------------
+
+    show_footer = assignment.get(
+        "showFooter",
+        True,
+    )
+
+    footer_text = assignment.get(
+        "footerText",
+        "InkAI",
+    )
+
+    show_page_number = assignment.get(
+        "showPageNumber",
+        True,
+    )
+
+    page_number_position = assignment.get(
+        "pageNumberPosition",
+        "center",
+    )
+
+    # --------------------------------------------------------
+    # Page configuration
+    # --------------------------------------------------------
+
     return PageConfig(
         paper_size=paper_size,
         orientation=orientation,
         margin_preset=margin_preset,
+
         top=margins["top"],
         right=margins["right"],
         bottom=margins["bottom"],
         left=margins["left"],
+
+        # Reserve space for footer/page number.
+        footer_height=40,
+
+        show_footer=show_footer,
+        footer_text=footer_text,
+
+        show_page_number=show_page_number,
+        page_number_position=page_number_position,
     )
 
 
 # ============================================================
-# PREVIEW / PAGINATION
+# STEP 13 + STEP 14 + STEP 15 + STEP 16
 # ============================================================
-
 
 @router.post("/paginate")
 def paginate_assignment(
     request: AssignmentRequest,
 ):
     """
-    STEP 13 + STEP 14
+    Paginate a Phase 6 structured document.
 
-    Takes the structured Phase 6 document and returns
-    automatically paginated structured content.
+    Supports:
 
-    Automatic pagination:
-        When the page becomes full → new page.
+    STEP 13
+        Automatic pagination when page space is exhausted.
 
-    Manual pagination:
-        A Phase 6 pageBreak node → new page immediately.
+    STEP 14
+        Explicit TipTap pageBreak nodes.
+
+    STEP 15
+        Page numbers and total page count.
+
+    STEP 16
+        Optional footer configuration.
     """
 
     try:
 
         page_config = build_page_config(
-            request.page
+            page=request.page,
+            assignment=request.assignment,
         )
 
         service = AssignmentService(

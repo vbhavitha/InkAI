@@ -15,6 +15,7 @@ import PaperSelector from "../components/assignment/PaperSelector";
 import PageSettings from "../components/assignment/PageSettings";
 import AssignmentHeader from "../components/assignment/AssignmentHeader";
 import TitleSettings from "../components/assignment/TitleSettings";
+import AssignmentFooter from "../components/assignment/AssignmentFooter";
 
 import {
   getPhase6Document,
@@ -25,6 +26,10 @@ import {
   getPaperConfig,
   getEffectiveLeftMargin,
 } from "../utils/paperLayout";
+
+import {
+  paginatePreviewDocument,
+} from "../utils/assignmentUtils";
 
 /* ============================================================
    DEFAULT ASSIGNMENT
@@ -99,7 +104,9 @@ const DEFAULT_ASSIGNMENT = {
   ---------------------------------------------------------- */
 
   showFooter: true,
+  footerText: "InkAI",
   showPageNumber: true,
+  pageNumberPosition: "center",
 
   /* ----------------------------------------------------------
      Font Sizes
@@ -804,15 +811,13 @@ function AssignmentPage() {
             <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4">
 
               <div>
-
                 <h3 className="text-sm font-semibold text-white">
                   Footer
                 </h3>
 
                 <p className="mt-1 text-xs text-slate-500">
-                  Configure footer and page numbering.
+                  Configure footer text and page numbering.
                 </p>
-
               </div>
 
               <span className="ml-4 text-xs text-slate-400 transition-transform duration-200 group-open:rotate-180">
@@ -821,51 +826,121 @@ function AssignmentPage() {
 
             </summary>
 
-            <div className="border-t border-white/10 px-5 py-5">
+            <div className="space-y-4 border-t border-white/10 px-5 py-5">
 
-              <div className="space-y-3">
+              {/* =================================================
+                  ENABLE FOOTER
+              ================================================== */}
 
-                {/* Show Footer */}
+              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-slate-800 px-3 py-3 text-sm text-slate-300 transition hover:border-white/20">
 
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-slate-800 px-3 py-3 text-sm text-slate-300 transition hover:border-white/20">
+                <input
+                  type="checkbox"
+                  checked={assignment.showFooter}
+                  onChange={(event) =>
+                    updateAssignment(
+                      "showFooter",
+                      event.target.checked
+                    )
+                  }
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-700 text-indigo-500 focus:ring-indigo-500"
+                />
+
+                Enable Footer
+
+              </label>
+
+              {/* =================================================
+                  FOOTER TEXT
+              ================================================== */}
+
+              {assignment.showFooter && (
+                <div>
+
+                  <label className="mb-2 block text-xs text-slate-400">
+                    Footer Text
+                  </label>
 
                   <input
-                    type="checkbox"
-                    checked={assignment.showFooter}
+                    type="text"
+                    value={assignment.footerText}
                     onChange={(event) =>
                       updateAssignment(
-                        "showFooter",
-                        event.target.checked
+                        "footerText",
+                        event.target.value
                       )
                     }
-                    className="h-4 w-4 rounded border-slate-600 bg-slate-700 text-indigo-500 focus:ring-indigo-500"
+                    placeholder="Computer Networks — Assignment"
+                    className="w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
                   />
 
-                  Show Footer
+                  <p className="mt-1 text-xs text-slate-500">
+                    Example: Computer Networks — Assignment
+                  </p>
 
-                </label>
+                </div>
+              )}
 
-                {/* Page Number */}
+              {/* =================================================
+                  PAGE NUMBERS
+              ================================================== */}
 
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-slate-800 px-3 py-3 text-sm text-slate-300 transition hover:border-white/20">
+              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-slate-800 px-3 py-3 text-sm text-slate-300 transition hover:border-white/20">
 
-                  <input
-                    type="checkbox"
-                    checked={assignment.showPageNumber}
+                <input
+                  type="checkbox"
+                  checked={assignment.showPageNumber}
+                  onChange={(event) =>
+                    updateAssignment(
+                      "showPageNumber",
+                      event.target.checked
+                    )
+                  }
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-700 text-indigo-500 focus:ring-indigo-500"
+                />
+
+                Show Page Numbers
+
+              </label>
+
+              {/* =================================================
+                  PAGE NUMBER POSITION
+              ================================================== */}
+
+              {assignment.showPageNumber && (
+                <div>
+
+                  <label className="mb-2 block text-xs text-slate-400">
+                    Page Number Position
+                  </label>
+
+                  <select
+                    value={assignment.pageNumberPosition}
                     onChange={(event) =>
                       updateAssignment(
-                        "showPageNumber",
-                        event.target.checked
+                        "pageNumberPosition",
+                        event.target.value
                       )
                     }
-                    className="h-4 w-4 rounded border-slate-600 bg-slate-700 text-indigo-500 focus:ring-indigo-500"
-                  />
+                    className="w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
+                  >
 
-                  Show Page Number
+                    <option value="left">
+                      Bottom Left
+                    </option>
 
-                </label>
+                    <option value="center">
+                      Bottom Center
+                    </option>
 
-              </div>
+                    <option value="right">
+                      Bottom Right
+                    </option>
+
+                  </select>
+
+                </div>
+              )}
 
             </div>
 
@@ -1444,24 +1519,65 @@ function AssignmentPreview({ data, phase6Document, }) {
      FOOTER
   ========================================================== */
 
-  const Footer = () => {
+  const Footer = ({
+    pageNumber = 1,
+    totalPages = 1,
+  }) => {
 
-    if (!data.showFooter) {
+    if (
+      !data.showFooter &&
+      !data.showPageNumber
+    ) {
       return null;
     }
 
+    const pageNumberText =
+      `Page ${pageNumber} of ${totalPages}`;
+
+    const positionClass =
+      data.pageNumberPosition === "left"
+        ? "justify-start"
+        : data.pageNumberPosition === "right"
+          ? "justify-end"
+          : "justify-center";
+
     return (
-      <div className="absolute bottom-5 left-8 right-8 flex justify-between border-t border-slate-300 pt-2 text-[10px] text-slate-500">
+      <div
+        className="
+          absolute
+          bottom-5
+          left-8
+          right-8
+          border-t
+          border-slate-300
+          pt-2
+          text-[10px]
+          text-slate-500
+        "
+      >
 
-        <span>
-          InkAI
-        </span>
+        <div
+          className={`
+            flex
+            items-center
+            ${positionClass}
+          `}
+        >
 
-        {data.showPageNumber && (
-          <span>
-            Page 1
-          </span>
-        )}
+          {data.showPageNumber && (
+            <span>
+              {pageNumberText}
+            </span>
+          )}
+
+        </div>
+
+        {data.showFooter &&
+          data.footerText && (
+            <div className="mt-1 text-center">
+              {data.footerText}
+            </div>
+          )}
 
       </div>
     );
@@ -1544,7 +1660,16 @@ function AssignmentPreview({ data, phase6Document, }) {
 
         </div>
 
-        <Footer />
+        <AssignmentFooter
+          showFooter={data.showFooter}
+          footerText={data.footerText}
+          showPageNumber={data.showPageNumber}
+          pageNumber={1}
+          totalPages={1}
+          pageNumberPosition={
+            data.pageNumberPosition
+          }
+        />
 
       </div>
     );
@@ -1605,7 +1730,16 @@ function AssignmentPreview({ data, phase6Document, }) {
 
         </div>
 
-        <Footer />
+        <AssignmentFooter
+          showFooter={data.showFooter}
+          footerText={data.footerText}
+          showPageNumber={data.showPageNumber}
+          pageNumber={1}
+          totalPages={1}
+          pageNumberPosition={
+            data.pageNumberPosition
+          }
+        />
 
       </div>
     );
@@ -1725,7 +1859,16 @@ function AssignmentPreview({ data, phase6Document, }) {
 
         </div>
 
-        <Footer />
+        <AssignmentFooter
+          showFooter={data.showFooter}
+          footerText={data.footerText}
+          showPageNumber={data.showPageNumber}
+          pageNumber={1}
+          totalPages={1}
+          pageNumberPosition={
+            data.pageNumberPosition
+          }
+        />
 
       </div>
     );
@@ -1782,7 +1925,16 @@ function AssignmentPreview({ data, phase6Document, }) {
 
       </div>
 
-      <Footer />
+      <AssignmentFooter
+        showFooter={data.showFooter}
+        footerText={data.footerText}
+        showPageNumber={data.showPageNumber}
+        pageNumber={1}
+        totalPages={1}
+        pageNumberPosition={
+          data.pageNumberPosition
+        }
+      />
 
     </div>
   );

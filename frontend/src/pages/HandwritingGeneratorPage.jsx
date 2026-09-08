@@ -427,14 +427,18 @@ function HandwritingGeneratorPage() {
   const [
     assignmentDetails,
     setAssignmentDetails,
-  ] = useState({
-    studentName: "",
-    rollNumber: "",
-    subject: "",
-    className: "",
-    teacher: "",
-    assignmentTitle: "",
-  });
+  ] = useState(
+    incomingAssignment || {
+      studentName: "",
+      rollNumber: "",
+      subject: "",
+      className: "",
+      section: "",
+      teacherName: "",
+      title: "",
+      date: "",
+    }
+  );
 
 
   /*

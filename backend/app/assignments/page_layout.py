@@ -73,9 +73,18 @@ class PageConfig:
 
     line_height: float = 28
 
-    # Space reserved for header/footer.
     header_height: float = 0
-    footer_height: float = 0
+
+    # Reserve space for footer/page number.
+    footer_height: float = 24
+
+    # Footer settings.
+    show_footer: bool = True
+    footer_text: str = "InkAI"
+
+    # Page number settings.
+    show_page_number: bool = True
+    page_number_position: str = "center"
 
 
 # ============================================================

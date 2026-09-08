@@ -57,14 +57,17 @@ class AssignmentPDFRenderer:
             ),
         )
 
-        for page in pages:
+        total_pages = len(pages)
 
-            self.render_page(
-                pdf,
-                page,
-            )
+            for page in pages:
 
-            pdf.showPage()
+                self.render_page(
+                    pdf,
+                    page,
+                    total_pages,
+                )
+
+                pdf.showPage()
 
         pdf.save()
 
@@ -89,6 +92,7 @@ class AssignmentPDFRenderer:
         self,
         pdf,
         page,
+        total_pages,
     ):
 
         page_number = page.get(
@@ -108,6 +112,7 @@ class AssignmentPDFRenderer:
         self.render_page_number(
             pdf,
             page_number,
+            total_pages,
         )
 
         # ----------------------------------------------------
@@ -138,23 +143,109 @@ class AssignmentPDFRenderer:
     # PAGE NUMBER
     # ========================================================
 
-    def render_page_number(
+    def render_footer(
         self,
         pdf,
         page_number: int,
+        total_pages: int,
     ):
+        """
+        Render footer text and page number.
+        """
+
+        if (
+            not self.page_config.show_footer
+            and not self.page_config.show_page_number
+        ):
+            return
 
         page_width, _ = (
             self.layout.get_page_size()
         )
+
+        footer_y = 16
+        page_number_y = 30
 
         pdf.setFont(
             "Helvetica",
             9,
         )
 
-        pdf.drawCentredString(
-            page_width / 2,
-            25,
-            str(page_number),
-        )
+        # --------------------------------------------------------
+        # Footer separator
+        # --------------------------------------------------------
+
+        if self.page_config.show_footer:
+
+            pdf.setStrokeColorRGB(
+                0.75,
+                0.75,
+                0.75,
+            )
+
+            pdf.line(
+                self.page_config.left,
+                42,
+                page_width - self.page_config.right,
+                42,
+            )
+
+        # --------------------------------------------------------
+        # Footer text
+        # --------------------------------------------------------
+
+        if self.page_config.show_footer:
+
+            footer_text = (
+                self.page_config.footer_text
+                or ""
+            )
+
+            if footer_text:
+
+                pdf.drawCentredString(
+                    page_width / 2,
+                    footer_y,
+                    footer_text,
+                )
+
+        # --------------------------------------------------------
+        # Page number
+        # --------------------------------------------------------
+
+        if self.page_config.show_page_number:
+
+            page_text = (
+                f"Page {page_number} "
+                f"of {total_pages}"
+            )
+
+            position = (
+                self.page_config
+                .page_number_position
+            )
+
+            if position == "left":
+
+                pdf.drawString(
+                    self.page_config.left,
+                    page_number_y,
+                    page_text,
+                )
+
+            elif position == "right":
+
+                pdf.drawRightString(
+                    page_width
+                    - self.page_config.right,
+                    page_number_y,
+                    page_text,
+                )
+
+            else:
+
+                pdf.drawCentredString(
+                    page_width / 2,
+                    page_number_y,
+                    page_text,
+                )
