@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import {
+  regenerateAssignment,
+  duplicateAssignment,
+} from "../services/assignmentService";
+
 
 // =========================================================
 // API CONFIGURATION
@@ -20,6 +25,12 @@ export default function AssignmentHistoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
+
+  const [regeneratingId, setRegeneratingId] =
+    useState(null);
+
+    const [duplicatingId, setDuplicatingId] =
+    useState(null);
 
 
   // =======================================================
@@ -244,6 +255,127 @@ export default function AssignmentHistoryPage() {
       }
     );
   };
+
+  const handleRegenerate = async (
+    assignment
+    ) => {
+    const paper = window.prompt(
+        "Enter paper style:\n\nruled\ncollege\ngraph\nplain\nmargin",
+        assignment.paper_style || "ruled"
+    );
+
+    if (!paper) {
+        return;
+    }
+
+    const ink = window.prompt(
+        "Enter ink color:\n\nblue\nblack",
+        assignment.ink_color || "blue"
+    );
+
+    if (!ink) {
+        return;
+    }
+
+    const handwritingStyle =
+        window.prompt(
+            "Enter handwriting style:",
+            assignment.handwriting_style ||
+            "school_notebook"
+        );
+
+    if (!handwritingStyle) {
+        return;
+    }
+
+    try {
+        setRegeneratingId(
+        assignment.id
+        );
+
+        setError("");
+
+        const result =
+            await regenerateAssignment({
+                assignmentId:
+                    assignment.id,
+
+                paper,
+
+                ink,
+
+                handwritingStyle,
+
+                pageNumbers: true,
+            });
+
+        await loadAssignments();
+
+        if (result?.download_url) {
+            window.open(
+            result.download_url,
+            "_blank",
+            "noopener,noreferrer"
+        );
+    }
+
+    } catch (error) {
+        console.error(
+            "Regeneration failed:",
+            error
+        );
+
+        setError(
+            error?.message ||
+            "Failed to regenerate assignment."
+        );
+
+        } finally {
+            setRegeneratingId(null);
+        }
+    };
+
+    const handleDuplicate = async (
+    assignment
+    ) => {
+    try {
+        setDuplicatingId(
+        assignment.id
+        );
+
+        setError("");
+
+        const result =
+        await duplicateAssignment(
+            assignment.id
+        );
+
+        await loadAssignments();
+
+        if (result?.assignment_id) {
+        // New duplicate is now available
+        // in the assignment history.
+        console.log(
+            "Duplicated assignment:",
+            result.assignment_id
+        );
+        }
+
+    } catch (error) {
+        console.error(
+        "Duplication failed:",
+        error
+        );
+
+        setError(
+        error?.message ||
+            "Failed to duplicate assignment."
+        );
+
+    } finally {
+        setDuplicatingId(null);
+    }
+    };
 
 
   // =======================================================
@@ -625,6 +757,58 @@ export default function AssignmentHistoryPage() {
                         ? "Deleting..."
                         : "Delete"}
                     </button>
+
+                    <button
+                        type="button"
+                        onClick={() =>
+                            handleRegenerate(assignment)
+                        }
+                        disabled={
+                            regeneratingId === assignment.id
+                        }
+                        className="
+                            px-4
+                            py-2
+                            rounded-lg
+                            bg-purple-500/10
+                            border
+                            border-purple-500/30
+                            text-purple-300
+                            hover:bg-purple-500/20
+                            transition
+                            disabled:opacity-50
+                        "
+                        >
+                        {regeneratingId === assignment.id
+                            ? "Regenerating..."
+                            : "Regenerate"}
+                        </button>
+
+                        <button
+                        type="button"
+                        onClick={() =>
+                            handleDuplicate(assignment)
+                        }
+                        disabled={
+                            duplicatingId === assignment.id
+                        }
+                        className="
+                            px-4
+                            py-2
+                            rounded-lg
+                            bg-cyan-500/10
+                            border
+                            border-cyan-500/30
+                            text-cyan-300
+                            hover:bg-cyan-500/20
+                            transition
+                            disabled:opacity-50
+                        "
+                        >
+                        {duplicatingId === assignment.id
+                            ? "Duplicating..."
+                            : "Duplicate"}
+                        </button>
 
                   </div>
 

@@ -10,6 +10,7 @@ import OCRResultsPage from "./pages/OCRResultsPage";
 import EditorPage from "./pages/EditorPage";
 import HandwritingGeneratorPage from "./pages/HandwritingGeneratorPage";
 import AssignmentPage from "./pages/AssignmentPage";
+import AssignmentHistoryPage from "./pages/AssignmentHistoryPage";
 
 function App() {
   return (
@@ -34,6 +35,8 @@ function App() {
         <Route path="/handwriting" element={<HandwritingGeneratorPage />} />
 
         <Route path="/assignment" element={<AssignmentPage />}/>
+
+        <Route path="/assignments" element={<AssignmentHistoryPage />}/>
 
 
       </Routes>

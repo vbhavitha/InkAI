@@ -25,6 +25,9 @@ router = APIRouter(
     tags=["Assignments"],
 )
 
+class AssignmentDuplicateRequest(BaseModel):
+    title: str | None = None
+
 
 # ============================================================
 # REQUEST SCHEMA
@@ -74,6 +77,201 @@ class AssignmentGenerateRequest(BaseModel):
     handwriting: Dict[str, Any] = Field(
         default_factory=dict
     )
+
+class AssignmentRegenerateRequest(BaseModel):
+    paper: str | None = None
+    handwriting_style: str | None = None
+    ink: str | None = None
+    page_numbers: bool | None = None
+
+    assignment: Dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+    handwriting: Dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+# =========================================================
+# STEP 26 — DUPLICATE ASSIGNMENT
+# =========================================================
+
+@router.post("/{assignment_id}/duplicate")
+def duplicate_assignment(
+    assignment_id: int,
+    request: AssignmentDuplicateRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Duplicate an existing assignment.
+
+    A new Assignment record is created.
+    A new Document record is also created so the
+    duplicated assignment can later be edited independently.
+    """
+
+    try:
+        # -----------------------------------------------------
+        # 1. Find original assignment
+        # -----------------------------------------------------
+
+        original = (
+            db.query(Assignment)
+            .filter(
+                Assignment.id == assignment_id,
+                Assignment.user_id == TEMP_USER_ID,
+            )
+            .first()
+        )
+
+        if not original:
+            raise HTTPException(
+                status_code=404,
+                detail="Assignment not found.",
+            )
+
+        # -----------------------------------------------------
+        # 2. Load original document
+        # -----------------------------------------------------
+
+        from app.api.documents import get_document
+
+        original_document = get_document(
+            original.document_id
+        )
+
+        if not original_document:
+            raise HTTPException(
+                status_code=404,
+                detail="Source document not found.",
+            )
+
+        # -----------------------------------------------------
+        # 3. Create new document
+        # -----------------------------------------------------
+        #
+        # We use the existing Document model directly.
+        #
+
+        from app.models.document import Document
+        import json
+
+        original_content = (
+            original_document.get("content", {})
+            if isinstance(
+                original_document,
+                dict
+            )
+            else {}
+        )
+
+        if isinstance(
+            original_content,
+            str
+        ):
+            try:
+                original_content = json.loads(
+                    original_content
+                )
+            except json.JSONDecodeError:
+                original_content = {}
+
+        new_document = Document(
+            user_id=TEMP_USER_ID,
+
+            title=(
+                request.title
+                or f"{original.title} — Copy"
+            ),
+
+            content=json.dumps(
+                original_content
+            ),
+        )
+
+        db.add(new_document)
+
+        db.flush()
+
+        # -----------------------------------------------------
+        # 4. Create duplicated assignment
+        # -----------------------------------------------------
+
+        new_assignment = Assignment(
+            user_id=TEMP_USER_ID,
+
+            document_id=new_document.id,
+
+            title=(
+                request.title
+                or f"{original.title} — Copy"
+            ),
+
+            subject=original.subject,
+
+            student_name=original.student_name,
+
+            roll_number=original.roll_number,
+
+            class_name=original.class_name,
+
+            section=original.section,
+
+            teacher_name=original.teacher_name,
+
+            assignment_date=original.assignment_date,
+
+            template=original.template,
+
+            paper_style=original.paper_style,
+
+            handwriting_style=original.handwriting_style,
+
+            ink_color=original.ink_color,
+
+            page_count=original.page_count,
+
+            # Do not reuse the original PDF.
+            pdf_path=None,
+        )
+
+        db.add(new_assignment)
+
+        db.commit()
+
+        db.refresh(new_assignment)
+
+        # -----------------------------------------------------
+        # 5. Return new assignment
+        # -----------------------------------------------------
+
+        return {
+            "assignment_id": new_assignment.id,
+
+            "document_id": new_document.id,
+
+            "title": new_assignment.title,
+
+            "status": "duplicated",
+
+            "message": (
+                "Assignment duplicated successfully."
+            ),
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Failed to duplicate assignment: "
+                f"{error}"
+            ),
+        )
 
 
 # ============================================================
@@ -596,3 +794,241 @@ def delete_assignment(
     return {
         "message": "Assignment deleted successfully."
     }
+
+# =========================================================
+# STEP 25 — REGENERATE ASSIGNMENT
+# =========================================================
+
+@router.post("/{assignment_id}/regenerate")
+def regenerate_assignment(
+    assignment_id: int,
+    request: AssignmentRegenerateRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Regenerate an existing assignment using the same
+    document/content but different visual settings.
+
+    This updates the existing Assignment record instead
+    of creating a new history entry.
+    """
+
+    try:
+        # -----------------------------------------------------
+        # 1. Find existing assignment
+        # -----------------------------------------------------
+
+        assignment_record = (
+            db.query(Assignment)
+            .filter(
+                Assignment.id == assignment_id,
+                Assignment.user_id == TEMP_USER_ID,
+            )
+            .first()
+        )
+
+        if not assignment_record:
+            raise HTTPException(
+                status_code=404,
+                detail="Assignment not found.",
+            )
+
+        # -----------------------------------------------------
+        # 2. Load original structured document
+        # -----------------------------------------------------
+
+        from app.api.documents import get_document
+
+        document = get_document(
+            assignment_record.document_id
+        )
+
+        if not document:
+            raise HTTPException(
+                status_code=404,
+                detail="Source document not found.",
+            )
+
+        # -----------------------------------------------------
+        # 3. Keep old values when no new value is supplied
+        # -----------------------------------------------------
+
+        new_paper = (
+            request.paper
+            or assignment_record.paper_style
+            or "ruled"
+        )
+
+        new_handwriting_style = (
+            request.handwriting_style
+            or assignment_record.handwriting_style
+            or "school_notebook"
+        )
+
+        new_ink = (
+            request.ink
+            or assignment_record.ink_color
+            or "blue"
+        )
+
+        # -----------------------------------------------------
+        # 4. Build assignment settings
+        # -----------------------------------------------------
+
+        assignment_data = {
+            "title": assignment_record.title,
+            "subject": assignment_record.subject or "",
+            "studentName": assignment_record.student_name or "",
+            "rollNumber": assignment_record.roll_number or "",
+            "className": assignment_record.class_name or "",
+            "section": assignment_record.section or "",
+            "teacherName": assignment_record.teacher_name or "",
+            "date": assignment_record.assignment_date or "",
+
+            "template": (
+                assignment_record.template
+                or "college_assignment"
+            ),
+
+            "paperStyle": new_paper,
+
+            "handwritingStyle": new_handwriting_style,
+
+            "ink": new_ink,
+
+            "showPageNumber": (
+                request.page_numbers
+                if request.page_numbers is not None
+                else True
+            ),
+
+            **request.assignment,
+        }
+
+        # -----------------------------------------------------
+        # 5. Build page configuration
+        # -----------------------------------------------------
+
+        page_config = build_page_config(
+            page=assignment_data,
+            assignment=assignment_data,
+        )
+
+        # -----------------------------------------------------
+        # 6. Rebuild pagination
+        # -----------------------------------------------------
+
+        service = AssignmentService(
+            page_config=page_config
+        )
+
+        result = service.build_assignment(
+            document=document,
+            assignment=assignment_data,
+        )
+
+        pages = result.get(
+            "pages",
+            [],
+        )
+
+        # -----------------------------------------------------
+        # 7. Create new PDF file
+        # -----------------------------------------------------
+
+        output_directory = (
+            Path("generated")
+            / "assignments"
+        )
+
+        output_directory.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        pdf_id = str(uuid4())
+
+        output_path = (
+            output_directory
+            / f"{pdf_id}.pdf"
+        )
+
+        renderer = AssignmentPDFRenderer(
+            page_config=page_config
+        )
+
+        renderer.render(
+            pages=pages,
+            output_path=str(output_path),
+        )
+
+        # -----------------------------------------------------
+        # 8. Delete previous PDF
+        # -----------------------------------------------------
+
+        if assignment_record.pdf_path:
+            old_pdf = Path(
+                assignment_record.pdf_path
+            )
+
+            if (
+                old_pdf.exists()
+                and old_pdf.resolve()
+                != output_path.resolve()
+            ):
+                old_pdf.unlink()
+
+        # -----------------------------------------------------
+        # 9. Update existing database record
+        # -----------------------------------------------------
+
+        assignment_record.paper_style = new_paper
+
+        assignment_record.handwriting_style = (
+            new_handwriting_style
+        )
+
+        assignment_record.ink_color = new_ink
+
+        assignment_record.page_count = len(
+            pages
+        )
+
+        assignment_record.pdf_path = str(
+            output_path
+        )
+
+        # -----------------------------------------------------
+        # 10. Save
+        # -----------------------------------------------------
+
+        db.commit()
+        db.refresh(assignment_record)
+
+        # -----------------------------------------------------
+        # 11. Return result
+        # -----------------------------------------------------
+
+        return {
+            "assignment_id": assignment_record.id,
+            "status": "regenerated",
+            "pages": len(pages),
+            "download_url": (
+                f"/api/assignments/"
+                f"{assignment_record.id}/download"
+            ),
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Failed to regenerate assignment: "
+                f"{error}"
+            ),
+        )

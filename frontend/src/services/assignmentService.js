@@ -398,3 +398,103 @@ export async function generateAssignmentPDF({
 
   return handleResponse(response);
 }
+
+// ============================================================
+// STEP 25 — REGENERATE ASSIGNMENT
+// ============================================================
+
+export async function regenerateAssignment({
+  assignmentId,
+  paper,
+  handwritingStyle,
+  ink,
+  pageNumbers,
+  assignment,
+  handwriting,
+}) {
+  if (!assignmentId) {
+    throw new Error(
+      "Assignment ID is required."
+    );
+  }
+
+  const response = await fetch(
+    buildUrl(
+      `/api/assignments/${assignmentId}/regenerate`
+    ),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        paper: paper || undefined,
+
+        handwriting_style:
+          handwritingStyle || undefined,
+
+        ink: ink || undefined,
+
+        page_numbers:
+          pageNumbers !== undefined
+            ? pageNumbers
+            : true,
+
+        assignment:
+          assignment || {},
+
+        handwriting:
+          handwriting || {},
+      }),
+    }
+  );
+
+  const result =
+    await handleResponse(response);
+
+  if (result?.download_url) {
+    result.download_url =
+      buildUrl(result.download_url);
+  }
+
+  return result;
+}
+
+
+// ============================================================
+// STEP 26 — DUPLICATE ASSIGNMENT
+// ============================================================
+
+export async function duplicateAssignment(
+  assignmentId,
+  title
+) {
+  if (!assignmentId) {
+    throw new Error(
+      "Assignment ID is required."
+    );
+  }
+
+  const response = await fetch(
+    buildUrl(
+      `/api/assignments/${assignmentId}/duplicate`
+    ),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        title:
+          title ||
+          undefined,
+      }),
+    }
+  );
+
+  return await handleResponse(response);
+}
