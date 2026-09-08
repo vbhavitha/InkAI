@@ -22,6 +22,7 @@ import {
   getPhase6Document,
   createHandwritingAssignmentPayload,
   paginateAssignment,
+  saveAssignmentDraft,
 } from "../services/assignmentService";
 
 import {
@@ -304,6 +305,12 @@ function AssignmentPage() {
 
       const [exportFormat, setExportFormat] = useState("pdf");
 
+      const [draftId, setDraftId,] = useState(
+        location.state?.draftId || null
+      );
+
+      const [draftSaveStatus, setDraftSaveStatus] = useState("idle");
+
       useEffect(() => {
         const result = location.state?.generationResult;
         if (result) {
@@ -387,6 +394,85 @@ function AssignmentPage() {
       [field]: value,
     }));
   };
+
+  // ==========================================================
+  // STEP 31 — AUTO SAVE DRAFT
+  // ==========================================================
+
+  useEffect(() => {
+    const documentId =
+      phase6Document?.id ||
+      phase6Document?.document_id ||
+      location.state?.documentId;
+
+    if (!documentId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const timer = setTimeout(async () => {
+      try {
+        setDraftSaveStatus("saving");
+
+        const result =
+          await saveAssignmentDraft({
+            draftId,
+            documentId,
+
+            template:
+              assignment.template,
+
+            paper:
+              assignment.paperStyle,
+
+            handwritingStyle:
+              handwriting.style,
+
+            ink:
+              handwriting.ink,
+
+            pageNumbers:
+              assignment.showPageNumber,
+
+            assignment,
+
+            handwriting,
+          });
+
+        if (cancelled) {
+          return;
+        }
+
+        if (result?.draft_id) {
+          setDraftId(result.draft_id);
+        }
+
+        setDraftSaveStatus("saved");
+
+      } catch (error) {
+        console.error(
+          "Failed to save assignment draft:",
+          error
+        );
+
+        if (!cancelled) {
+          setDraftSaveStatus("error");
+        }
+      }
+    }, 800);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    phase6Document,
+    assignment,
+    handwriting,
+    draftId,
+    location.state?.documentId,
+  ]);
 
   /* ==========================================================
      PREVIEW DATA
@@ -610,7 +696,7 @@ function AssignmentPage() {
      STEP 12.2 / 12.8 — GENERATE HANDWRITING
   ========================================================== */
 
-  const handleGenerateHandwriting = () => {
+  const handleGenerateHandwriting = async () => {
     setDocumentError("");
 
     // ==========================================================
@@ -1418,6 +1504,24 @@ function AssignmentPage() {
             {documentError && (
               <p className="mt-2 text-xs text-red-400">
                 {documentError}
+              </p>
+            )}
+
+            {draftSaveStatus === "saving" && (
+              <p className="mt-2 text-xs text-slate-500">
+                Saving draft...
+              </p>
+            )}
+
+            {draftSaveStatus === "saved" && (
+              <p className="mt-2 text-xs text-emerald-400">
+                ✓ Draft saved
+              </p>
+            )}
+
+            {draftSaveStatus === "error" && (
+              <p className="mt-2 text-xs text-red-400">
+                Draft could not be saved.
               </p>
             )}
           </div>

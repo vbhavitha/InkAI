@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict
 from uuid import uuid4
 import re
+import json
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
@@ -24,6 +25,21 @@ from app.models.assignment import Assignment
 router = APIRouter(
     prefix="/api/assignments",
     tags=["Assignments"],
+)
+
+# ============================================================
+# STEP 31 — DRAFT STORAGE
+# ============================================================
+
+DRAFTS_DIRECTORY = (
+    Path("generated")
+    / "assignments"
+    / "drafts"
+)
+
+DRAFTS_DIRECTORY.mkdir(
+    parents=True,
+    exist_ok=True,
 )
 
 # ============================================================
@@ -138,6 +154,33 @@ class AssignmentRequest(BaseModel):
     )
 
 class AssignmentGenerateRequest(BaseModel):
+    document_id: str
+
+    template: str = "college_assignment"
+
+    paper: str = "ruled"
+
+    handwriting_style: str = "school_notebook"
+
+    ink: str = "blue"
+
+    page_numbers: bool = True
+
+    assignment: Dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+    handwriting: Dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+# ============================================================
+# STEP 31 — DRAFT REQUEST
+# ============================================================
+
+class AssignmentDraftRequest(BaseModel):
+    draft_id: int | None = None
+
     document_id: str
 
     template: str = "college_assignment"
@@ -550,6 +593,254 @@ def paginate_assignment(
             ),
         )
 
+# ============================================================
+# STEP 31 — SAVE / UPDATE DRAFT
+# ============================================================
+
+@router.post("/draft")
+def save_assignment_draft(
+    request: AssignmentDraftRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        # ------------------------------------------------------
+        # Find existing draft
+        # ------------------------------------------------------
+
+        assignment_record = None
+
+        if request.draft_id:
+            assignment_record = (
+                db.query(Assignment)
+                .filter(
+                    Assignment.id == request.draft_id,
+                    Assignment.user_id == TEMP_USER_ID,
+                )
+                .first()
+            )
+
+            if not assignment_record:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Draft not found.",
+                )
+
+        # ------------------------------------------------------
+        # Create new draft
+        # ------------------------------------------------------
+
+        if assignment_record is None:
+            assignment_record = Assignment(
+                user_id=TEMP_USER_ID,
+                document_id=int(request.document_id),
+                title=request.assignment.get(
+                    "title",
+                    "Untitled Assignment",
+                ),
+                subject=request.assignment.get(
+                    "subject",
+                    "",
+                ),
+                student_name=request.assignment.get(
+                    "studentName",
+                    "",
+                ),
+                roll_number=request.assignment.get(
+                    "rollNumber",
+                    "",
+                ),
+                class_name=request.assignment.get(
+                    "className",
+                    "",
+                ),
+                section=request.assignment.get(
+                    "section",
+                    "",
+                ),
+                teacher_name=request.assignment.get(
+                    "teacherName",
+                    "",
+                ),
+                assignment_date=request.assignment.get(
+                    "date",
+                    "",
+                ),
+                template=request.template,
+                paper_style=request.paper,
+                handwriting_style=request.handwriting_style,
+                ink_color=request.ink,
+                page_count=0,
+                pdf_path=None,
+            )
+
+            db.add(assignment_record)
+            db.flush()
+
+        # ------------------------------------------------------
+        # Update draft metadata
+        # ------------------------------------------------------
+
+        assignment_record.document_id = int(
+            request.document_id
+        )
+
+        assignment_record.title = request.assignment.get(
+            "title",
+            "",
+        )
+
+        assignment_record.subject = request.assignment.get(
+            "subject",
+            "",
+        )
+
+        assignment_record.student_name = request.assignment.get(
+            "studentName",
+            "",
+        )
+
+        assignment_record.roll_number = request.assignment.get(
+            "rollNumber",
+            "",
+        )
+
+        assignment_record.class_name = request.assignment.get(
+            "className",
+            "",
+        )
+
+        assignment_record.section = request.assignment.get(
+            "section",
+            "",
+        )
+
+        assignment_record.teacher_name = request.assignment.get(
+            "teacherName",
+            "",
+        )
+
+        assignment_record.assignment_date = request.assignment.get(
+            "date",
+            "",
+        )
+
+        assignment_record.template = request.template
+        assignment_record.paper_style = request.paper
+        assignment_record.handwriting_style = (
+            request.handwriting_style
+        )
+        assignment_record.ink_color = request.ink
+
+        # ------------------------------------------------------
+        # Save complete configuration to JSON
+        # ------------------------------------------------------
+
+        draft_data = {
+            "draft_id": assignment_record.id,
+            "document_id": int(request.document_id),
+            "template": request.template,
+            "paper": request.paper,
+            "handwriting_style": request.handwriting_style,
+            "ink": request.ink,
+            "page_numbers": request.page_numbers,
+            "assignment": request.assignment,
+            "handwriting": request.handwriting,
+        }
+
+        draft_path = (
+            DRAFTS_DIRECTORY
+            / f"{assignment_record.id}.json"
+        )
+
+        draft_path.write_text(
+            json.dumps(
+                draft_data,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        db.commit()
+        db.refresh(assignment_record)
+
+        return {
+            "draft_id": assignment_record.id,
+            "status": "draft",
+            "document_id": assignment_record.document_id,
+            "title": assignment_record.title,
+            "message": "Draft saved successfully.",
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Failed to save assignment draft: "
+                f"{error}"
+            ),
+        )
+
+# ============================================================
+# STEP 31 — GET DRAFT
+# ============================================================
+
+@router.get("/{assignment_id}/draft")
+def get_assignment_draft(
+    assignment_id: int,
+    db: Session = Depends(get_db),
+):
+    assignment = (
+        db.query(Assignment)
+        .filter(
+            Assignment.id == assignment_id,
+            Assignment.user_id == TEMP_USER_ID,
+        )
+        .first()
+    )
+
+    if not assignment:
+        raise HTTPException(
+            status_code=404,
+            detail="Assignment draft not found.",
+        )
+
+    draft_path = (
+        DRAFTS_DIRECTORY
+        / f"{assignment.id}.json"
+    )
+
+    if not draft_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Draft configuration not found.",
+        )
+
+    try:
+        draft_data = json.loads(
+            draft_path.read_text(
+                encoding="utf-8"
+            )
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to read draft configuration.",
+        )
+
+    return {
+        **draft_data,
+        "status": (
+            "completed"
+            if assignment.pdf_path
+            else "draft"
+        ),
+    }
+
 @router.post("/generate")
 def generate_assignment(
     request: AssignmentGenerateRequest,
@@ -786,6 +1077,11 @@ def get_assignments(
             "handwriting_style": assignment.handwriting_style,
             "ink_color": assignment.ink_color,
             "page_count": assignment.page_count,
+            "status": (
+                "completed"
+                if assignment.pdf_path
+                else "draft"
+            ),
             "created_at": assignment.created_at,
             "updated_at": assignment.updated_at,
         }

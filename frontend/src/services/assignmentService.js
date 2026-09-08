@@ -498,3 +498,76 @@ export async function duplicateAssignment(
 
   return await handleResponse(response);
 }
+
+// ============================================================
+// STEP 31 — SAVE ASSIGNMENT DRAFT
+// ============================================================
+
+export async function saveAssignmentDraft({
+  draftId,
+  documentId,
+  template,
+  paper,
+  handwritingStyle,
+  ink,
+  pageNumbers,
+  assignment,
+  handwriting,
+}) {
+  if (!documentId) {
+    throw new Error(
+      "Document ID is required to save a draft."
+    );
+  }
+
+  const response = await fetch(
+    buildUrl("/api/assignments/draft"),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        draft_id: draftId || null,
+        document_id: String(documentId),
+        template:
+          template || "college_assignment",
+        paper: paper || "ruled",
+        handwriting_style:
+          handwritingStyle ||
+          "school_notebook",
+        ink: ink || "blue",
+        page_numbers:
+          pageNumbers !== false,
+        assignment:
+          assignment || {},
+        handwriting:
+          handwriting || {},
+      }),
+    }
+  );
+
+  return await handleResponse(response);
+}
+
+// ============================================================
+// STEP 31 — GET ASSIGNMENT DRAFT
+// ============================================================
+
+export async function getAssignmentDraft(
+  assignmentId
+) {
+  if (!assignmentId) {
+    throw new Error(
+      "Assignment ID is required."
+    );
+  }
+
+  const response = await fetch(
+    buildUrl(
+      `/api/assignments/${assignmentId}/draft`
+    )
+  );
+
+  return await handleResponse(response);
+}
