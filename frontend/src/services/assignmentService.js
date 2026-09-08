@@ -274,3 +274,65 @@ export default {
   createAssignmentDocument,
   createHandwritingAssignmentPayload,
 };
+
+// ============================================================
+// STEP 17 / 18 — PAGINATE ASSIGNMENT FOR LIVE PREVIEW
+// ============================================================
+
+export async function paginateAssignment({
+  document,
+  assignment,
+}) {
+  if (!document) {
+    return {
+      pages: [
+        {
+          pageNumber: 1,
+          nodes: [],
+        },
+      ],
+      pageCount: 1,
+    };
+  }
+
+  const response = await fetch(
+    buildUrl("/api/assignments/paginate"),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        document,
+
+        assignment: assignment || {},
+
+        page: {
+          paperSize:
+            assignment?.paperSize ||
+            "A4",
+
+          orientation:
+            assignment?.orientation ||
+            "portrait",
+
+          marginPreset:
+            assignment?.marginPreset ||
+            "normal",
+
+          customMargins:
+            assignment?.customMargins || {
+              top: 56,
+              right: 50,
+              bottom: 56,
+              left: 50,
+            },
+        },
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}

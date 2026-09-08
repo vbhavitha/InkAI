@@ -20,6 +20,7 @@ import AssignmentFooter from "../components/assignment/AssignmentFooter";
 import {
   getPhase6Document,
   createHandwritingAssignmentPayload,
+  paginateAssignment,
 } from "../services/assignmentService";
 
 import {
@@ -268,6 +269,97 @@ function AssignmentPage() {
     seed: 12345,
   });
 
+    /* ==========================================================
+      STEP 17 / STEP 18 — PREVIEW CONTROLS
+    ========================================================== */
+
+    const [previewZoom, setPreviewZoom] =
+      useState(1);
+
+    const [previewPage, setPreviewPage] =
+      useState(1);
+
+    const [previewTotalPages, setPreviewTotalPages] =
+      useState(1);
+
+      const [previewPages, setPreviewPages] =
+        useState([
+          {
+            pageNumber: 1,
+            nodes: [],
+          },
+        ]);
+
+      const [
+        isPaginatingPreview,
+        setIsPaginatingPreview,
+      ] = useState(false);
+
+      // ==========================================================
+      // STEP 17B — RESET PREVIEW PAGE
+      // ==========================================================
+
+      useEffect(() => {
+        setPreviewPage(1);
+      }, [
+        assignment.template,
+        assignment.paperStyle,
+        assignment.paperSize,
+        assignment.orientation,
+        assignment.marginPreset,
+        assignment.customMargins,
+        assignment.headingFontSize,
+        assignment.titleFontSize,
+        assignment.bodyFontSize,
+        assignment.titleAlignment,
+        phase6Document,
+      ]);
+
+      // ==========================================================
+      // STEP 17C — PREVIEW CONTROLS
+      // ==========================================================
+
+      const zoomIn = () => {
+        setPreviewZoom((current) =>
+          Math.min(
+            Number(
+              (current + 0.1).toFixed(2)
+            ),
+            2
+          )
+        );
+      };
+
+      const zoomOut = () => {
+        setPreviewZoom((current) =>
+          Math.max(
+            Number(
+              (current - 0.1).toFixed(2)
+            ),
+            0.5
+          )
+        );
+      };
+
+      const fitPage = () => {
+        setPreviewZoom(1);
+      };
+
+      const goToPreviousPage = () => {
+        setPreviewPage((current) =>
+          Math.max(current - 1, 1)
+        );
+      };
+
+      const goToNextPage = () => {
+        setPreviewPage((current) =>
+          Math.min(
+            current + 1,
+            previewTotalPages
+          )
+        );
+      };
+
   /* ==========================================================
      UPDATE ASSIGNMENT
   ========================================================== */
@@ -345,6 +437,96 @@ function AssignmentPage() {
     location.state,
     phase6Document,
   ]);
+
+    useEffect(() => {
+      if (!phase6Document) {
+        setPreviewPages([
+          {
+            pageNumber: 1,
+            nodes: [],
+          },
+        ]);
+
+        setPreviewTotalPages(1);
+
+        return;
+      }
+
+      let cancelled = false;
+
+      async function updatePreviewPagination() {
+        try {
+          setIsPaginatingPreview(true);
+
+          const result =
+            await paginateAssignment({
+              document: phase6Document.content ||
+                phase6Document,
+              assignment,
+            });
+
+          if (cancelled) {
+            return;
+          }
+
+          const pages =
+            Array.isArray(result?.pages)
+              ? result.pages
+              : [];
+
+          setPreviewPages(
+            pages.length
+              ? pages
+              : [
+                  {
+                    pageNumber: 1,
+                    nodes: [],
+                  },
+                ]
+          );
+
+          setPreviewTotalPages(
+            pages.length || 1
+          );
+
+        } catch (error) {
+          console.error(
+            "Failed to paginate live preview:",
+            error
+          );
+
+          if (!cancelled) {
+            setPreviewPages([
+              {
+                pageNumber: 1,
+                nodes:
+                  phase6Document?.content
+                    ?.content ||
+                  phase6Document?.blocks ||
+                  [],
+              },
+            ]);
+
+            setPreviewTotalPages(1);
+          }
+
+        } finally {
+          if (!cancelled) {
+            setIsPaginatingPreview(false);
+          }
+        }
+      }
+
+      updatePreviewPagination();
+
+      return () => {
+        cancelled = true;
+      };
+
+    }, [
+      phase6Document,
+      assignment,
+    ]);
 
   /* ==========================================================
      STEP 12.2 / 12.8 — GENERATE HANDWRITING
@@ -993,9 +1175,11 @@ function AssignmentPage() {
 
         <section className="rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-xl">
 
-          {/* Preview Header */}
+          {/* =================================================
+              PREVIEW HEADER
+          ================================================== */}
 
-          <div className="mb-6">
+          <div className="mb-4">
 
             <div className="flex items-center justify-between">
 
@@ -1024,14 +1208,186 @@ function AssignmentPage() {
 
           </div>
 
-          {/* Preview Container */}
 
-          <div className="flex min-h-[700px] items-start justify-center overflow-auto rounded-xl bg-slate-800/60 p-6">
+          {/* =================================================
+              STEP 18 — PREVIEW CONTROLS
+          ================================================== */}
 
-            <AssignmentPreview
-              data={previewData}
-              phase6Document={phase6Document}
-            />
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-800/60 px-3 py-2">
+
+            {/* -----------------------------------------------
+                ZOOM
+            ------------------------------------------------ */}
+
+            <div className="flex items-center gap-1">
+
+              <button
+                type="button"
+                onClick={zoomOut}
+                className="
+                  rounded-lg
+                  border
+                  border-white/10
+                  bg-slate-800
+                  px-3
+                  py-1.5
+                  text-xs
+                  text-slate-300
+                  transition
+                  hover:bg-slate-700
+                "
+                title="Zoom out"
+              >
+                −
+              </button>
+
+              <span className="min-w-[52px] text-center text-xs text-slate-400">
+                {Math.round(previewZoom * 100)}%
+              </span>
+
+              <button
+                type="button"
+                onClick={zoomIn}
+                className="
+                  rounded-lg
+                  border
+                  border-white/10
+                  bg-slate-800
+                  px-3
+                  py-1.5
+                  text-xs
+                  text-slate-300
+                  transition
+                  hover:bg-slate-700
+                "
+                title="Zoom in"
+              >
+                +
+              </button>
+
+              <button
+                type="button"
+                onClick={fitPage}
+                className="
+                  ml-1
+                  rounded-lg
+                  border
+                  border-white/10
+                  bg-slate-800
+                  px-3
+                  py-1.5
+                  text-xs
+                  text-slate-300
+                  transition
+                  hover:bg-slate-700
+                "
+              >
+                Fit Page
+              </button>
+
+            </div>
+
+
+            {/* -----------------------------------------------
+                PAGE NAVIGATION
+            ------------------------------------------------ */}
+
+            <div className="flex items-center gap-2">
+
+              <button
+                type="button"
+                onClick={goToPreviousPage}
+                disabled={previewPage <= 1}
+                className="
+                  rounded-lg
+                  border
+                  border-white/10
+                  bg-slate-800
+                  px-3
+                  py-1.5
+                  text-xs
+                  text-slate-300
+                  transition
+                  hover:bg-slate-700
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40
+                "
+              >
+                ← Previous
+              </button>
+
+              <span className="min-w-[72px] text-center text-xs font-medium text-slate-300">
+                Page {previewPage} / {previewTotalPages}
+              </span>
+
+              <button
+                type="button"
+                onClick={goToNextPage}
+                disabled={
+                  previewPage >=
+                  previewTotalPages
+                }
+                className="
+                  rounded-lg
+                  border
+                  border-white/10
+                  bg-slate-800
+                  px-3
+                  py-1.5
+                  text-xs
+                  text-slate-300
+                  transition
+                  hover:bg-slate-700
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40
+                "
+              >
+                Next →
+              </button>
+
+            </div>
+
+          </div>
+
+
+          {/* =================================================
+              PREVIEW CANVAS
+          ================================================== */}
+
+          <div
+            className="
+              flex
+              min-h-[700px]
+              items-start
+              justify-center
+              overflow-auto
+              rounded-xl
+              bg-slate-800/60
+              p-6
+            "
+          >
+
+            <div
+              style={{
+                transform: `scale(${previewZoom})`,
+                transformOrigin: "top center",
+                transition: "transform 150ms ease",
+              }}
+            >
+
+              <AssignmentPreview
+                data={previewData}
+                phase6Document={phase6Document}
+                pageNumber={previewPage}
+                totalPages={previewTotalPages}
+                pageNodes={
+                  previewPages[
+                    previewPage - 1
+                  ]?.nodes || []
+                }
+              />
+
+            </div>
 
           </div>
 
@@ -1205,12 +1561,7 @@ function StructuredNode({ node }) {
       );
 
     case "pageBreak":
-      return (
-        <div
-          className="my-6 border-t-2 border-dashed border-slate-300"
-          aria-label="Page break"
-        />
-      );
+      return null;
 
     case "hardBreak":
       return <br />;
@@ -1334,12 +1685,18 @@ function InlineContent({
    ASSIGNMENT PREVIEW
 ============================================================ */
 
-function AssignmentPreview({ data, phase6Document, }) {
+function AssignmentPreview({
+  data,
+  phase6Document,
+  pageNumber = 1,
+  totalPages = 1,
+  pageNodes = [],
+}) {
 
   const structuredBlocks =
-    phase6Document?.content?.content ||
-    phase6Document?.blocks ||
-    [];
+    Array.isArray(pageNodes)
+      ? pageNodes
+      : [];
 
   /* ----------------------------------------------------------
      Orientation
@@ -1519,10 +1876,7 @@ function AssignmentPreview({ data, phase6Document, }) {
      FOOTER
   ========================================================== */
 
-  const Footer = ({
-    pageNumber = 1,
-    totalPages = 1,
-  }) => {
+  const Footer = () => {
 
     if (
       !data.showFooter &&
@@ -1531,46 +1885,25 @@ function AssignmentPreview({ data, phase6Document, }) {
       return null;
     }
 
-    const pageNumberText =
+    const pageText =
       `Page ${pageNumber} of ${totalPages}`;
 
-    const positionClass =
-      data.pageNumberPosition === "left"
-        ? "justify-start"
-        : data.pageNumberPosition === "right"
-          ? "justify-end"
-          : "justify-center";
-
     return (
-      <div
-        className="
-          absolute
-          bottom-5
-          left-8
-          right-8
-          border-t
-          border-slate-300
-          pt-2
-          text-[10px]
-          text-slate-500
-        "
-      >
+      <div className="absolute bottom-5 left-8 right-8 border-t border-slate-300 pt-2 text-[10px] text-slate-500">
 
-        <div
-          className={`
-            flex
-            items-center
-            ${positionClass}
-          `}
-        >
-
-          {data.showPageNumber && (
-            <span>
-              {pageNumberText}
-            </span>
-          )}
-
-        </div>
+        {data.showPageNumber && (
+          <div
+            className={
+              data.pageNumberPosition === "left"
+                ? "text-left"
+                : data.pageNumberPosition === "right"
+                  ? "text-right"
+                  : "text-center"
+            }
+          >
+            {pageText}
+          </div>
+        )}
 
         {data.showFooter &&
           data.footerText && (
