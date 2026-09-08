@@ -13,6 +13,7 @@ from app.assignments.pdf_renderer import AssignmentPDFRenderer
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.database.database import get_db
+from app.models.assignment import Assignment
 
 
 # ============================================================
@@ -383,17 +384,79 @@ def generate_assignment(
             ),
         )
 
+        # =========================================================
+        # SAVE ASSIGNMENT RECORD
+        # =========================================================
+
+        assignment_record = Assignment(
+            user_id=TEMP_USER_ID,
+            document_id=request.document_id,
+
+            title=request.assignment.get(
+                "title",
+                "Untitled Assignment",
+            ),
+
+            subject=request.assignment.get(
+                "subject",
+                "",
+            ),
+
+            student_name=request.assignment.get(
+                "studentName",
+                "",
+            ),
+
+            roll_number=request.assignment.get(
+                "rollNumber",
+                "",
+            ),
+
+            class_name=request.assignment.get(
+                "className",
+                "",
+            ),
+
+            section=request.assignment.get(
+                "section",
+                "",
+            ),
+
+            teacher_name=request.assignment.get(
+                "teacherName",
+                "",
+            ),
+
+            assignment_date=request.assignment.get(
+                "date",
+                "",
+            ),
+
+            template=request.template,
+            paper_style=request.paper,
+            handwriting_style=request.handwriting_style,
+            ink_color=request.ink,
+
+            page_count=len(pages),
+
+            pdf_path=str(output_path),
+        )
+
+        db.add(assignment_record)
+        db.commit()
+        db.refresh(assignment_record)
+
         # ---------------------------------------------------------
         # 6. Return generation result
         # ---------------------------------------------------------
 
         return {
-            "assignment_id": assignment_id,
+            "assignment_id": assignment_record.id,
             "status": "completed",
             "pages": len(pages),
             "download_url": (
                 f"/api/assignments/"
-                f"{assignment_id}/download"
+                f"{assignment_record.id}/download"
             ),
         }
 
@@ -409,24 +472,127 @@ def generate_assignment(
             ),
         )
 
-@router.get("/{assignment_id}/download")
-def download_assignment(
-    assignment_id: str,
+# =========================================================
+# ASSIGNMENT HISTORY
+# =========================================================
+
+@router.get("")
+def get_assignments(
+    db: Session = Depends(get_db),
 ):
-    output_path = (
-        Path("generated")
-        / "assignments"
-        / f"{assignment_id}.pdf"
+    assignments = (
+        db.query(Assignment)
+        .filter(
+            Assignment.user_id == TEMP_USER_ID
+        )
+        .order_by(
+            Assignment.created_at.desc()
+        )
+        .all()
     )
 
-    if not output_path.exists():
+    return [
+        {
+            "id": assignment.id,
+            "document_id": assignment.document_id,
+            "title": assignment.title,
+            "subject": assignment.subject,
+            "student_name": assignment.student_name,
+            "roll_number": assignment.roll_number,
+            "class_name": assignment.class_name,
+            "section": assignment.section,
+            "teacher_name": assignment.teacher_name,
+            "assignment_date": assignment.assignment_date,
+            "template": assignment.template,
+            "paper_style": assignment.paper_style,
+            "handwriting_style": assignment.handwriting_style,
+            "ink_color": assignment.ink_color,
+            "page_count": assignment.page_count,
+            "created_at": assignment.created_at,
+            "updated_at": assignment.updated_at,
+        }
+        for assignment in assignments
+    ]
+
+# =========================================================
+# DOWNLOAD ASSIGNMENT
+# =========================================================
+
+@router.get("/{assignment_id}/download")
+def download_assignment(
+    assignment_id: int,
+    db: Session = Depends(get_db),
+):
+    assignment = (
+        db.query(Assignment)
+        .filter(
+            Assignment.id == assignment_id,
+            Assignment.user_id == TEMP_USER_ID,
+        )
+        .first()
+    )
+
+    if not assignment:
         raise HTTPException(
             status_code=404,
-            detail="Generated PDF not found.",
+            detail="Assignment not found.",
+        )
+
+    if not assignment.pdf_path:
+        raise HTTPException(
+            status_code=404,
+            detail="PDF path is not available.",
+        )
+
+    pdf_path = Path(assignment.pdf_path)
+
+    if not pdf_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="PDF file not found.",
         )
 
     return FileResponse(
-        path=str(output_path),
+        path=str(pdf_path),
         media_type="application/pdf",
         filename="InkAI_Assignment.pdf",
     )
+
+# =========================================================
+# DELETE ASSIGNMENT
+# =========================================================
+
+@router.delete("/{assignment_id}")
+def delete_assignment(
+    assignment_id: int,
+    db: Session = Depends(get_db),
+):
+    assignment = (
+        db.query(Assignment)
+        .filter(
+            Assignment.id == assignment_id,
+            Assignment.user_id == TEMP_USER_ID,
+        )
+        .first()
+    )
+
+    if not assignment:
+        raise HTTPException(
+            status_code=404,
+            detail="Assignment not found.",
+        )
+
+    # Delete PDF file
+    if assignment.pdf_path:
+        pdf_path = Path(assignment.pdf_path)
+
+        if pdf_path.exists():
+            pdf_path.unlink()
+
+    # Delete database record
+    db.delete(assignment)
+    db.commit()
+
+    return {
+        "message": "Assignment deleted successfully."
+    }
