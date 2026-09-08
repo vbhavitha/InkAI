@@ -727,6 +727,9 @@ function HandwritingGeneratorPage() {
         },
       });
 
+      setGenerationResult(result);
+      setShowReadyScreen(true);
+
       if (result?.download_url) {
         window.open(result.download_url, "_blank");
         setSaveMessage("PDF generated successfully.");

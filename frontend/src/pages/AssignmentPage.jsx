@@ -16,6 +16,7 @@ import PageSettings from "../components/assignment/PageSettings";
 import AssignmentHeader from "../components/assignment/AssignmentHeader";
 import TitleSettings from "../components/assignment/TitleSettings";
 import AssignmentFooter from "../components/assignment/AssignmentFooter";
+import HandwritingStyleSettings from "../components/assignment/HandwritingStyleSettings";
 
 import {
   getPhase6Document,
@@ -295,6 +296,22 @@ function AssignmentPage() {
         setIsPaginatingPreview,
       ] = useState(false);
 
+      const [generationResult, setGenerationResult] =
+        useState(null);
+
+      const [showReadyScreen, setShowReadyScreen] =
+        useState(false);
+
+      const [exportFormat, setExportFormat] = useState("pdf");
+
+      useEffect(() => {
+        const result = location.state?.generationResult;
+        if (result) {
+          setGenerationResult(result);
+          setShowReadyScreen(true);
+        }
+      }, [location.state]);
+
       // ==========================================================
       // STEP 17B — RESET PREVIEW PAGE
       // ==========================================================
@@ -528,6 +545,70 @@ function AssignmentPage() {
       assignment,
     ]);
 
+  const handlePreviewPDF = () => {
+    if (!generationResult?.download_url) {
+      return;
+    }
+
+    window.open(
+      generationResult.download_url,
+      "_blank",
+      "noopener,noreferrer"
+    );
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!generationResult?.download_url) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        generationResult.download_url
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          "Failed to download PDF."
+        );
+      }
+
+      const blob =
+        await response.blob();
+
+      const url =
+        window.URL.createObjectURL(blob);
+
+      const link =
+        document.createElement("a");
+
+      link.href = url;
+
+      link.download =
+        `${assignment.title || "InkAI_Assignment"}.pdf`;
+
+      document.body.appendChild(link);
+
+      link.click();
+
+      link.remove();
+
+      window.URL.revokeObjectURL(url);
+
+    } catch (error) {
+      console.error(
+        "PDF download failed:",
+        error
+      );
+    }
+  };
+
+  const handleCreateAnother = () => {
+    setGenerationResult(null);
+    setShowReadyScreen(false);
+    setExportFormat("pdf");
+  };
+
   /* ==========================================================
      STEP 12.2 / 12.8 — GENERATE HANDWRITING
   ========================================================== */
@@ -569,7 +650,105 @@ function AssignmentPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <>
+      {showReadyScreen && generationResult ? (
+        <div className="min-h-screen bg-[#080b12] text-white flex items-center justify-center px-6 py-12">
+          <div className="w-full max-w-2xl">
+            <div className="rounded-3xl border border-white/10 bg-white/[0.04] backdrop-blur-xl p-8 md:p-10 shadow-2xl">
+              <div className="flex justify-center mb-6">
+                <div className="w-20 h-20 rounded-full bg-emerald-500/10 border border-emerald-400/30 flex items-center justify-center text-emerald-400 text-4xl">
+                  ✓
+                </div>
+              </div>
+
+              <div className="text-center mb-8">
+                <h1 className="text-3xl md:text-4xl font-bold text-white mb-3">
+                  Assignment Ready!
+                </h1>
+                <p className="text-gray-400">
+                  Your handwritten assignment has been generated successfully.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
+                  <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Pages</p>
+                  <p className="text-2xl font-bold text-white">
+                    {generationResult.pages || 0}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
+                  <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Paper</p>
+                  <p className="text-lg font-semibold text-white capitalize">
+                    {assignment.paperStyle?.replaceAll("_", " ") || "Ruled"}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
+                  <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Ink</p>
+                  <p className="text-lg font-semibold text-white capitalize">
+                    {handwriting.ink || "Blue"} Ink
+                  </p>
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <p className="text-sm font-medium text-gray-300 mb-3">Export Format</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setExportFormat("pdf")}
+                    className={`rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                      exportFormat === "pdf"
+                        ? "border-cyan-400/50 bg-cyan-400/10 text-cyan-300"
+                        : "border-white/10 bg-white/5 text-gray-400"
+                    }`}
+                  >
+                    PDF
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled
+                    className="rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3 text-sm font-semibold text-gray-600 cursor-not-allowed"
+                  >
+                    PNG
+                    <span className="block text-[10px] mt-1">Coming soon</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={handlePreviewPDF}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white py-3.5 font-semibold transition"
+                >
+                  Preview PDF
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadPDF}
+                  className="w-full rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black py-3.5 font-semibold transition"
+                >
+                  Download PDF
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCreateAnother}
+                  className="w-full rounded-xl border border-white/10 bg-transparent hover:bg-white/5 text-gray-300 py-3.5 font-semibold transition"
+                >
+                  Create Another
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="min-h-screen bg-slate-950 text-white">
 
       {/* =====================================================
           PAGE HEADER
@@ -1395,7 +1574,9 @@ function AssignmentPage() {
 
       </main>
 
-    </div>
+        </div>
+      )}
+    </>
   );
 }
 
