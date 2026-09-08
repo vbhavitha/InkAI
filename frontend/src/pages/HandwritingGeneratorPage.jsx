@@ -684,7 +684,53 @@ function HandwritingGeneratorPage() {
    * a Phase 7 hook.
    */
 
+  
+
   const handleGeneratePDF = async () => {
+
+    // ==========================================================
+    // STEP 30 — FINAL VALIDATION
+    // ==========================================================
+
+    if (!assignmentDetails.studentName?.trim()) {
+      setSaveMessage(
+        "Please enter the student name."
+      );
+      return;
+    }
+
+    if (!assignmentDetails.subject?.trim()) {
+      setSaveMessage(
+        "Please enter the subject."
+      );
+      return;
+    }
+
+    if (!assignmentDetails.title?.trim()) {
+      setSaveMessage(
+        "Please enter the assignment title."
+      );
+      return;
+    }
+
+    if (!handwritingDocument) {
+      setSaveMessage(
+        "Assignment content is not available."
+      );
+      return;
+    }
+
+    if (
+      !Array.isArray(pages) ||
+      pages.length === 0
+    ) {
+      setSaveMessage(
+        "No pages were generated. Please check your assignment content."
+      );
+      return;
+    }
+
+    // Existing generation code continues below...
     if (!handwritingDocument) {
       setSaveMessage("Handwriting document is not available.");
       return;

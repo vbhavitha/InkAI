@@ -584,9 +584,6 @@ function AssignmentPage() {
 
       link.href = url;
 
-      link.download =
-        `${assignment.title || "InkAI_Assignment"}.pdf`;
-
       document.body.appendChild(link);
 
       link.click();
@@ -614,12 +611,91 @@ function AssignmentPage() {
   ========================================================== */
 
   const handleGenerateHandwriting = () => {
+    setDocumentError("");
+
+    // ==========================================================
+    // STEP 30 — REQUIRED FIELD VALIDATION
+    // ==========================================================
+
+    if (!assignment.studentName?.trim()) {
+      setDocumentError(
+        "Please enter the student name."
+      );
+      return;
+    }
+
+    if (!assignment.subject?.trim()) {
+      setDocumentError(
+        "Please enter the subject."
+      );
+      return;
+    }
+
+    if (!assignment.title?.trim()) {
+      setDocumentError(
+        "Please enter the assignment title."
+      );
+      return;
+    }
+
     if (!phase6Document) {
       setDocumentError(
         "Phase 6 document is not available."
       );
       return;
     }
+
+    // ==========================================================
+    // CHECK STRUCTURED CONTENT
+    // ==========================================================
+
+    const documentContent =
+      phase6Document?.content?.content ||
+      phase6Document?.content ||
+      phase6Document?.blocks ||
+      [];
+
+    const hasContent =
+      Array.isArray(documentContent) &&
+      documentContent.some((node) => {
+        if (!node) {
+          return false;
+        }
+
+        if (
+          node.type === "text" &&
+          node.text?.trim()
+        ) {
+          return true;
+        }
+
+        if (
+          Array.isArray(node.content) &&
+          node.content.length > 0
+        ) {
+          return node.content.some(
+            (child) =>
+              child?.text?.trim() ||
+              (
+                Array.isArray(child?.content) &&
+                child.content.length > 0
+              )
+          );
+        }
+
+        return false;
+      });
+
+    if (!hasContent) {
+      setDocumentError(
+        "Please add some assignment content before generating."
+      );
+      return;
+    }
+
+    // ==========================================================
+    // CREATE HANDWRITING PAYLOAD
+    // ==========================================================
 
     try {
       const payload =

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict
 from uuid import uuid4
+import re
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
@@ -24,6 +25,85 @@ router = APIRouter(
     prefix="/api/assignments",
     tags=["Assignments"],
 )
+
+# ============================================================
+# STEP 29 — DOWNLOAD FILE NAME
+# ============================================================
+
+def sanitize_filename_part(value: str) -> str:
+    """
+    Convert user-provided text into a safe filename component.
+    """
+    value = str(value or "").strip()
+
+    if not value:
+        return ""
+
+    value = re.sub(
+        r"[^\w\s-]",
+        "",
+        value,
+        flags=re.UNICODE,
+    )
+
+    value = re.sub(
+        r"[\s-]+",
+        "_",
+        value,
+    )
+
+    return value.strip("_")
+
+
+def build_assignment_filename(
+    title: str,
+    student_name: str,
+    db: Session,
+) -> str:
+    """
+    Build a human-readable PDF filename.
+
+    Example:
+        Computer_Networks_Assignment_Bhavitha.pdf
+
+    If the same assignment/student already exists:
+        Computer_Networks_Assignment_Bhavitha_2.pdf
+    """
+
+    clean_title = sanitize_filename_part(
+        title
+    )
+
+    clean_student = sanitize_filename_part(
+        student_name
+    )
+
+    if not clean_title:
+        clean_title = "InkAI_Assignment"
+
+    if clean_student:
+        base_name = (
+            f"{clean_title}_{clean_student}"
+        )
+    else:
+        base_name = clean_title
+
+    existing_count = (
+        db.query(Assignment)
+        .filter(
+            Assignment.user_id == TEMP_USER_ID,
+            Assignment.title == title,
+            Assignment.student_name == student_name,
+        )
+        .count()
+    )
+
+    if existing_count == 0:
+        return f"{base_name}.pdf"
+
+    return (
+        f"{base_name}_{existing_count + 1}.pdf"
+    )
 
 class AssignmentDuplicateRequest(BaseModel):
     title: str | None = None
@@ -750,10 +830,16 @@ def download_assignment(
             detail="PDF file not found.",
         )
 
+    download_filename = build_assignment_filename(
+        title=assignment.title,
+        student_name=assignment.student_name,
+        db=db,
+    )
+
     return FileResponse(
         path=str(pdf_path),
         media_type="application/pdf",
-        filename="InkAI_Assignment.pdf",
+        filename=download_filename,
     )
 
 # =========================================================
