@@ -1,99 +1,111 @@
-"""
-Phase 8 — Assignment PDF Renderer
+from __future__ import annotations
 
-Consumes the already-paginated assignment.
-
-Automatic pagination and manual page breaks are handled
-before this renderer is called.
-"""
-
-from io import BytesIO
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from reportlab.pdfgen import canvas
 
-from .page_layout import (
-    PageConfig,
+from app.assignments.page_layout import (
     AssignmentPageLayout,
+    PageConfig,
 )
 
 
 class AssignmentPDFRenderer:
+    """
+    Render paginated InkAI assignment data into a PDF.
+
+    Flow:
+
+        Assignment JSON
+              ↓
+        Template / Assignment Service
+              ↓
+        Page Layout
+              ↓
+        Handwriting-ready pages
+              ↓
+        PDF Renderer
+              ↓
+        PDF File
+    """
 
     def __init__(
         self,
-        page_config: PageConfig | None = None,
+        page_config: Optional[PageConfig] = None,
     ):
-        self.page_config = (
-            page_config
-            or PageConfig()
-        )
-
+        self.page_config = page_config or PageConfig()
         self.layout = AssignmentPageLayout(
             self.page_config
         )
 
-    # ========================================================
-    # RENDER
-    # ========================================================
-
     def render(
         self,
-        pages,
-        output_path: str | None = None,
-    ):
+        pages: List[Dict[str, Any]],
+        output_path: Optional[str] = None,
+    ) -> str:
+        """
+        Render all assignment pages into one PDF.
 
-        buffer = BytesIO()
+        Args:
+            pages: Paginated assignment pages.
+            output_path: Destination PDF path.
+
+        Returns:
+            Path to the generated PDF.
+        """
+
+        if not pages:
+            pages = [
+                {
+                    "pageNumber": 1,
+                    "nodes": [],
+                }
+            ]
+
+        if output_path is None:
+            output_path = "assignment.pdf"
+
+        output_file = Path(output_path)
+
+        output_file.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
         page_width, page_height = (
             self.layout.get_page_size()
         )
 
         pdf = canvas.Canvas(
-            buffer,
-            pagesize=(
-                page_width,
-                page_height,
-            ),
+            str(output_file),
+            pagesize=(page_width, page_height),
         )
 
         total_pages = len(pages)
 
-            for page in pages:
+        for page in pages:
+            self.render_page(
+                pdf=pdf,
+                page=page,
+                total_pages=total_pages,
+            )
 
-                self.render_page(
-                    pdf,
-                    page,
-                    total_pages,
-                )
-
-                pdf.showPage()
+            pdf.showPage()
 
         pdf.save()
 
-        pdf_bytes = buffer.getvalue()
-
-        buffer.close()
-
-        if output_path:
-            with open(
-                output_path,
-                "wb",
-            ) as file:
-                file.write(pdf_bytes)
-
-        return pdf_bytes
-
-    # ========================================================
-    # RENDER PAGE
-    # ========================================================
+        return str(output_file)
 
     def render_page(
         self,
-        pdf,
-        page,
-        total_pages,
-    ):
+        pdf: canvas.Canvas,
+        page: Dict[str, Any],
+        total_pages: int,
+    ) -> None:
+        """
+        Render one assignment page.
+        """
 
         page_number = page.get(
             "pageNumber",
@@ -105,52 +117,201 @@ class AssignmentPDFRenderer:
             [],
         )
 
-        # ----------------------------------------------------
-        # Page number
-        # ----------------------------------------------------
-
-        self.render_page_number(
-            pdf,
-            page_number,
-            total_pages,
+        self.render_nodes(
+            pdf=pdf,
+            nodes=nodes,
         )
 
-        # ----------------------------------------------------
-        # Structured nodes
-        # ----------------------------------------------------
+        self.render_footer(
+            pdf=pdf,
+            page_number=page_number,
+            total_pages=total_pages,
+        )
 
+    def render_nodes(
+        self,
+        pdf: canvas.Canvas,
+        nodes: List[Dict[str, Any]],
+    ) -> None:
+        """
+        Basic ReportLab rendering for structured nodes.
+
+        The handwriting renderer can later replace the
+        text drawing portion while keeping this page
+        and footer infrastructure intact.
+        """
+
+        page_width, page_height = (
+            self.layout.get_page_size()
+        )
+
+        x = self.page_config.left
         y = (
-            self.layout.get_page_size()[1]
+            page_height
             - self.page_config.top
         )
 
-        for node in nodes:
+        usable_width = self.layout.get_usable_width()
 
-            node_height = (
-                self.layout
-                .estimate_node_height(node)
+        for node in nodes:
+            node_type = node.get(
+                "type",
+                "paragraph",
             )
 
-            # Temporary structured rendering.
-            #
-            # The existing Phase 7 handwriting renderer
-            # should be called here for actual handwriting
-            # rendering.
+            if node_type == "pageBreak":
+                continue
 
-            y -= node_height
+            text = self.extract_text(node)
 
-    # ========================================================
-    # PAGE NUMBER
-    # ========================================================
+            if not text:
+                continue
+
+            if node_type == "heading":
+                pdf.setFont(
+                    "Helvetica-Bold",
+                    16,
+                )
+            else:
+                pdf.setFont(
+                    "Helvetica",
+                    11,
+                )
+
+            lines = self.wrap_text(
+                text,
+                usable_width,
+            )
+
+            for line in lines:
+                if (
+                    y
+                    < self.page_config.bottom
+                    + self.page_config.footer_height
+                ):
+                    return
+
+                pdf.drawString(
+                    x,
+                    y,
+                    line,
+                )
+
+                y -= self.page_config.line_height
+
+            y -= 8
+
+    def extract_text(
+        self,
+        node: Dict[str, Any],
+    ) -> str:
+        """
+        Extract visible text from a TipTap node
+        without destroying the original structured
+        document.
+        """
+
+        node_type = node.get("type")
+
+        if node_type == "text":
+            return node.get(
+                "text",
+                "",
+            )
+
+        parts = []
+
+        for child in node.get(
+            "content",
+            [],
+        ):
+            child_text = self.extract_text(
+                child
+            )
+
+            if child_text:
+                parts.append(
+                    child_text
+                )
+
+        if node_type in {
+            "paragraph",
+            "heading",
+            "listItem",
+            "tableCell",
+            "tableHeader",
+        }:
+            return " ".join(parts)
+
+        return " ".join(parts)
+
+    def wrap_text(
+        self,
+        text: str,
+        max_width: float,
+    ) -> List[str]:
+        """
+        Simple text wrapping based on ReportLab
+        string width.
+        """
+
+        words = text.split()
+
+        if not words:
+            return []
+
+        lines: List[str] = []
+        current_line = ""
+
+        pdf_font = "Helvetica"
+        font_size = 11
+
+        for word in words:
+            candidate = (
+                f"{current_line} {word}".strip()
+            )
+
+            width = (
+                canvas.Canvas
+                if False
+                else 0
+            )
+
+            # Approximate width.
+            # ReportLab's Helvetica average character
+            # width is sufficient for this basic renderer.
+            estimated_width = (
+                len(candidate)
+                * font_size
+                * 0.5
+            )
+
+            if (
+                estimated_width > max_width
+                and current_line
+            ):
+                lines.append(
+                    current_line
+                )
+                current_line = word
+            else:
+                current_line = candidate
+
+        if current_line:
+            lines.append(
+                current_line
+            )
+
+        return lines
 
     def render_footer(
         self,
-        pdf,
+        pdf: canvas.Canvas,
         page_number: int,
         total_pages: int,
-    ):
+    ) -> None:
         """
-        Render footer text and page number.
+        Render footer text and page numbering.
         """
 
         if (
@@ -171,12 +332,8 @@ class AssignmentPDFRenderer:
             9,
         )
 
-        # --------------------------------------------------------
         # Footer separator
-        # --------------------------------------------------------
-
         if self.page_config.show_footer:
-
             pdf.setStrokeColorRGB(
                 0.75,
                 0.75,
@@ -186,35 +343,27 @@ class AssignmentPDFRenderer:
             pdf.line(
                 self.page_config.left,
                 42,
-                page_width - self.page_config.right,
+                page_width
+                - self.page_config.right,
                 42,
             )
 
-        # --------------------------------------------------------
         # Footer text
-        # --------------------------------------------------------
-
         if self.page_config.show_footer:
-
             footer_text = (
                 self.page_config.footer_text
                 or ""
             )
 
             if footer_text:
-
                 pdf.drawCentredString(
                     page_width / 2,
                     footer_y,
                     footer_text,
                 )
 
-        # --------------------------------------------------------
         # Page number
-        # --------------------------------------------------------
-
         if self.page_config.show_page_number:
-
             page_text = (
                 f"Page {page_number} "
                 f"of {total_pages}"
@@ -226,7 +375,6 @@ class AssignmentPDFRenderer:
             )
 
             if position == "left":
-
                 pdf.drawString(
                     self.page_config.left,
                     page_number_y,
@@ -234,7 +382,6 @@ class AssignmentPDFRenderer:
                 )
 
             elif position == "right":
-
                 pdf.drawRightString(
                     page_width
                     - self.page_config.right,
@@ -243,7 +390,6 @@ class AssignmentPDFRenderer:
                 )
 
             else:
-
                 pdf.drawCentredString(
                     page_width / 2,
                     page_number_y,
