@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import {
   regenerateAssignment,
   duplicateAssignment,
+  getAssignments,
+  deleteAssignment,
+  getAssignmentDraft,
 } from "../services/assignmentService";
 
 
@@ -21,6 +24,8 @@ const API_BASE_URL =
 // =========================================================
 
 export default function AssignmentHistoryPage() {
+  const navigate = useNavigate();
+
   const [assignments, setAssignments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -227,6 +232,28 @@ export default function AssignmentHistoryPage() {
 
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleContinueEditing = async (assignmentId) => {
+    try {
+      const draft = await getAssignmentDraft(assignmentId);
+
+      navigate("/assignment", {
+        state: {
+          documentId: draft.document_id,
+          draftId: draft.draft_id,
+          assignment: draft.assignment,
+          handwriting: draft.handwriting,
+        },
+      });
+    } catch (error) {
+      console.error("Failed to open draft:", error);
+
+      setError(
+        error?.message ||
+          "Unable to open the draft."
+      );
     }
   };
 
@@ -711,105 +738,83 @@ export default function AssignmentHistoryPage() {
                       ACTIONS
                   ----------------------------------------- */}
 
-                  <div className="mt-6 grid grid-cols-3 gap-2 border-t border-white/10 pt-5">
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleOpen(
-                          assignment.id
-                        )
-                      }
-                      className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-700 hover:text-white"
-                    >
-                      Open
-                    </button>
-
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleDownload(
-                          assignment
-                        )
-                      }
-                      className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-700 hover:text-white"
-                    >
-                      Download
-                    </button>
-
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleDelete(
-                          assignment.id
-                        )
-                      }
-                      disabled={
-                        deletingId ===
-                        assignment.id
-                      }
-                      className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm font-medium text-red-400 transition hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {deletingId ===
-                      assignment.id
-                        ? "Deleting..."
-                        : "Delete"}
-                    </button>
-
-                    <button
+                  <div className="mt-6 border-t border-white/10 pt-5">
+                    {assignment.status === "draft" ? (
+                      <button
                         type="button"
                         onClick={() =>
-                            handleRegenerate(assignment)
+                          handleContinueEditing(assignment.id)
                         }
-                        disabled={
-                            regeneratingId === assignment.id
-                        }
-                        className="
-                            px-4
-                            py-2
-                            rounded-lg
-                            bg-purple-500/10
-                            border
-                            border-purple-500/30
-                            text-purple-300
-                            hover:bg-purple-500/20
-                            transition
-                            disabled:opacity-50
-                        "
+                        className="w-full rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-4 py-2.5 text-sm font-semibold text-indigo-300 transition hover:bg-indigo-500/20 hover:text-indigo-200"
+                      >
+                        Continue Editing
+                      </button>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleOpen(assignment.id)
+                          }
+                          className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-700 hover:text-white"
                         >
-                        {regeneratingId === assignment.id
+                          Open
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDownload(assignment)
+                          }
+                          className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-700 hover:text-white"
+                        >
+                          Download
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDelete(assignment.id)
+                          }
+                          disabled={deletingId === assignment.id}
+                          className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm font-medium text-red-400 transition hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {deletingId === assignment.id
+                            ? "Deleting..."
+                            : "Delete"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleRegenerate(assignment)
+                          }
+                          disabled={
+                            regeneratingId === assignment.id
+                          }
+                          className="rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-sm font-medium text-purple-300 transition hover:bg-purple-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {regeneratingId === assignment.id
                             ? "Regenerating..."
                             : "Regenerate"}
                         </button>
 
                         <button
-                        type="button"
-                        onClick={() =>
+                          type="button"
+                          onClick={() =>
                             handleDuplicate(assignment)
-                        }
-                        disabled={
+                          }
+                          disabled={
                             duplicatingId === assignment.id
-                        }
-                        className="
-                            px-4
-                            py-2
-                            rounded-lg
-                            bg-cyan-500/10
-                            border
-                            border-cyan-500/30
-                            text-cyan-300
-                            hover:bg-cyan-500/20
-                            transition
-                            disabled:opacity-50
-                        "
+                          }
+                          className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm font-medium text-cyan-300 transition hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                        {duplicatingId === assignment.id
+                          {duplicatingId === assignment.id
                             ? "Duplicating..."
                             : "Duplicate"}
                         </button>
-
+                      </div>
+                    )}
                   </div>
 
                 </div>

@@ -9,7 +9,17 @@ const API_BASE_URL =
  */
 
 function buildUrl(path) {
-  return `${API_BASE_URL.replace(/\/$/, "")}${path}`;
+  if (!path) {
+    return API_BASE_URL.replace(/\/$/, "");
+  }
+
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  return `${API_BASE_URL.replace(/\/$/, "")}${
+    path.startsWith("/") ? path : `/${path}`
+  }`;
 }
 
 async function handleResponse(response) {
@@ -24,7 +34,9 @@ async function handleResponse(response) {
     const message =
       typeof data === "object" && data?.detail
         ? data.detail
-        : `Request failed with status ${response.status}`;
+        : typeof data === "string" && data
+          ? data
+          : `Request failed with status ${response.status}`;
 
     throw new Error(message);
   }
@@ -37,13 +49,13 @@ async function handleResponse(response) {
  * PHASE 6 DOCUMENT
  * ============================================================
  *
- * The Assignment Generator must consume the complete
- * structured Phase 6 document.
+ * The Assignment Generator consumes the complete structured
+ * Phase 6 document.
  *
  * IMPORTANT:
  * Do not convert this to plain text.
  *
- * The following structures are preserved:
+ * Preserved structures:
  *
  * - paragraph
  * - heading
@@ -60,36 +72,38 @@ export function normalizePhase6Document(document) {
     return null;
   }
 
-  const content =
-    document.content ||
-    document.content_json ||
-    document.document_content ||
-    document.data ||
+  let content =
+    document.content ??
+    document.content_json ??
+    document.document_content ??
+    document.data ??
     null;
 
+  /*
+   * Some backend responses may store TipTap JSON as a string.
+   */
   if (typeof content === "string") {
     try {
-        content = JSON.parse(content);
+      content = JSON.parse(content);
     } catch {
-        throw new Error(
+      throw new Error(
         "The saved Phase 6 document contains invalid JSON."
-        );
+      );
     }
-    }
+  }
 
   if (!content) {
     return null;
   }
 
   /*
-   * TipTap document
+   * TipTap document:
    *
    * {
    *   type: "doc",
    *   content: [...]
    * }
    */
-
   if (content.type === "doc") {
     return {
       ...document,
@@ -99,10 +113,9 @@ export function normalizePhase6Document(document) {
   }
 
   /*
-   * If the backend already returned blocks,
-   * preserve them.
+   * If the backend returned an array of blocks,
+   * wrap it in a TipTap document.
    */
-
   if (Array.isArray(content)) {
     return {
       ...document,
@@ -114,6 +127,10 @@ export function normalizePhase6Document(document) {
     };
   }
 
+  /*
+   * Fallback for a structured object that already contains
+   * its own content/blocks representation.
+   */
   return {
     ...document,
     content,
@@ -189,7 +206,7 @@ export function createAssignmentDocument({
       normalizedDocument.blocks,
 
     assignment: {
-      ...assignment,
+      ...(assignment || {}),
     },
   };
 }
@@ -268,16 +285,11 @@ export function createHandwritingAssignmentPayload({
   };
 }
 
-export default {
-  normalizePhase6Document,
-  getPhase6Document,
-  createAssignmentDocument,
-  createHandwritingAssignmentPayload,
-};
-
-// ============================================================
-// STEP 17 / 18 — PAGINATE ASSIGNMENT FOR LIVE PREVIEW
-// ============================================================
+/*
+ * ============================================================
+ * STEP 17 / 18 — PAGINATE ASSIGNMENT
+ * ============================================================
+ */
 
 export async function paginateAssignment({
   document,
@@ -307,7 +319,8 @@ export async function paginateAssignment({
       body: JSON.stringify({
         document,
 
-        assignment: assignment || {},
+        assignment:
+          assignment || {},
 
         page: {
           paperSize:
@@ -337,8 +350,15 @@ export async function paginateAssignment({
   return handleResponse(response);
 }
 
+/*
+ * ============================================================
+ * GENERATE ASSIGNMENT PDF
+ * ============================================================
+ */
+
 export async function generateAssignmentPDF({
   documentId,
+  draftId,
   template,
   paper,
   handwritingStyle,
@@ -366,7 +386,224 @@ export async function generateAssignmentPDF({
       },
 
       body: JSON.stringify({
-        document_id: documentId,
+        document_id:
+          String(documentId),
+
+        draft_id:
+          draftId || null,
+
+        template:
+          template ||
+          "college_assignment",
+
+        paper:
+          paper ||
+          "ruled",
+
+        handwriting_style:
+          handwritingStyle ||
+          "school_notebook",
+
+        ink:
+          ink ||
+          "blue",
+
+        page_numbers:
+          pageNumbers !== false,
+
+        assignment:
+          assignment || {},
+
+        handwriting:
+          handwriting || {},
+      }),
+    }
+  );
+
+  const result =
+    await handleResponse(response);
+
+  /*
+   * Convert relative backend download URLs
+   * into complete URLs.
+   */
+  if (result?.download_url) {
+    return {
+      ...result,
+      download_url:
+        buildUrl(result.download_url),
+    };
+  }
+
+  return result;
+}
+
+/*
+ * ============================================================
+ * STEP 25 — REGENERATE ASSIGNMENT
+ * ============================================================
+ */
+
+export async function regenerateAssignment({
+  assignmentId,
+  paper,
+  handwritingStyle,
+  ink,
+  pageNumbers,
+  assignment,
+  handwriting,
+}) {
+  if (!assignmentId) {
+    throw new Error(
+      "Assignment ID is required."
+    );
+  }
+
+  const response = await fetch(
+    buildUrl(
+      `/api/assignments/${assignmentId}/regenerate`
+    ),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+
+      body: JSON.stringify({
+        paper:
+          paper || undefined,
+
+        handwriting_style:
+          handwritingStyle ||
+          undefined,
+
+        ink:
+          ink || undefined,
+
+        page_numbers:
+          pageNumbers !== undefined
+            ? pageNumbers
+            : true,
+
+        assignment:
+          assignment || {},
+
+        handwriting:
+          handwriting || {},
+      }),
+    }
+  );
+
+  const result =
+    await handleResponse(response);
+
+  if (result?.download_url) {
+    return {
+      ...result,
+      download_url:
+        buildUrl(result.download_url),
+    };
+  }
+
+  return result;
+}
+
+/*
+ * ============================================================
+ * STEP 26 — DUPLICATE ASSIGNMENT
+ * ============================================================
+ */
+
+export async function duplicateAssignment(
+  assignmentId,
+  title
+) {
+  if (!assignmentId) {
+    throw new Error(
+      "Assignment ID is required."
+    );
+  }
+
+  const response = await fetch(
+    buildUrl(
+      `/api/assignments/${assignmentId}/duplicate`
+    ),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+
+      body: JSON.stringify({
+        title:
+          title || undefined,
+      }),
+    }
+  );
+
+  const result =
+    await handleResponse(response);
+
+  if (result?.download_url) {
+    return {
+      ...result,
+      download_url:
+        buildUrl(result.download_url),
+    };
+  }
+
+  return result;
+}
+
+/*
+ * ============================================================
+ * STEP 31 — SAVE ASSIGNMENT DRAFT
+ * ============================================================
+ *
+ * If draftId exists:
+ *     update existing draft
+ *
+ * If draftId does not exist:
+ *     create a new draft
+ */
+
+export async function saveAssignmentDraft({
+  draftId,
+  documentId,
+  template,
+  paper,
+  handwritingStyle,
+  ink,
+  pageNumbers,
+  assignment,
+  handwriting,
+}) {
+  if (!documentId) {
+    throw new Error(
+      "Document ID is required to save a draft."
+    );
+  }
+
+  const response = await fetch(
+    buildUrl("/api/assignments/draft"),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+
+      body: JSON.stringify({
+        draft_id:
+          draftId || null,
+
+        document_id:
+          String(documentId),
 
         template:
           template ||
@@ -399,160 +636,14 @@ export async function generateAssignmentPDF({
   return handleResponse(response);
 }
 
-// ============================================================
-// STEP 25 — REGENERATE ASSIGNMENT
-// ============================================================
-
-export async function regenerateAssignment({
-  assignmentId,
-  paper,
-  handwritingStyle,
-  ink,
-  pageNumbers,
-  assignment,
-  handwriting,
-}) {
-  if (!assignmentId) {
-    throw new Error(
-      "Assignment ID is required."
-    );
-  }
-
-  const response = await fetch(
-    buildUrl(
-      `/api/assignments/${assignmentId}/regenerate`
-    ),
-    {
-      method: "POST",
-
-      headers: {
-        "Content-Type": "application/json",
-      },
-
-      body: JSON.stringify({
-        paper: paper || undefined,
-
-        handwriting_style:
-          handwritingStyle || undefined,
-
-        ink: ink || undefined,
-
-        page_numbers:
-          pageNumbers !== undefined
-            ? pageNumbers
-            : true,
-
-        assignment:
-          assignment || {},
-
-        handwriting:
-          handwriting || {},
-      }),
-    }
-  );
-
-  const result =
-    await handleResponse(response);
-
-  if (result?.download_url) {
-    result.download_url =
-      buildUrl(result.download_url);
-  }
-
-  return result;
-}
-
-
-// ============================================================
-// STEP 26 — DUPLICATE ASSIGNMENT
-// ============================================================
-
-export async function duplicateAssignment(
-  assignmentId,
-  title
-) {
-  if (!assignmentId) {
-    throw new Error(
-      "Assignment ID is required."
-    );
-  }
-
-  const response = await fetch(
-    buildUrl(
-      `/api/assignments/${assignmentId}/duplicate`
-    ),
-    {
-      method: "POST",
-
-      headers: {
-        "Content-Type": "application/json",
-      },
-
-      body: JSON.stringify({
-        title:
-          title ||
-          undefined,
-      }),
-    }
-  );
-
-  return await handleResponse(response);
-}
-
-// ============================================================
-// STEP 31 — SAVE ASSIGNMENT DRAFT
-// ============================================================
-
-export async function saveAssignmentDraft({
-  draftId,
-  documentId,
-  template,
-  paper,
-  handwritingStyle,
-  ink,
-  pageNumbers,
-  assignment,
-  handwriting,
-}) {
-  if (!documentId) {
-    throw new Error(
-      "Document ID is required to save a draft."
-    );
-  }
-
-  const response = await fetch(
-    buildUrl("/api/assignments/draft"),
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        draft_id: draftId || null,
-        document_id: String(documentId),
-        template:
-          template || "college_assignment",
-        paper: paper || "ruled",
-        handwriting_style:
-          handwritingStyle ||
-          "school_notebook",
-        ink: ink || "blue",
-        page_numbers:
-          pageNumbers !== false,
-        assignment:
-          assignment || {},
-        handwriting:
-          handwriting || {},
-      }),
-    }
-  );
-
-  return await handleResponse(response);
-}
-
-// ============================================================
-// STEP 31 — GET ASSIGNMENT DRAFT
-// ============================================================
+/*
+ * ============================================================
+ * STEP 31 — GET ASSIGNMENT DRAFT
+ * ============================================================
+ *
+ * Used by AssignmentHistoryPage when
+ * "Continue Editing" is clicked.
+ */
 
 export async function getAssignmentDraft(
   assignmentId
@@ -569,5 +660,24 @@ export async function getAssignmentDraft(
     )
   );
 
-  return await handleResponse(response);
+  return handleResponse(response);
 }
+
+/*
+ * ============================================================
+ * DEFAULT EXPORT
+ * ============================================================
+ */
+
+export default {
+  normalizePhase6Document,
+  getPhase6Document,
+  createAssignmentDocument,
+  createHandwritingAssignmentPayload,
+  paginateAssignment,
+  generateAssignmentPDF,
+  regenerateAssignment,
+  duplicateAssignment,
+  saveAssignmentDraft,
+  getAssignmentDraft,
+};

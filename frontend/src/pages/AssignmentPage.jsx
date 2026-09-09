@@ -34,6 +34,138 @@ import {
   paginatePreviewDocument,
 } from "../utils/assignmentUtils";
 
+const GENERATION_STAGES = [
+  {
+    id: "loading",
+    label: "Loading document",
+  },
+  {
+    id: "template",
+    label: "Applying template",
+  },
+  {
+    id: "handwriting",
+    label: "Rendering handwriting",
+  },
+  {
+    id: "pages",
+    label: "Generating pages",
+  },
+  {
+    id: "pdf",
+    label: "Creating PDF",
+  },
+];
+
+function AssignmentGenerationStatus({
+  stage,
+}) {
+  if (!stage || stage === "idle") {
+    return null;
+  }
+
+  if (stage === "ready") {
+    return (
+      <div className="mb-5 rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-5">
+        <div className="flex items-center gap-3">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400">
+            ✓
+          </span>
+
+          <div>
+            <p className="font-semibold text-emerald-300">
+              Assignment ready
+            </p>
+
+            <p className="mt-1 text-xs text-emerald-400/70">
+              Your handwritten assignment has been generated.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const currentIndex =
+    GENERATION_STAGES.findIndex(
+      (item) => item.id === stage
+    );
+
+  return (
+    <div className="mb-5 rounded-xl border border-white/10 bg-slate-900/70 p-5">
+      <div className="mb-4">
+        <p className="text-sm font-semibold text-white">
+          Preparing assignment...
+        </p>
+
+        <p className="mt-1 text-xs text-slate-500">
+          Please wait while InkAI generates your handwritten PDF.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {GENERATION_STAGES.map(
+          (item, index) => {
+            const completed =
+              index < currentIndex;
+
+            const active =
+              index === currentIndex;
+
+            return (
+              <div
+                key={item.id}
+                className="flex items-center gap-3"
+              >
+                <div
+                  className={`
+                    flex
+                    h-6
+                    w-6
+                    shrink-0
+                    items-center
+                    justify-center
+                    rounded-full
+                    text-xs
+                    ${
+                      completed
+                        ? "bg-emerald-500/20 text-emerald-400"
+                        : active
+                        ? "bg-indigo-500/20 text-indigo-300"
+                        : "bg-slate-800 text-slate-600"
+                    }
+                  `}
+                >
+                  {completed
+                    ? "✓"
+                    : active
+                    ? "●"
+                    : "○"}
+                </div>
+
+                <span
+                  className={`
+                    text-sm
+                    ${
+                      completed
+                        ? "text-emerald-400"
+                        : active
+                        ? "text-white"
+                        : "text-slate-600"
+                    }
+                  `}
+                >
+                  {item.label}
+                </span>
+              </div>
+            );
+          }
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ============================================================
    DEFAULT ASSIGNMENT
 ============================================================ */
@@ -303,6 +435,9 @@ function AssignmentPage() {
       const [showReadyScreen, setShowReadyScreen] =
         useState(false);
 
+      const [generationStage, setGenerationStage] =
+        useState("idle");
+
       const [exportFormat, setExportFormat] = useState("pdf");
 
       const [draftId, setDraftId,] = useState(
@@ -540,6 +675,32 @@ function AssignmentPage() {
     location.state,
     phase6Document,
   ]);
+
+  // ==========================================================
+  // STEP 31 — LOAD SAVED DRAFT SETTINGS
+  // ==========================================================
+
+  useEffect(() => {
+    const incomingAssignment =
+      location.state?.assignment;
+
+    const incomingHandwriting =
+      location.state?.handwriting;
+
+    if (incomingAssignment) {
+      setAssignment((current) => ({
+        ...current,
+        ...incomingAssignment,
+      }));
+    }
+
+    if (incomingHandwriting) {
+      setHandwriting((current) => ({
+        ...current,
+        ...incomingHandwriting,
+      }));
+    }
+  }, [location.state]);
 
     useEffect(() => {
       if (!phase6Document) {
@@ -784,6 +945,42 @@ function AssignmentPage() {
     // ==========================================================
 
     try {
+      const documentId =
+        phase6Document.id ||
+        phase6Document.document_id ||
+        location.state?.documentId;
+
+      const draftResult =
+        await saveAssignmentDraft({
+          draftId,
+          documentId,
+
+          template:
+            assignment.template,
+
+          paper:
+            assignment.paperStyle,
+
+          handwritingStyle:
+            handwriting.style,
+
+          ink:
+            handwriting.ink,
+
+          pageNumbers:
+            assignment.showPageNumber,
+
+          assignment,
+
+          handwriting,
+        });
+
+      const savedDraftId =
+        draftResult?.draft_id ||
+        draftId;
+
+      setDraftId(savedDraftId);
+
       const payload =
         createHandwritingAssignmentPayload({
           phase6Document,
@@ -796,6 +993,8 @@ function AssignmentPage() {
           document: payload.document,
           assignment: payload.assignment,
           handwriting: payload.handwriting,
+          documentId,
+          draftId: savedDraftId,
         },
       });
     } catch (error) {

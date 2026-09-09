@@ -156,6 +156,8 @@ class AssignmentRequest(BaseModel):
 class AssignmentGenerateRequest(BaseModel):
     document_id: str
 
+    draft_id: int | None = None
+
     template: str = "college_assignment"
 
     paper: str = "ruled"
@@ -954,66 +956,135 @@ def generate_assignment(
         )
 
         # =========================================================
-        # SAVE ASSIGNMENT RECORD
+        # SAVE / UPDATE ASSIGNMENT RECORD
         # =========================================================
 
-        assignment_record = Assignment(
-            user_id=TEMP_USER_ID,
-            document_id=request.document_id,
+        if request.draft_id:
+            assignment_record = (
+                db.query(Assignment)
+                .filter(
+                    Assignment.id == request.draft_id,
+                    Assignment.user_id == TEMP_USER_ID,
+                )
+                .first()
+            )
 
-            title=request.assignment.get(
-                "title",
-                "Untitled Assignment",
-            ),
+            if not assignment_record:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Draft assignment not found.",
+                )
 
-            subject=request.assignment.get(
-                "subject",
-                "",
-            ),
+        else:
+            assignment_record = Assignment(
+                user_id=TEMP_USER_ID,
+                document_id=int(
+                    request.document_id
+                ),
+            )
 
-            student_name=request.assignment.get(
-                "studentName",
-                "",
-            ),
+            db.add(assignment_record)
+            db.flush()
 
-            roll_number=request.assignment.get(
-                "rollNumber",
-                "",
-            ),
+        # ---------------------------------------------------------
+        # Update assignment information
+        # ---------------------------------------------------------
 
-            class_name=request.assignment.get(
-                "className",
-                "",
-            ),
-
-            section=request.assignment.get(
-                "section",
-                "",
-            ),
-
-            teacher_name=request.assignment.get(
-                "teacherName",
-                "",
-            ),
-
-            assignment_date=request.assignment.get(
-                "date",
-                "",
-            ),
-
-            template=request.template,
-            paper_style=request.paper,
-            handwriting_style=request.handwriting_style,
-            ink_color=request.ink,
-
-            page_count=len(pages),
-
-            pdf_path=str(output_path),
+        assignment_record.document_id = int(
+            request.document_id
         )
 
-        db.add(assignment_record)
+        assignment_record.title = (
+            request.assignment.get(
+                "title",
+                request.assignment.get(
+                    "assignmentTitle",
+                    "Untitled Assignment",
+                ),
+            )
+        )
+
+        assignment_record.subject = (
+            request.assignment.get(
+                "subject",
+                "",
+            )
+        )
+
+        assignment_record.student_name = (
+            request.assignment.get(
+                "studentName",
+                "",
+            )
+        )
+
+        assignment_record.roll_number = (
+            request.assignment.get(
+                "rollNumber",
+                "",
+            )
+        )
+
+        assignment_record.class_name = (
+            request.assignment.get(
+                "className",
+                "",
+            )
+        )
+
+        assignment_record.section = (
+            request.assignment.get(
+                "section",
+                "",
+            )
+        )
+
+        assignment_record.teacher_name = (
+            request.assignment.get(
+                "teacherName",
+                request.assignment.get(
+                    "teacher",
+                    "",
+                ),
+            )
+        )
+
+        assignment_record.assignment_date = (
+            request.assignment.get(
+                "date",
+                "",
+            )
+        )
+
+        assignment_record.template = (
+            request.template
+        )
+
+        assignment_record.paper_style = (
+            request.paper
+        )
+
+        assignment_record.handwriting_style = (
+            request.handwriting_style
+        )
+
+        assignment_record.ink_color = (
+            request.ink
+        )
+
+        assignment_record.page_count = (
+            len(pages)
+        )
+
+        assignment_record.pdf_path = str(
+            output_path
+        )
+
         db.commit()
-        db.refresh(assignment_record)
+
+        db.refresh(
+            assignment_record
+        )
 
         # ---------------------------------------------------------
         # 6. Return generation result
@@ -1168,6 +1239,15 @@ def delete_assignment(
 
         if pdf_path.exists():
             pdf_path.unlink()
+
+    # Delete draft JSON file
+    draft_path = (
+        DRAFTS_DIRECTORY
+        / f"{assignment.id}.json"
+    )
+
+    if draft_path.exists():
+        draft_path.unlink()
 
     # Delete database record
     db.delete(assignment)

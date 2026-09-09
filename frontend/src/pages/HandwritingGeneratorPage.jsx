@@ -24,6 +24,10 @@ import {
   updateHandwritingDocument,
 } from "../services/handwritingDocumentService";
 
+import {
+  generateAssignmentPDF,
+} from "../services/assignmentService";
+
 /*
  * =========================================================
  * PHASE 7 — HANDWRITING GENERATOR
@@ -104,6 +108,137 @@ function getDocumentId(
   );
 }
 
+const GENERATION_STAGES = [
+  {
+    id: "loading",
+    label: "Loading document",
+  },
+  {
+    id: "template",
+    label: "Applying template",
+  },
+  {
+    id: "handwriting",
+    label: "Rendering handwriting",
+  },
+  {
+    id: "pages",
+    label: "Generating pages",
+  },
+  {
+    id: "pdf",
+    label: "Creating PDF",
+  },
+];
+
+function AssignmentGenerationStatus({
+  stage,
+}) {
+  if (!stage || stage === "idle") {
+    return null;
+  }
+
+  if (stage === "ready") {
+    return (
+      <div className="mb-5 rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-5">
+        <div className="flex items-center gap-3">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400">
+            ✓
+          </span>
+
+          <div>
+            <p className="font-semibold text-emerald-300">
+              Assignment ready
+            </p>
+
+            <p className="mt-1 text-xs text-emerald-400/70">
+              Your handwritten assignment has been generated.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const currentIndex =
+    GENERATION_STAGES.findIndex(
+      (item) => item.id === stage
+    );
+
+  return (
+    <div className="mb-5 rounded-xl border border-white/10 bg-slate-900/70 p-5">
+      <div className="mb-4">
+        <p className="text-sm font-semibold text-white">
+          Preparing assignment...
+        </p>
+
+        <p className="mt-1 text-xs text-slate-500">
+          Please wait while InkAI generates your handwritten PDF.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {GENERATION_STAGES.map(
+          (item, index) => {
+            const completed =
+              index < currentIndex;
+
+            const active =
+              index === currentIndex;
+
+            return (
+              <div
+                key={item.id}
+                className="flex items-center gap-3"
+              >
+                <div
+                  className={`
+                    flex
+                    h-6
+                    w-6
+                    shrink-0
+                    items-center
+                    justify-center
+                    rounded-full
+                    text-xs
+                    ${
+                      completed
+                        ? "bg-emerald-500/20 text-emerald-400"
+                        : active
+                        ? "bg-indigo-500/20 text-indigo-300"
+                        : "bg-slate-800 text-slate-600"
+                    }
+                  `}
+                >
+                  {completed
+                    ? "✓"
+                    : active
+                    ? "●"
+                    : "○"}
+                </div>
+
+                <span
+                  className={`
+                    text-sm
+                    ${
+                      completed
+                        ? "text-emerald-400"
+                        : active
+                        ? "text-white"
+                        : "text-slate-600"
+                    }
+                  `}
+                >
+                  {item.label}
+                </span>
+              </div>
+            );
+          }
+        )}
+      </div>
+    </div>
+  );
+}
 
 /*
  * =========================================================
@@ -460,6 +595,11 @@ function HandwritingGeneratorPage() {
   const [saveMessage, setSaveMessage] =
     useState("");
 
+  const [
+    generationStage,
+    setGenerationStage,
+  ] = useState("idle");
+
   /*
    * =========================================================
    * APPLY PRESET
@@ -687,108 +827,195 @@ function HandwritingGeneratorPage() {
   
 
   const handleGeneratePDF = async () => {
-
-    // ==========================================================
-    // STEP 30 — FINAL VALIDATION
-    // ==========================================================
-
-    if (!assignmentDetails.studentName?.trim()) {
-      setSaveMessage(
-        "Please enter the student name."
-      );
-      return;
-    }
-
-    if (!assignmentDetails.subject?.trim()) {
-      setSaveMessage(
-        "Please enter the subject."
-      );
-      return;
-    }
-
-    if (!assignmentDetails.title?.trim()) {
-      setSaveMessage(
-        "Please enter the assignment title."
-      );
-      return;
-    }
-
     if (!handwritingDocument) {
-      setSaveMessage(
-        "Assignment content is not available."
-      );
-      return;
-    }
-
-    if (
-      !Array.isArray(pages) ||
-      pages.length === 0
-    ) {
-      setSaveMessage(
-        "No pages were generated. Please check your assignment content."
-      );
-      return;
-    }
-
-    // Existing generation code continues below...
-    if (!handwritingDocument) {
-      setSaveMessage("Handwriting document is not available.");
-      return;
-    }
-
-    if (!documentId) {
-      setSaveMessage("Document ID is missing.");
       return;
     }
 
     try {
       setIsGenerating(true);
       setSaveMessage("");
+      setGenerationStage("loading");
 
-      const result = await generateAssignmentPDF({
-        documentId,
-        template: assignmentDetails.template,
-        paper: selectedPaper,
-        handwritingStyle: selectedPreset,
-        ink: selectedInk,
-        pageNumbers: assignmentDetails.showPageNumber,
+      // --------------------------------------------------------
+      // Stage 1 — Loading document
+      // --------------------------------------------------------
 
-        assignment: assignmentDetails,
+      await new Promise((resolve) =>
+        setTimeout(resolve, 250)
+      );
 
-        handwriting: {
-          style: selectedPreset,
-          font: selectedFont,
-          paper: selectedPaper,
-          ink: selectedInk,
+      setGenerationStage("template");
 
-          fontSize,
-          lineSpacing,
-          letterSpacing,
-          wordSpacing,
+      // --------------------------------------------------------
+      // Stage 2 — Applying template
+      // --------------------------------------------------------
 
-          inkOpacity,
-          naturalness: naturalness / 100,
-          naturalVariation,
-          seed: randomSeed,
+      await new Promise((resolve) =>
+        setTimeout(resolve, 250)
+      );
+
+      setGenerationStage("handwriting");
+
+      // --------------------------------------------------------
+      // Stage 3 — Rendering handwriting
+      // --------------------------------------------------------
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, 350)
+      );
+
+      setGenerationStage("pages");
+
+      // --------------------------------------------------------
+      // Stage 4 — Generate pages
+      // --------------------------------------------------------
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, 350)
+      );
+
+      setGenerationStage("pdf");
+
+      // --------------------------------------------------------
+      // Stage 5 — Actual backend PDF generation
+      // --------------------------------------------------------
+
+      const result =
+        await generateAssignmentPDF({
+          documentId,
+
+          template:
+            assignmentDetails.template ||
+            "college_assignment",
+
+          paper:
+            selectedPaper,
+
+          handwritingStyle:
+            selectedPreset,
+
+          ink:
+            selectedInk,
+
+          pageNumbers:
+            assignmentDetails.showPageNumber !== false,
+
+          assignment:
+            assignmentDetails,
+
+          handwriting: {
+            style:
+              selectedPreset,
+
+            font:
+              selectedFont,
+
+            paper:
+              selectedPaper,
+
+            ink:
+              selectedInk,
+
+            fontSize,
+
+            lineSpacing,
+
+            letterSpacing,
+
+            wordSpacing,
+
+            inkOpacity,
+
+            naturalness:
+              naturalness / 100,
+
+            naturalVariation,
+
+            seed:
+              randomSeed,
+          },
+
+          draftId:
+            location.state?.draftId,
+        });
+
+      // --------------------------------------------------------
+      // Assignment is ready
+      // --------------------------------------------------------
+
+      setGenerationStage("ready");
+
+      setSaveMessage(
+        "Assignment generated successfully."
+      );
+
+      // Give the ready state a moment to display
+      await new Promise((resolve) =>
+        setTimeout(resolve, 500)
+      );
+
+      navigate("/assignment", {
+        state: {
+          document:
+            sourceDocument,
+
+          documentId,
+
+          assignment:
+            assignmentDetails,
+
+          handwriting: {
+            style:
+              selectedPreset,
+
+            font:
+              selectedFont,
+
+            paper:
+              selectedPaper,
+
+            ink:
+              selectedInk,
+
+            fontSize,
+
+            lineSpacing,
+
+            letterSpacing,
+
+            wordSpacing,
+
+            inkOpacity,
+
+            naturalness,
+
+            naturalVariation,
+
+            seed:
+              randomSeed,
+          },
+
+          generationResult:
+            result,
+
+          draftId:
+            location.state?.draftId,
         },
       });
 
-      setGenerationResult(result);
-      setShowReadyScreen(true);
-
-      if (result?.download_url) {
-        window.open(result.download_url, "_blank");
-        setSaveMessage("PDF generated successfully.");
-      } else {
-        setSaveMessage("PDF generated, but download link was not returned.");
-      }
-
     } catch (error) {
-      console.error("PDF generation failed:", error);
+      console.error(
+        "PDF generation failed:",
+        error
+      );
+
+      setGenerationStage("idle");
 
       setSaveMessage(
-        error?.message || "Failed to generate PDF."
+        error?.message ||
+          "Failed to generate assignment PDF."
       );
+
     } finally {
       setIsGenerating(false);
     }
@@ -1715,6 +1942,10 @@ function HandwritingGeneratorPage() {
               min-w-0
             "
           >
+
+            <AssignmentGenerationStatus
+              stage={generationStage}
+            />
 
             <div
               className="
