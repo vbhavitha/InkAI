@@ -26,6 +26,10 @@ import {
 } from "../services/assignmentService";
 
 import {
+  runAssignmentQualityCheck,
+} from "../utils/assignmentUtils";
+
+import {
   getPaperConfig,
   getEffectiveLeftMargin,
 } from "../utils/paperLayout";
@@ -445,6 +449,23 @@ function AssignmentPage() {
       );
 
       const [draftSaveStatus, setDraftSaveStatus] = useState("idle");
+
+      // ==========================================================
+      // STEP 33 — ASSIGNMENT QUALITY CHECK
+      // ==========================================================
+
+      const [qualityCheck, setQualityCheck] =
+        useState({
+          contentAvailable: false,
+          studentInformation: false,
+          pageLayoutValid: false,
+          handwritingSelected: false,
+          noContentOverflow: false,
+          isReady: false,
+        });
+
+      const [isQualityChecking, setIsQualityChecking] =
+        useState(false);
 
       useEffect(() => {
         const result = location.state?.generationResult;
@@ -939,6 +960,72 @@ function AssignmentPage() {
       );
       return;
     }
+
+    // ==========================================================
+    // STEP 33 — ASSIGNMENT QUALITY CHECK
+    // ==========================================================
+
+    setIsQualityChecking(true);
+
+    try {
+      const paginationResult =
+        await paginateAssignment({
+          document:
+            phase6Document.content ||
+            phase6Document,
+          assignment,
+        });
+
+      const result =
+        runAssignmentQualityCheck({
+          document: phase6Document,
+          assignment,
+          handwriting,
+          paginationResult,
+        });
+
+      setQualityCheck(result);
+
+      if (!result.isReady) {
+        setDocumentError(
+          "Assignment quality check failed. Please review the highlighted checks before generating."
+        );
+
+        setIsQualityChecking(false);
+        return;
+      }
+    } catch (error) {
+      console.error(
+        "Assignment quality check failed:",
+        error
+      );
+
+      setQualityCheck({
+        contentAvailable: true,
+        studentInformation:
+          Boolean(
+            assignment.studentName?.trim() &&
+            assignment.subject?.trim()
+          ),
+        pageLayoutValid: false,
+        handwritingSelected:
+          Boolean(
+            handwriting?.style ||
+            handwriting?.font
+          ),
+        noContentOverflow: false,
+        isReady: false,
+      });
+
+      setDocumentError(
+        "Unable to validate the assignment layout. Please try again."
+      );
+
+      setIsQualityChecking(false);
+      return;
+    }
+
+    setIsQualityChecking(false);
 
     // ==========================================================
     // CREATE HANDWRITING PAYLOAD
@@ -1672,13 +1759,95 @@ function AssignmentPage() {
               STEP 12.8 — GENERATE HANDWRITTEN ASSIGNMENT
           ================================================== */}
 
+          {/* ==========================================================
+              STEP 33 — ASSIGNMENT QUALITY
+             ========================================================== */}
+
+          <div className="mb-5 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <div className="mb-4">
+              <h3 className="text-base font-semibold text-white">
+                Assignment Quality
+              </h3>
+
+              <p className="mt-1 text-xs text-gray-500">
+                Final checks before handwriting generation
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {[
+                {
+                  label: "Content available",
+                  valid:
+                    qualityCheck.contentAvailable,
+                },
+                {
+                  label: "Student information",
+                  valid:
+                    qualityCheck.studentInformation,
+                },
+                {
+                  label: "Page layout valid",
+                  valid:
+                    qualityCheck.pageLayoutValid,
+                },
+                {
+                  label: "Handwriting style selected",
+                  valid:
+                    qualityCheck.handwritingSelected,
+                },
+                {
+                  label: "No content overflow",
+                  valid:
+                    qualityCheck.noContentOverflow,
+                },
+              ].map((check) => (
+                <div
+                  key={check.label}
+                  className="flex items-center justify-between"
+                >
+                  <span className="text-sm text-gray-300">
+                    {check.label}
+                  </span>
+
+                  <span
+                    className={
+                      check.valid
+                        ? "text-emerald-400"
+                        : "text-gray-600"
+                    }
+                  >
+                    {check.valid ? "✓" : "○"}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {qualityCheck.isReady && (
+              <div className="mt-5 rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-4 py-3">
+                <p className="text-sm font-semibold text-emerald-400">
+                  Ready to generate
+                </p>
+              </div>
+            )}
+
+            {isQualityChecking && (
+              <div className="mt-5 rounded-xl border border-indigo-400/20 bg-indigo-400/5 px-4 py-3">
+                <p className="text-sm text-indigo-300">
+                  Checking assignment quality...
+                </p>
+              </div>
+            )}
+          </div>
+
           <div className="mt-6 border-t border-white/10 pt-5">
             <button
               type="button"
               onClick={handleGenerateHandwriting}
               disabled={
                 !phase6Document ||
-                isLoadingDocument
+                isLoadingDocument ||
+                isQualityChecking
               }
               className="
                 w-full
@@ -1697,6 +1866,8 @@ function AssignmentPage() {
             >
               {isLoadingDocument
                 ? "Loading Document..."
+                : isQualityChecking
+                ? "Checking Assignment..."
                 : "Generate Handwritten Assignment"}
             </button>
 
