@@ -286,6 +286,7 @@ class AssignmentPageLayout:
     # --------------------------------------------------------
 
     def get_usable_height(self) -> float:
+        """Return the vertical space available for document content."""
         _, page_height = self.get_page_size()
 
         return max(
@@ -296,6 +297,16 @@ class AssignmentPageLayout:
             - self.config.header_height
             - self.config.footer_height,
         )
+
+    def get_available_height(self) -> float:
+        """
+        STEP 17 helper.
+
+        The available content height is the actual page height remaining after
+        margins and reserved header/footer/page-number space. Keeping this as
+        an explicit method makes the automatic pagination rule unambiguous.
+        """
+        return self.get_usable_height()
 
     def get_usable_width(self) -> float:
         page_width, _ = self.get_page_size()
@@ -657,24 +668,49 @@ class AssignmentPageLayout:
         """
         Paginate structured TipTap nodes.
 
-        Table nodes are first divided into page-sized table chunks using the
-        reusable table splitter. The existing assignment pagination loop then
-        decides where those chunks belong relative to surrounding content.
+        STEP 17 — Automatic Pagination
+        --------------------------------
+        For every normal node:
 
-        This gives large tables professional multi-page behavior while
-        preserving the existing single document pagination algorithm.
+            available page height
+            current content height
+            next node height
+
+        If:
+
+            current height + next node height > available height
+
+        the current page is flushed and a new page is started before the
+        next node is placed.
+
+        This guarantees that normal structured nodes are not placed beyond
+        the usable page boundary.
+
+        STEP 18 — Explicit Page Breaks
+        --------------------------------
+        A TipTap ``pageBreak`` is always treated as a hard page boundary:
+
+            content -> pageBreak -> new page
+
+        Page breaks are handled before normal height calculation, so they
+        cannot accidentally be consumed as ordinary content.
+
+        Large tables are first converted into structured table chunks by the
+        reusable table splitter. The loop below remains the single,
+        authoritative document-pagination algorithm.
         """
         pages: List[Page] = []
 
         current_nodes: List[Dict[str, Any]] = []
         current_height = 0.0
 
-        usable_height = max(
-            self.get_usable_height(),
+        # STEP 17: available height for actual document content.
+        available_height = max(
+            self.get_available_height(),
             self.config.line_height,
         )
 
-        usable_width = max(
+        available_width = max(
             self.get_usable_width(),
             100,
         )
@@ -691,26 +727,33 @@ class AssignmentPageLayout:
             #
             # A large TipTap table becomes multiple structured table nodes.
             # Each chunk retains the table header. The normal assignment
-            # pagination logic below still decides the final page placement.
+            # pagination logic below decides the final page placement.
             if original_node.get("type") == "table":
                 try:
                     node_sequence = split_table_node(
                         original_node,
-                        available_width=usable_width,
-                        available_height=usable_height,
+                        available_width=available_width,
+                        available_height=available_height,
                     )
                 except Exception:
+                    # Pagination must remain resilient. If table splitting
+                    # fails, keep the original structured table intact.
                     node_sequence = [original_node]
             else:
                 node_sequence = [original_node]
 
             for node in node_sequence:
+                if not isinstance(node, dict):
+                    continue
+
                 node_type = node.get("type")
 
                 # ============================================
-                # MANUAL PAGE BREAK
+                # STEP 18 — MANUAL PAGE BREAK
                 # ============================================
-
+                #
+                # Never measure a pageBreak as content.
+                # It explicitly terminates the current page.
                 if node_type == "pageBreak":
                     if current_nodes:
                         pages.append(
@@ -723,18 +766,22 @@ class AssignmentPageLayout:
                     page_number += 1
                     current_nodes = []
                     current_height = 0.0
-
                     continue
 
                 # ============================================
-                # AUTOMATIC PAGINATION
+                # STEP 17 — MEASURE NEXT ELEMENT
                 # ============================================
+                node_height = max(
+                    self.estimate_node_height(node),
+                    0.0,
+                )
 
-                node_height = self.estimate_node_height(node)
-
-                # An oversized node remains intact, preserving the existing
-                # assignment behavior. Table rows themselves are not split.
-                if node_height > usable_height:
+                # A node larger than one complete page cannot be split by the
+                # generic assignment paginator. Keep it intact rather than
+                # cutting it off. Table rows are split earlier by the table
+                # helper, so normal tables should not reach this branch unless
+                # a single row itself is taller than a page.
+                if node_height > available_height:
                     if current_nodes:
                         pages.append(
                             Page(
@@ -749,13 +796,23 @@ class AssignmentPageLayout:
 
                     current_nodes.append(node)
                     current_height = node_height
-
                     continue
 
-                # Move the node to the next page when it does not fit.
+                # ============================================
+                # STEP 17 — AUTOMATIC NEW PAGE
+                # ============================================
+                #
+                # Core rule:
+                #
+                #   current content height + next element height
+                #       > available page height
+                #
+                # If the next element does not fit, flush the current page
+                # BEFORE adding it. This prevents normal content from being
+                # placed outside the usable page area.
                 if (
-                    current_height + node_height > usable_height
-                    and current_nodes
+                    current_nodes
+                    and current_height + node_height > available_height
                 ):
                     pages.append(
                         Page(
@@ -768,10 +825,11 @@ class AssignmentPageLayout:
                     current_nodes = []
                     current_height = 0.0
 
+                # Place the node on the current page.
                 current_nodes.append(node)
                 current_height += node_height
 
-        # Flush final page.
+        # Flush the final page.
         if current_nodes:
             pages.append(
                 Page(
@@ -780,7 +838,7 @@ class AssignmentPageLayout:
                 )
             )
 
-        # Always return at least one page.
+        # Always return at least one page for an empty document.
         if not pages:
             pages.append(
                 Page(
@@ -790,6 +848,7 @@ class AssignmentPageLayout:
             )
 
         return pages
+
 
 
 # ============================================================

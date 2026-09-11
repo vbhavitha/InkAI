@@ -527,8 +527,12 @@ def split_table_node(
     """
     Split a TipTap table node into page-sized table nodes.
 
-    Every generated node preserves the original attrs and includes the
-    original header row.
+    STEP 15 / STEP 17 compatibility:
+    - Rows remain structured TipTap JSON.
+    - Header rows are repeated on every generated table chunk.
+    - Original row objects are preserved by index.
+    - Duplicate rows are therefore handled safely.
+    - No table content is flattened or reconstructed from text.
     """
     if not isinstance(node, dict):
         return [node]
@@ -538,18 +542,33 @@ def split_table_node(
     if len(content) <= 1:
         return [node]
 
-    attrs = dict(node.get("attrs") or {})
-
+    # Keep only actual TipTap table rows for the split operation.
+    # Their original positions are preserved through row indices.
+    valid_row_indices: List[int] = []
     data: List[List[str]] = []
 
-    for row in content:
+    for index, row in enumerate(content):
+        if not isinstance(row, dict):
+            continue
+
+        row_type = row.get("type")
+        if row_type not in ("tableRow", "row"):
+            continue
+
         cells = row.get("content") or []
+
         data.append(
             [
                 _cell_text(cell)
                 for cell in cells
             ]
         )
+        valid_row_indices.append(index)
+
+    if len(data) <= 1:
+        return [node]
+
+    attrs = dict(node.get("attrs") or {})
 
     column_widths = (
         attrs.get("columnWidths")
@@ -557,95 +576,105 @@ def split_table_node(
         or attrs.get("column_widths")
     )
 
-    header_rows = attrs.get(
-        "headerRows",
-        1,
-    )
+    header_rows = attrs.get("headerRows", 1)
 
     try:
-        header_rows = int(header_rows)
+        header_rows = max(0, int(header_rows))
     except (TypeError, ValueError):
         header_rows = 1
 
-    chunks = split_table_rows(
-        data,
-        available_width=available_width,
-        available_height=available_height,
-        col_widths=column_widths,
-        header_rows=header_rows,
-    )
+    header_rows = min(header_rows, len(data))
+
+    # ------------------------------------------------------------
+    # Build page-sized chunks while retaining the ORIGINAL row
+    # INDEX for every row.
+    # ------------------------------------------------------------
+    header_indices = valid_row_indices[:header_rows]
+    body_indices = valid_row_indices[header_rows:]
+
+    if not body_indices:
+        return [node]
+
+    chunks: List[List[int]] = []
+
+    current_indices: List[int] = list(header_indices)
+    current_data: List[List[str]] = list(data[:header_rows])
+    current_height = 0.0
+
+    if current_data:
+        _, current_height = table_dimensions(
+            current_data,
+            available_width=available_width,
+            col_widths=column_widths,
+            repeat_rows=header_rows,
+        )
+
+    for body_position, original_index in enumerate(body_indices):
+        data_index = header_rows + body_position
+        row_data = data[data_index]
+
+        candidate_data = current_data + [row_data]
+
+        _, candidate_height = table_dimensions(
+            candidate_data,
+            available_width=available_width,
+            col_widths=column_widths,
+            repeat_rows=header_rows,
+        )
+
+        # STEP 17:
+        # If adding the next row would exceed the available page height,
+        # finish the current table chunk and start another one.
+        #
+        # A single oversized row is intentionally kept intact. The renderer
+        # must never silently lose or reconstruct table content.
+        if (
+            current_indices
+            and current_height > 0
+            and candidate_height > available_height
+            and len(current_indices) > header_rows
+        ):
+            chunks.append(current_indices)
+
+            current_indices = list(header_indices) + [original_index]
+            current_data = list(data[:header_rows]) + [row_data]
+
+            _, current_height = table_dimensions(
+                current_data,
+                available_width=available_width,
+                col_widths=column_widths,
+                repeat_rows=header_rows,
+            )
+
+            continue
+
+        current_indices.append(original_index)
+        current_data = candidate_data
+        current_height = candidate_height
+
+    if current_indices:
+        chunks.append(current_indices)
 
     if len(chunks) <= 1:
         return [node]
 
+    # ------------------------------------------------------------
+    # Rebuild each table chunk from the ORIGINAL TipTap row objects.
+    # This is the critical difference from text matching:
+    #
+    #   original row object -> preserved exactly
+    #
+    # Therefore duplicate rows, marks, attributes, nested content, etc.
+    # remain untouched.
+    # ------------------------------------------------------------
     result: List[Dict[str, Any]] = []
 
-    # Convert each split data chunk back to the original TipTap table
-    # structure instead of flattening the document.
-    for chunk in chunks:
-        chunk_content: List[Dict[str, Any]] = []
-
-        for row_index, row_data in enumerate(chunk):
-            original_row_index = None
-
-            # Match against the original content by cell text. Header rows
-            # always come from the beginning of the original table.
-            if row_index < header_rows:
-                original_row_index = row_index
-            else:
-                target = row_data
-                for candidate_index in range(
-                    header_rows,
-                    len(content),
-                ):
-                    candidate_cells = (
-                        content[candidate_index].get("content")
-                        or []
-                    )
-                    candidate_data = [
-                        _cell_text(cell)
-                        for cell in candidate_cells
-                    ]
-
-                    if candidate_data == target:
-                        original_row_index = candidate_index
-                        break
-
-            if original_row_index is None:
-                # Preserve the row in structured form if duplicate rows make
-                # text matching ambiguous.
-                cells = [
-                    {
-                        "type": "tableCell",
-                        "content": [
-                            {
-                                "type": "paragraph",
-                                "content": (
-                                    [
-                                        {
-                                            "type": "text",
-                                            "text": value,
-                                        }
-                                    ]
-                                    if value
-                                    else []
-                                ),
-                            }
-                        ],
-                    }
-                    for value in row_data
-                ]
-
-                chunk_content.append(
-                    {
-                        "type": "tableRow",
-                        "content": cells,
-                    }
-                )
-            else:
-                chunk_content.append(
-                    content[original_row_index]
-                )
+    for chunk_indices in chunks:
+        chunk_content: List[Dict[str, Any]] = [
+            content[index]
+            for index in chunk_indices
+            if 0 <= index < len(content)
+        ]
 
         split_node = dict(node)
         split_node["content"] = chunk_content
