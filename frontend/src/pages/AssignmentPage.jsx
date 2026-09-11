@@ -211,19 +211,20 @@ const DEFAULT_ASSIGNMENT = {
   ---------------------------------------------------------- */
 
   paperSize: "A4",
-  orientation: "portrait",
+  customPageSize: {
+    widthMm: 210,
+    heightMm: 297,
+  },
 
-  /* ----------------------------------------------------------
-     Page Margins
-  ---------------------------------------------------------- */
+  orientation: "portrait",
 
   marginPreset: "normal",
 
   customMargins: {
-    top: 56,
-    right: 50,
-    bottom: 56,
-    left: 50,
+    top: 20,
+    right: 20,
+    bottom: 20,
+    left: 20,
   },
 
   /* ----------------------------------------------------------
