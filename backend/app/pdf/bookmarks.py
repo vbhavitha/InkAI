@@ -2,43 +2,71 @@
 InkAI PDF Bookmarks
 ===================
 
-Helpers for creating a hierarchical PDF bookmark/outline tree with ReportLab.
+PDF bookmark / outline helpers for structured TipTap documents.
 
-The module does not modify TipTap JSON and does not paginate documents.
-It only maps structured document headings to the already-created PDF pages.
+Important:
+- Does NOT modify TipTap JSON.
+- Does NOT paginate documents.
+- Does NOT create a second pagination system.
+- Bookmarks are registered while the corresponding PDF page is active.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 from reportlab.pdfgen.canvas import Canvas
 
 
 @dataclass
 class BookmarkEntry:
-    """A single PDF outline/bookmark entry."""
+    """A single PDF bookmark entry."""
 
+    key: str
     title: str
     page_number: int
-    level: int = 0
+    level: int = 1
 
 
 class PDFBookmarkManager:
     """
-    Creates PDF bookmarks after assignment pagination is complete.
+    Creates a hierarchical PDF outline.
 
-    ReportLab page numbers are zero-based internally for destinations, while
-    InkAI Page objects are one-based. This manager accepts the latter.
+    Page numbers are one-based because InkAI Page objects are one-based.
+    ReportLab destinations are registered on the currently active page.
     """
 
-    def __init__(self, root_title: str = "Assignment"):
-        self.root_title = root_title or "Assignment"
+    def __init__(
+        self,
+        root_title: str = "Assignment",
+    ):
+        self.root_title = (
+            str(root_title or "Assignment").strip()
+            or "Assignment"
+        )
+
+        self._root_registered = False
+        self._last_level = 0
+        self._level_keys: Dict[int, str] = {
+            0: "assignment_root",
+        }
+
+    # ============================================================
+    # TEXT EXTRACTION
+    # ============================================================
 
     @staticmethod
-    def _heading_text(node: Dict[str, Any]) -> str:
-        """Extract heading text without changing the original node."""
+    def heading_text(
+        node: Dict[str, Any],
+    ) -> str:
+        """
+        Extract visible text from a TipTap heading.
+
+        This is only used for the PDF bookmark label.
+        The original TipTap node is never modified.
+        """
+
         parts: List[str] = []
 
         def walk(value: Any) -> None:
@@ -46,7 +74,14 @@ class PDFBookmarkManager:
                 return
 
             if value.get("type") == "text":
-                parts.append(str(value.get("text") or ""))
+                parts.append(
+                    str(
+                        value.get(
+                            "text",
+                            "",
+                        )
+                    )
+                )
                 return
 
             if value.get("type") == "hardBreak":
@@ -58,137 +93,390 @@ class PDFBookmarkManager:
 
         walk(node)
 
-        return " ".join("".join(parts).split()).strip()
+        return " ".join(
+            "".join(parts).split()
+        ).strip()
+
+    # ============================================================
+    # HEADING LEVEL
+    # ============================================================
+
+    @staticmethod
+    def heading_level(
+        node: Dict[str, Any],
+    ) -> int:
+        """Return a safe TipTap heading level."""
+
+        attrs = node.get("attrs") or {}
+
+        try:
+            level = int(
+                attrs.get(
+                    "level",
+                    1,
+                )
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            level = 1
+
+        return max(
+            1,
+            min(level, 6),
+        )
+
+    # ============================================================
+    # ROOT
+    # ============================================================
+
+    def register_root(
+        self,
+        pdf: Canvas,
+        *,
+        title: Optional[str] = None,
+    ) -> None:
+        """
+        Register the assignment root bookmark.
+
+        Must be called while page 1 is active.
+        """
+
+        if self._root_registered:
+            return
+
+        root_title = (
+            str(title).strip()
+            if isinstance(title, str)
+            and title.strip()
+            else self.root_title
+        )
+
+        pdf.bookmarkPage(
+            "assignment_root",
+            fit="Fit",
+        )
+
+        pdf.addOutlineEntry(
+            root_title,
+            "assignment_root",
+            level=0,
+            closed=False,
+        )
+
+        self._root_registered = True
+        self._last_level = 0
+        self._level_keys = {
+            0: "assignment_root",
+        }
+
+    # ============================================================
+    # LEVEL NORMALIZATION
+    # ============================================================
+
+    def _normalize_outline_level(
+        self,
+        level: int,
+    ) -> int:
+        """
+        Prevent invalid outline level jumps.
+
+        Example:
+
+            H1
+            H3
+
+        becomes:
+
+            H1
+              H3
+
+        but never creates an invalid level 3 without
+        an available parent level.
+        """
+
+        level = max(
+            1,
+            min(int(level), 6),
+        )
+
+        if level > self._last_level + 1:
+            level = self._last_level + 1
+
+        return level
+
+    # ============================================================
+    # ADD CURRENT PAGE HEADING
+    # ============================================================
+
+    def add_heading(
+        self,
+        pdf: Canvas,
+        *,
+        title: str,
+        page_number: int,
+        node_index: int,
+        level: int,
+    ) -> BookmarkEntry:
+        """
+        Register one heading bookmark on the currently active PDF page.
+        """
+
+        safe_title = (
+            str(title or "Untitled").strip()
+            or "Untitled"
+        )
+
+        safe_page = max(
+            1,
+            int(page_number),
+        )
+
+        safe_level = self._normalize_outline_level(
+            level
+        )
+
+        key = (
+            f"assignment_page_"
+            f"{safe_page}_heading_"
+            f"{node_index}"
+        )
+
+        # Register the current PDF page as the destination.
+        pdf.bookmarkPage(
+            key,
+            fit="Fit",
+        )
+
+        pdf.addOutlineEntry(
+            safe_title,
+            key,
+            level=safe_level,
+            closed=False,
+        )
+
+        self._level_keys[
+            safe_level
+        ] = key
+
+        # Remove stale deeper levels.
+        for old_level in list(
+            self._level_keys.keys()
+        ):
+            if old_level > safe_level:
+                del self._level_keys[
+                    old_level
+                ]
+
+        self._last_level = safe_level
+
+        return BookmarkEntry(
+            key=key,
+            title=safe_title,
+            page_number=safe_page,
+            level=safe_level,
+        )
+
+    # ============================================================
+    # ADD PAGE HEADINGS
+    # ============================================================
+
+    def add_page_entries(
+        self,
+        pdf: Canvas,
+        page: Any,
+    ) -> List[BookmarkEntry]:
+        """
+        Find heading nodes on one already-paginated page.
+
+        The current PDF page must be active when this method is called.
+        """
+
+        page_number = getattr(
+            page,
+            "number",
+            None,
+        )
+
+        if page_number is None and isinstance(
+            page,
+            dict,
+        ):
+            page_number = page.get(
+                "pageNumber",
+                page.get(
+                    "number",
+                    1,
+                ),
+            )
+
+        try:
+            page_number = max(
+                1,
+                int(page_number),
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            page_number = 1
+
+        nodes = getattr(
+            page,
+            "nodes",
+            None,
+        )
+
+        if nodes is None and isinstance(
+            page,
+            dict,
+        ):
+            nodes = page.get(
+                "nodes"
+            ) or []
+
+        entries: List[
+            BookmarkEntry
+        ] = []
+
+        for index, node in enumerate(
+            nodes or []
+        ):
+            if not isinstance(
+                node,
+                dict,
+            ):
+                continue
+
+            if node.get("type") != "heading":
+                continue
+
+            title = self.heading_text(
+                node
+            )
+
+            if not title:
+                continue
+
+            level = self.heading_level(
+                node
+            )
+
+            entry = self.add_heading(
+                pdf,
+                title=title,
+                page_number=page_number,
+                node_index=index,
+                level=level,
+            )
+
+            entries.append(entry)
+
+        return entries
+
+    # ============================================================
+    # STATIC COLLECTION
+    # ============================================================
 
     @classmethod
     def collect_entries(
         cls,
-        pages: Sequence[Any],
+        pages: List[Any],
     ) -> List[BookmarkEntry]:
         """
-        Collect heading nodes from already-paginated Page objects.
+        Collect heading information without touching the PDF.
 
-        Heading level is taken from TipTap's attrs.level. If unavailable,
-        level 1 is used.
+        Useful for inspection/testing.
         """
-        entries: List[BookmarkEntry] = []
+
+        manager = cls()
+
+        entries: List[
+            BookmarkEntry
+        ] = []
 
         for page in pages:
-            page_number = getattr(page, "number", None)
+            page_number = getattr(
+                page,
+                "number",
+                None,
+            )
 
-            if page_number is None and isinstance(page, dict):
-                page_number = page.get("pageNumber", 1)
+            if page_number is None and isinstance(
+                page,
+                dict,
+            ):
+                page_number = page.get(
+                    "pageNumber",
+                    1,
+                )
 
             try:
-                page_number = max(1, int(page_number))
-            except (TypeError, ValueError):
+                page_number = max(
+                    1,
+                    int(page_number),
+                )
+            except (
+                TypeError,
+                ValueError,
+            ):
                 page_number = 1
 
-            nodes = getattr(page, "nodes", None)
+            nodes = getattr(
+                page,
+                "nodes",
+                None,
+            )
 
-            if nodes is None and isinstance(page, dict):
-                nodes = page.get("nodes") or []
+            if nodes is None and isinstance(
+                page,
+                dict,
+            ):
+                nodes = page.get(
+                    "nodes"
+                ) or []
 
-            for node in nodes or []:
-                if not isinstance(node, dict):
+            for index, node in enumerate(
+                nodes or []
+            ):
+                if not isinstance(
+                    node,
+                    dict,
+                ):
                     continue
 
                 if node.get("type") != "heading":
                     continue
 
-                title = cls._heading_text(node)
+                title = cls.heading_text(
+                    node
+                )
 
-                # Empty headings are not useful as PDF bookmarks.
                 if not title:
                     continue
 
-                attrs = node.get("attrs") or {}
-
-                try:
-                    level = int(attrs.get("level", 1))
-                except (TypeError, ValueError):
-                    level = 1
-
-                level = max(1, min(level, 6))
-
                 entries.append(
                     BookmarkEntry(
+                        key=(
+                            f"assignment_page_"
+                            f"{page_number}_heading_"
+                            f"{index}"
+                        ),
                         title=title,
                         page_number=page_number,
-                        level=level,
+                        level=cls.heading_level(
+                            node
+                        ),
                     )
                 )
 
         return entries
 
-    def add_bookmarks(
-        self,
-        pdf: Canvas,
-        pages: Sequence[Any],
-        *,
-        assignment_title: Optional[str] = None,
-    ) -> List[BookmarkEntry]:
-        """
-        Add the assignment root bookmark and all heading bookmarks.
 
-        The current PDF page is expected to be the page being rendered when
-        render_page() calls bookmark_page(). Therefore this method is intended
-        to be called once per page from the PDF renderer, or after page
-        destinations have been registered.
-        """
-        entries = self.collect_entries(pages)
-
-        root_title = (
-            assignment_title.strip()
-            if isinstance(assignment_title, str)
-            and assignment_title.strip()
-            else self.root_title
-        )
-
-        if pages:
-            # Page 1 is the assignment root destination.
-            pdf.bookmarkPage("assignment_root", fit="Fit")
-            pdf.addOutlineEntry(
-                root_title,
-                "assignment_root",
-                level=0,
-                closed=False,
-            )
-
-        parent_keys: Dict[int, str] = {0: "assignment_root"}
-
-        for index, entry in enumerate(entries):
-            key = f"assignment_bookmark_{index + 1}"
-
-            # Registering the destination must happen while the corresponding
-            # page is active. This method is therefore primarily useful when
-            # called from the renderer's page loop.
-            #
-            # If the caller has already registered the destination, the
-            # outline entry can reference it directly.
-            parent_level = max(0, entry.level - 1)
-
-            # ReportLab's outline level must not skip arbitrarily large levels.
-            while parent_level not in parent_keys and parent_level > 0:
-                parent_level -= 1
-
-            parent_key = parent_keys.get(parent_level, "assignment_root")
-
-            try:
-                pdf.addOutlineEntry(
-                    entry.title,
-                    key,
-                    level=entry.level,
-                    closed=False,
-                )
-            except Exception:
-                # Outline support must never prevent PDF generation.
-                continue
-
-            parent_keys[entry.level] = key
-
-        return entries
-
+# ================================================================
+# BACKWARD-COMPATIBLE HELPER
+# ================================================================
 
 def bookmark_page(
     pdf: Canvas,
@@ -199,17 +487,32 @@ def bookmark_page(
     closed: bool = False,
 ) -> None:
     """
-    Register the current canvas page as a PDF bookmark destination and add
-    it to the outline tree.
-    """
-    safe_key = str(key)
-    safe_title = str(title or "Untitled").strip() or "Untitled"
+    Backward-compatible low-level helper.
 
-    pdf.bookmarkPage(safe_key, fit="Fit")
+    Registers the current canvas page and adds an outline entry.
+    """
+
+    safe_key = str(
+        key
+    )
+
+    safe_title = (
+        str(title or "Untitled").strip()
+        or "Untitled"
+    )
+
+    pdf.bookmarkPage(
+        safe_key,
+        fit="Fit",
+    )
+
     pdf.addOutlineEntry(
         safe_title,
         safe_key,
-        level=max(0, int(level)),
+        level=max(
+            0,
+            int(level),
+        ),
         closed=closed,
     )
 

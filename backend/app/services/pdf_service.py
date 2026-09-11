@@ -1,32 +1,35 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 
-from app.pdf.generator import PDFGenerator
-from app.pdf.page_manager import build_page_config
+import fitz
+
+from app.assignments.page_layout import (
+    PageConfig,
+    paginate_document,
+)
+from app.assignments.pdf_renderer import (
+    AssignmentPDFRenderer,
+)
 
 
 # ============================================================
-# PDF UPLOAD / EXTRACTION
+# PDF EXTRACTION
 # ============================================================
 
 def extract_pdf_pages(
     pdf_path: str | Path,
 ) -> list[dict[str, Any]]:
     """
-    Extract pages from an existing PDF.
+    Extract page information from an existing PDF.
 
-    This function is kept here because the existing InkAI
-    upload workflow imports it from:
-
-        app.services.pdf_service
-
-    The reusable PDF generation engine is separate from this
-    extraction functionality.
+    Kept for the existing InkAI upload workflow.
     """
 
-    pdf_path = Path(pdf_path)
+    pdf_path = Path(
+        pdf_path
+    )
 
     if not pdf_path.exists():
         raise FileNotFoundError(
@@ -43,15 +46,9 @@ def extract_pdf_pages(
             "The supplied file is not a PDF."
         )
 
-    try:
-        import fitz
-    except ImportError as error:
-        raise RuntimeError(
-            "PyMuPDF is required for PDF page extraction. "
-            "Install it with: pip install pymupdf"
-        ) from error
-
-    pages: list[dict[str, Any]] = []
+    pages: list[
+        dict[str, Any]
+    ] = []
 
     document = fitz.open(
         str(pdf_path)
@@ -81,6 +78,7 @@ def extract_pdf_pages(
                     ),
                 }
             )
+
     finally:
         document.close()
 
@@ -88,29 +86,16 @@ def extract_pdf_pages(
 
 
 # ============================================================
-# REUSABLE PDF SERVICE
+# PDF SERVICE
 # ============================================================
 
 class PDFService:
     """
-    Application-level reusable PDF service.
+    Application-level PDF generation service.
 
-    Flow:
+    Uses the existing InkAI assignment pagination and renderer.
 
-        Document JSON
-              ↓
-           Validate
-              ↓
-        Configure PDF
-              ↓
-           Render
-              ↓
-            Save
-              ↓
-        Return PDF path
-
-    This service is intentionally independent from
-    assignment-specific business logic.
+    No second pagination algorithm is introduced here.
     """
 
     def __init__(
@@ -132,16 +117,10 @@ class PDFService:
     # VALIDATION
     # ========================================================
 
-    def validate(
-        self,
+    @staticmethod
+    def validate_document(
         document: Any,
-    ) -> dict:
-        """
-        Validate a generic document.
-
-        Structured dictionaries and lists are accepted.
-        """
-
+    ) -> Dict[str, Any]:
         if document is None:
             raise ValueError(
                 "Document is required."
@@ -162,7 +141,8 @@ class PDFService:
             }
 
         raise ValueError(
-            "Document must be a dictionary or list."
+            "Document must be a dictionary "
+            "or list."
         )
 
     # ========================================================
@@ -174,46 +154,117 @@ class PDFService:
         document: Any,
         *,
         filename: str,
-        page: dict | None = None,
-        metadata: dict | None = None,
-        title: str | None = None,
-        watermark: str | None = None,
-        show_page_numbers: bool = False,
-    ) -> str:
+        page_config: Optional[
+            PageConfig
+        ] = None,
+        metadata: Optional[
+            Dict[str, Any]
+        ] = None,
+        title: Optional[str] = None,
+        handwriting: Optional[
+            Dict[str, Any]
+        ] = None,
+        watermark: Optional[
+            Dict[str, Any]
+        ] = None,
+        bookmarks: bool = True,
+    ) -> Dict[str, Any]:
         """
-        Validate, configure, render and save a PDF.
+        Generate a structured InkAI PDF.
+
+        Returns:
+            {
+                "path": "...",
+                "pages": 5,
+                "filename": "..."
+            }
         """
 
         validated_document = (
-            self.validate(
+            self.validate_document(
                 document
             )
         )
 
-        page_config = (
-            build_page_config(
-                page or {}
-            )
+        config = (
+            page_config
+            or PageConfig()
         )
 
-        generator = PDFGenerator(
-            page_config=page_config
+        # ----------------------------------------------------
+        # AUTHORITATIVE PAGINATION
+        # ----------------------------------------------------
+
+        pages = paginate_document(
+            validated_document,
+            config,
         )
+
+        # ----------------------------------------------------
+        # OUTPUT
+        # ----------------------------------------------------
 
         output_path = (
             self.output_directory
             / filename
         )
 
-        return generator.generate(
-            validated_document,
-            output_path,
-            metadata=(
-                metadata or {}
-            ),
-            title=title,
-            watermark=watermark,
-            show_page_numbers=(
-                show_page_numbers
+        output_path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        # ----------------------------------------------------
+        # RENDER
+        # ----------------------------------------------------
+
+        renderer = (
+            AssignmentPDFRenderer(
+                page_config=config,
+                handwriting=(
+                    handwriting
+                    or {}
+                ),
+                watermark=(
+                    watermark
+                    or {}
+                ),
+                metadata=(
+                    metadata
+                    or {}
+                ),
+                assignment_title=(
+                    title
+                    or ""
+                ),
+                bookmarks_enabled=(
+                    bookmarks
+                ),
+            )
+        )
+
+        renderer.render(
+            pages=[
+                page.to_dict()
+                for page in pages
+            ],
+            output_path=str(
+                output_path
             ),
         )
+
+        return {
+            "path": str(
+                output_path
+            ),
+            "filename": filename,
+            "pages": len(
+                pages
+            ),
+        }
+
+
+__all__ = [
+    "PDFService",
+    "extract_pdf_pages",
+]

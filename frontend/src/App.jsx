@@ -1,4 +1,8 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+} from "react-router-dom";
 
 import Home from "./pages/Home";
 import Login from "./pages/Login";
@@ -11,37 +15,88 @@ import EditorPage from "./pages/EditorPage";
 import HandwritingGeneratorPage from "./pages/HandwritingGeneratorPage";
 import AssignmentPage from "./pages/AssignmentPage";
 import AssignmentHistoryPage from "./pages/AssignmentHistoryPage";
+import PDFPreviewPage from "./pages/PDFPreviewPage";
+
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Home />} />
 
-        <Route path="/login" element={<Login />} />
+        <Route
+          path="/"
+          element={<Home />}
+        />
 
-        <Route path="/signup" element={<Signup />} />
+        <Route
+          path="/login"
+          element={<Login />}
+        />
 
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route
+          path="/signup"
+          element={<Signup />}
+        />
 
-        <Route path="/profile" element={<Profile />} />
+        <Route
+          path="/dashboard"
+          element={<Dashboard />}
+        />
 
-        <Route path="/upload" element={<UploadPage />} />
+        <Route
+          path="/profile"
+          element={<Profile />}
+        />
 
-        <Route path="/ocr-results" element={<OCRResultsPage />} />
+        <Route
+          path="/upload"
+          element={<UploadPage />}
+        />
 
-        <Route path="/editor" element={<EditorPage />} />
+        <Route
+          path="/ocr-results"
+          element={<OCRResultsPage />}
+        />
 
-        <Route path="/handwriting" element={<HandwritingGeneratorPage />} />
+        <Route
+          path="/editor"
+          element={<EditorPage />}
+        />
 
-        <Route path="/assignment" element={<AssignmentPage />}/>
+        <Route
+          path="/handwriting"
+          element={
+            <HandwritingGeneratorPage />
+          }
+        />
 
-        <Route path="/assignments" element={<AssignmentHistoryPage />}/>
+        <Route
+          path="/assignment"
+          element={<AssignmentPage />}
+        />
 
+        <Route
+          path="/assignments"
+          element={
+            <AssignmentHistoryPage />
+          }
+        />
+
+        {/* ================================================= */}
+        {/* STEP 24 — PDF PREVIEW */}
+        {/* ================================================= */}
+
+        <Route
+          path="/pdf-preview"
+          element={
+            <PDFPreviewPage />
+          }
+        />
 
       </Routes>
     </BrowserRouter>
   );
 }
+
 
 export default App;

@@ -35,21 +35,28 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
 
-from app.pdf.fonts import font_manager
 from app.pdf.images import (
     calculate_image_size,
     load_image,
 )
-from app.pdf.layout import format_page_number
 from app.pdf.tables import build_table
 from app.pdf.watermark import WatermarkRenderer
-from app.pdf.bookmarks import bookmark_page
+from app.pdf.bookmarks import PDFBookmarkManager
+from app.pdf.metadata import PDFMetadata
+
+from app.pdf.fonts import font_manager
+from app.pdf.layout import format_page_number
+from app.pdf.bookmarks import PDFBookmarkManager
+from app.pdf.metadata import (
+    apply_metadata,
+    build_metadata,
+)
+from app.pdf.watermark import WatermarkRenderer
 
 from .page_layout import (
     AssignmentPageLayout,
     PageConfig,
 )
-
 
 # ============================================================
 # INK COLORS
@@ -84,6 +91,9 @@ class AssignmentPDFRenderer:
         page_config: Optional[PageConfig] = None,
         handwriting: Optional[Dict[str, Any]] = None,
         watermark: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        assignment_title: Optional[str] = None,
+        bookmarks_enabled: bool = True,
     ):
         self.page_config = (
             page_config
@@ -99,15 +109,36 @@ class AssignmentPDFRenderer:
             or {}
         )
 
-        # Watermark is disabled by default by WatermarkRenderer.
         self.watermark = WatermarkRenderer(
             watermark
         )
 
-        self.font_manager = font_manager
+        self.metadata = (
+            metadata
+            or {}
+        )
 
-        # Make sure font directories exist.
-        self.font_manager.ensure_directories()
+        self.assignment_title = (
+            str(
+                assignment_title
+                or ""
+            ).strip()
+        )
+
+        self.bookmarks_enabled = bool(
+            bookmarks_enabled
+        )
+
+        self.bookmark_manager = (
+            PDFBookmarkManager(
+                root_title=(
+                    self.assignment_title
+                    or self._bookmark_root_title()
+                )
+            )
+        )
+
+        font_manager.ensure_directories()
 
     # ========================================================
     # RENDER COMPLETE PDF
@@ -122,6 +153,8 @@ class AssignmentPDFRenderer:
     ):
         """
         Render all already-paginated pages.
+
+        Pagination is NOT performed here.
 
         Returns:
             bytes containing the generated PDF.
@@ -148,31 +181,77 @@ class AssignmentPDFRenderer:
             ),
         )
 
-        total_pages = len(pages)
+        # ------------------------------------------------------------
+        # STEP 22 — PDF METADATA
+        # ------------------------------------------------------------
+
+        metadata = build_metadata(
+            title=(
+                self.metadata.get(
+                    "title"
+                )
+                or self.assignment_title
+                or self._bookmark_root_title()
+            ),
+            author=self.metadata.get(
+                "author",
+                "",
+            ),
+            subject=self.metadata.get(
+                "subject",
+                "",
+            ),
+            keywords=self.metadata.get(
+                "keywords",
+                "",
+            ),
+            creator=self.metadata.get(
+                "creator",
+                "InkAI",
+            ),
+        )
+
+        apply_metadata(
+            pdf,
+            metadata,
+        )
+
+        total_pages = len(
+            pages
+        )
 
         for page in pages:
+
             page_number = int(
                 page.get(
                     "pageNumber",
-                    page.get("number", 1),
+                    page.get(
+                        "number",
+                        1,
+                    ),
                 )
                 or 1
             )
 
-            # STEP 20 — Register the assignment root destination while
-            # page 1 is the active PDF page.
-            if page_number == 1:
-                pdf.bookmarkPage(
-                    "assignment_root",
-                    fit="Fit",
+            # --------------------------------------------------------
+            # STEP 21 — ROOT BOOKMARK
+            # --------------------------------------------------------
+
+            if (
+                self.bookmarks_enabled
+                and page_number == 1
+            ):
+                self.bookmark_manager.register_root(
+                    pdf,
+                    title=(
+                        self.assignment_title
+                        or self._bookmark_root_title()
+                    ),
                 )
 
-                pdf.addOutlineEntry(
-                    self._bookmark_root_title(),
-                    "assignment_root",
-                    level=0,
-                    closed=False,
-                )
+            # --------------------------------------------------------
+            # RENDER CURRENT PAGE
+            # --------------------------------------------------------
 
             self.render_page(
                 pdf,
@@ -180,14 +259,20 @@ class AssignmentPDFRenderer:
                 total_pages,
             )
 
-            # STEP 20 — Register heading bookmarks on the active page.
-            self._add_page_bookmarks(
-                pdf,
-                page,
-            )
+            # --------------------------------------------------------
+            # STEP 21 — HEADING BOOKMARKS
+            # --------------------------------------------------------
 
-            # render_page draws only the current page. This is the actual
-            # page transition and remains outside the pagination algorithm.
+            if self.bookmarks_enabled:
+                self.bookmark_manager.add_page_entries(
+                    pdf,
+                    page,
+                )
+
+            # --------------------------------------------------------
+            # MOVE TO NEXT PDF PAGE
+            # --------------------------------------------------------
+
             pdf.showPage()
 
         pdf.save()
@@ -234,97 +319,15 @@ class AssignmentPDFRenderer:
         pdf,
         page: Dict[str, Any],
     ):
-        """
-        Add bookmarks for heading nodes on the currently active PDF page.
-
-        Pagination has already happened. This method only creates PDF outline
-        destinations and never changes the TipTap document.
-        """
-        page_number = int(
-            page.get(
-                "pageNumber",
-                page.get("number", 1),
-            )
-            or 1
-        )
-
-        nodes = page.get("nodes") or []
-
-        for index, node in enumerate(nodes):
-            if not isinstance(node, dict):
-                continue
-
-            if node.get("type") != "heading":
-                continue
-
-            title = self._extract_bookmark_text(node)
-
-            if not title:
-                continue
-
-            attrs = node.get("attrs") or {}
-
-            try:
-                heading_level = int(
-                    attrs.get("level", 1)
-                )
-            except (TypeError, ValueError):
-                heading_level = 1
-
-            # Keep the outline level bounded and avoid invalid gaps.
-            heading_level = max(
-                1,
-                min(heading_level, 6),
-            )
-
-            bookmark_key = (
-                f"assignment_page_"
-                f"{page_number}_heading_"
-                f"{index}"
-            )
-
-            bookmark_page(
-                pdf,
-                bookmark_key,
-                title,
-                level=heading_level,
-                closed=False,
-            )
+        """Create heading destinations for the currently active PDF page."""
+        return self.bookmark_manager.add_page_entries(pdf, page)
 
     def _extract_bookmark_text(
         self,
         node: Dict[str, Any],
     ) -> str:
-        """Extract visible heading text for the bookmark label only."""
-        parts: List[str] = []
-
-        def walk(current: Any):
-            if not isinstance(current, dict):
-                return
-
-            if current.get("type") == "text":
-                parts.append(
-                    str(
-                        current.get(
-                            "text",
-                            "",
-                        )
-                    )
-                )
-                return
-
-            if current.get("type") == "hardBreak":
-                parts.append(" ")
-                return
-
-            for child in current.get("content") or []:
-                walk(child)
-
-        walk(node)
-
-        return " ".join(
-            "".join(parts).split()
-        ).strip()
+        """Backward-compatible heading text helper."""
+        return self.bookmark_manager.heading_text(node)
 
     # ========================================================
     # PAGE
@@ -423,6 +426,60 @@ class AssignmentPDFRenderer:
             pdf,
             page_width,
             page_height,
+        )
+
+    # ============================================================
+    # WATERMARK
+    # ============================================================
+
+    def _draw_watermark(
+        self,
+        pdf,
+    ):
+        """
+        Draw the configured watermark as a page-level background.
+
+        Watermarks are never TipTap nodes and never participate
+        in pagination.
+        """
+
+        if not self.watermark.enabled():
+            return
+
+        page_width, page_height = (
+            self.layout.get_page_size()
+        )
+
+        self.watermark.draw(
+            pdf,
+            page_width,
+            page_height,
+        )
+
+
+    # ============================================================
+    # BOOKMARK ROOT TITLE
+    # ============================================================
+
+    def _bookmark_root_title(
+        self,
+    ) -> str:
+        """
+        Resolve a safe root bookmark title.
+        """
+
+        header_title = str(
+            getattr(
+                self.page_config,
+                "header_text",
+                "",
+            )
+            or ""
+        ).strip()
+
+        return (
+            header_title
+            or "Assignment"
         )
 
     # ========================================================
