@@ -34,6 +34,13 @@ NORMAL_DIR = FONTS_DIR / "normal"
 HANDWRITING_DIR = FONTS_DIR / "handwriting"
 SPECIAL_DIR = FONTS_DIR / "special"
 
+# Phase 7 is the authoritative source for handwriting font files.
+# The PDF engine also supports app/pdf/fonts/handwriting for bundled
+# PDF-only fonts, so both locations can be resolved safely.
+PHASE7_HANDWRITING_DIR = (
+    BASE_DIR.parent / "handwriting" / "fonts"
+)
+
 
 NORMAL_FONTS = {
     "normal": "Helvetica",
@@ -179,10 +186,21 @@ class FontManager:
             or ""
         )
 
-        path = self.find_font(
-            str(font_value),
-            directory=HANDWRITING_DIR,
+        search_directories = (
+            PHASE7_HANDWRITING_DIR,
+            HANDWRITING_DIR,
         )
+
+        path = None
+
+        for directory in search_directories:
+            path = self.find_font(
+                str(font_value),
+                directory=directory,
+            )
+
+            if path is not None:
+                break
 
         if path is None:
             # Some Phase 7 presets use logical font names.
@@ -193,10 +211,14 @@ class FontManager:
             ).strip()
 
             if logical_name:
-                path = self.find_font(
-                    logical_name,
-                    directory=HANDWRITING_DIR,
-                )
+                for directory in search_directories:
+                    path = self.find_font(
+                        logical_name,
+                        directory=directory,
+                    )
+
+                    if path is not None:
+                        break
 
         if path is not None:
             return self.register_font(path)
@@ -262,6 +284,7 @@ __all__ = [
     "FONTS_DIR",
     "NORMAL_DIR",
     "HANDWRITING_DIR",
+    "PHASE7_HANDWRITING_DIR",
     "SPECIAL_DIR",
     "NORMAL_FONTS",
     "FontManager",

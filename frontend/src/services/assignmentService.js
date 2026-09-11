@@ -4,22 +4,12 @@ const API_BASE_URL =
 
 /*
  * ============================================================
- * HELPERS
+ * BASE API HELPERS
  * ============================================================
  */
 
 function buildUrl(path) {
-  if (!path) {
-    return API_BASE_URL.replace(/\/$/, "");
-  }
-
-  if (/^https?:\/\//i.test(path)) {
-    return path;
-  }
-
-  return `${API_BASE_URL.replace(/\/$/, "")}${
-    path.startsWith("/") ? path : `/${path}`
-  }`;
+  return `${API_BASE_URL.replace(/\/$/, "")}${path}`;
 }
 
 async function handleResponse(response) {
@@ -31,12 +21,31 @@ async function handleResponse(response) {
     : await response.text();
 
   if (!response.ok) {
-    const message =
-      typeof data === "object" && data?.detail
-        ? data.detail
-        : typeof data === "string" && data
-          ? data
-          : `Request failed with status ${response.status}`;
+    let message = `Request failed with status ${response.status}`;
+
+    if (
+      typeof data === "object" &&
+      data !== null
+    ) {
+      if (typeof data.detail === "string") {
+        message = data.detail;
+      } else if (Array.isArray(data.detail)) {
+        message = data.detail
+          .map((item) => {
+            if (typeof item === "string") {
+              return item;
+            }
+
+            return (
+              item?.msg ||
+              JSON.stringify(item)
+            );
+          })
+          .join(", ");
+      }
+    } else if (typeof data === "string" && data.trim()) {
+      message = data;
+    }
 
     throw new Error(message);
   }
@@ -46,25 +55,31 @@ async function handleResponse(response) {
 
 /*
  * ============================================================
- * PHASE 6 DOCUMENT
+ * PHASE 6 DOCUMENT NORMALIZATION
  * ============================================================
  *
- * The Assignment Generator consumes the complete structured
- * Phase 6 document.
- *
  * IMPORTANT:
- * Do not convert this to plain text.
  *
- * Preserved structures:
+ * InkAI uses structured TipTap JSON.
+ *
+ * We DO NOT flatten the document into plain text.
+ *
+ * Structures preserved:
  *
  * - paragraph
  * - heading
  * - bulletList
  * - orderedList
+ * - listItem
  * - table
+ * - tableRow
+ * - tableCell
  * - image
  * - pageBreak
  * - formatting marks
+ *
+ * Phase 7 handwriting processing can therefore continue
+ * working with the original structured document.
  */
 
 export function normalizePhase6Document(document) {
@@ -73,67 +88,90 @@ export function normalizePhase6Document(document) {
   }
 
   let content =
-    document.content ??
-    document.content_json ??
-    document.document_content ??
-    document.data ??
+    document.content ||
+    document.content_json ||
+    document.document_content ||
+    document.data ||
     null;
 
   /*
-   * Some backend responses may store TipTap JSON as a string.
+   * Some backend responses store the JSON document
+   * as a string.
    */
+
   if (typeof content === "string") {
     try {
       content = JSON.parse(content);
-    } catch {
+    } catch (error) {
       throw new Error(
         "The saved Phase 6 document contains invalid JSON."
       );
     }
   }
 
+  /*
+   * No content available.
+   */
+
   if (!content) {
     return null;
   }
 
   /*
-   * TipTap document:
+   * Standard TipTap document:
    *
    * {
    *   type: "doc",
    *   content: [...]
    * }
    */
-  if (content.type === "doc") {
+
+  if (
+    typeof content === "object" &&
+    content.type === "doc"
+  ) {
     return {
       ...document,
+
       content,
-      blocks: content.content || [],
+
+      blocks: Array.isArray(content.content)
+        ? content.content
+        : [],
     };
   }
 
   /*
-   * If the backend returned an array of blocks,
-   * wrap it in a TipTap document.
+   * Some versions of the backend may return the
+   * document content directly as an array.
    */
+
   if (Array.isArray(content)) {
+    const tiptapDocument = {
+      type: "doc",
+      content,
+    };
+
     return {
       ...document,
-      content: {
-        type: "doc",
-        content,
-      },
+
+      content: tiptapDocument,
+
       blocks: content,
     };
   }
 
   /*
-   * Fallback for a structured object that already contains
-   * its own content/blocks representation.
+   * If content is an object but does not explicitly
+   * contain type="doc", preserve it rather than
+   * destroying the structure.
    */
+
   return {
     ...document,
+
     content,
+
     blocks:
       document.blocks ||
       content?.content ||
@@ -155,27 +193,31 @@ export async function getPhase6Document(documentId) {
   }
 
   const response = await fetch(
-    buildUrl(`/api/documents/${documentId}`)
+    buildUrl(
+      `/api/documents/${documentId}`
+    )
   );
 
-  return handleResponse(response);
+  const data = await handleResponse(response);
+
+  return normalizePhase6Document(data);
 }
 
 /*
  * ============================================================
- * ASSIGNMENT DOCUMENT
+ * CREATE ASSIGNMENT DOCUMENT
  * ============================================================
  *
  * Combines:
  *
- * Phase 6 structured content
+ * Phase 6 structured document
  * +
  * Phase 8 assignment configuration
  */
 
 export function createAssignmentDocument({
   phase6Document,
-  assignment,
+  assignment = {},
 }) {
   const normalizedDocument =
     normalizePhase6Document(
@@ -203,26 +245,30 @@ export function createAssignmentDocument({
       normalizedDocument.content,
 
     blocks:
-      normalizedDocument.blocks,
+      normalizedDocument.blocks || [],
 
     assignment: {
-      ...(assignment || {}),
+      ...assignment,
     },
   };
 }
 
 /*
  * ============================================================
- * HANDWRITING PAYLOAD
+ * HANDWRITING ASSIGNMENT PAYLOAD
  * ============================================================
  *
- * Phase 8 -> Phase 7
+ * Phase 8 Assignment Generator
+ *             ↓
+ * Phase 7 Handwriting System
+ *
+ * The structured document remains intact.
  */
 
 export function createHandwritingAssignmentPayload({
   phase6Document,
-  assignment,
-  handwriting,
+  assignment = {},
+  handwriting = {},
 }) {
   const assignmentDocument =
     createAssignmentDocument({
@@ -232,10 +278,17 @@ export function createHandwritingAssignmentPayload({
 
   return {
     document: {
-      id: assignmentDocument.documentId,
-      title: assignmentDocument.title,
-      content: assignmentDocument.content,
-      blocks: assignmentDocument.blocks,
+      id:
+        assignmentDocument.documentId,
+
+      title:
+        assignmentDocument.title,
+
+      content:
+        assignmentDocument.content,
+
+      blocks:
+        assignmentDocument.blocks,
     },
 
     assignment:
@@ -259,41 +312,167 @@ export function createHandwritingAssignmentPayload({
         "ruled",
 
       fontSize:
-        handwriting?.fontSize ??
-        22,
+        handwriting?.fontSize ?? 22,
 
       lineSpacing:
-        handwriting?.lineSpacing ??
-        1.5,
+        handwriting?.lineSpacing ?? 1.5,
 
       letterSpacing:
-        handwriting?.letterSpacing ??
-        0.5,
+        handwriting?.letterSpacing ?? 0.5,
 
       wordSpacing:
-        handwriting?.wordSpacing ??
-        5,
+        handwriting?.wordSpacing ?? 5,
 
       naturalness:
-        handwriting?.naturalness ??
-        65,
+        handwriting?.naturalness ?? 65,
 
       seed:
-        handwriting?.seed ??
-        12345,
+        handwriting?.seed ?? 12345,
     },
   };
 }
 
 /*
  * ============================================================
- * STEP 17 / 18 — PAGINATE ASSIGNMENT
+ * PAGE CONFIGURATION HELPER
  * ============================================================
+ *
+ * Keeps frontend assignment settings in one predictable
+ * structure before sending them to the backend.
+ */
+
+function buildAssignmentPageConfig(
+  assignment = {}
+) {
+  return {
+    paperSize:
+      assignment?.paperSize ||
+      "A4",
+
+    orientation:
+      assignment?.orientation ||
+      "portrait",
+
+    marginPreset:
+      assignment?.marginPreset ||
+      "normal",
+
+    /*
+     * Existing InkAI assignment UI historically stores
+     * custom margins in points.
+     *
+     * Keep this for backward compatibility.
+     */
+
+    customMargins:
+      assignment?.customMargins || {
+        top: 56,
+        right: 50,
+        bottom: 56,
+        left: 50,
+      },
+
+    customMarginsUnit:
+      assignment?.customMarginsUnit ||
+      "points",
+
+    /*
+     * Custom page dimensions are in millimetres.
+     */
+
+    customPageSize:
+      assignment?.customPageSize || {
+        widthMm: 210,
+        heightMm: 297,
+      },
+
+    /*
+     * Header
+     */
+
+    headerEnabled:
+      assignment?.headerEnabled ?? false,
+
+    headerText:
+      assignment?.headerText || "",
+
+    headerPosition:
+      assignment?.headerPosition ||
+      "center",
+
+    headerFontSize:
+      assignment?.headerFontSize ?? 10,
+
+    headerBold:
+      assignment?.headerBold ?? false,
+
+    /*
+     * Footer
+     */
+
+    showFooter:
+      assignment?.showFooter ?? true,
+
+    footerText:
+      assignment?.footerText ||
+      "InkAI — Assignment",
+
+    footerPosition:
+      assignment?.footerPosition ||
+      "center",
+
+    footerFontSize:
+      assignment?.footerFontSize ?? 9,
+
+    footerBold:
+      assignment?.footerBold ?? false,
+
+    /*
+     * Page number
+     */
+
+    showPageNumber:
+      assignment?.showPageNumber ?? true,
+
+    pageNumberPosition:
+      assignment?.pageNumberPosition ||
+      "center",
+
+    pageNumberShowTotal:
+      assignment?.pageNumberShowTotal ??
+      false,
+
+    pageNumberPrefix:
+      assignment?.pageNumberPrefix ||
+      "Page",
+
+    pageNumberFontSize:
+      assignment?.pageNumberFontSize ?? 9,
+
+    pageNumberBold:
+      assignment?.pageNumberBold ?? false,
+  };
+}
+
+/*
+ * ============================================================
+ * STEP 17 / 18
+ * PAGINATE ASSIGNMENT
+ * ============================================================
+ *
+ * Used by the live assignment preview.
+ *
+ * IMPORTANT:
+ *
+ * This endpoint uses the backend AssignmentService
+ * pagination algorithm.
+ *
+ * We do NOT implement pagination in the frontend.
  */
 
 export async function paginateAssignment({
   document,
-  assignment,
+  assignment = {},
 }) {
   if (!document) {
     return {
@@ -303,46 +482,34 @@ export async function paginateAssignment({
           nodes: [],
         },
       ],
+
       pageCount: 1,
     };
   }
 
+  const pageConfig =
+    buildAssignmentPageConfig(
+      assignment
+    );
+
   const response = await fetch(
-    buildUrl("/api/assignments/paginate"),
+    buildUrl(
+      "/api/assignments/paginate"
+    ),
     {
       method: "POST",
 
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type":
+          "application/json",
       },
 
       body: JSON.stringify({
         document,
 
-        assignment:
-          assignment || {},
+        assignment,
 
-        page: {
-          paperSize:
-            assignment?.paperSize ||
-            "A4",
-
-          orientation:
-            assignment?.orientation ||
-            "portrait",
-
-          marginPreset:
-            assignment?.marginPreset ||
-            "normal",
-
-          customMargins:
-            assignment?.customMargins || {
-              top: 56,
-              right: 50,
-              bottom: 56,
-              left: 50,
-            },
-        },
+        page: pageConfig,
       }),
     }
   );
@@ -352,20 +519,33 @@ export async function paginateAssignment({
 
 /*
  * ============================================================
- * GENERATE ASSIGNMENT PDF
+ * STEP 21+
+ * GENERATE FINAL ASSIGNMENT PDF
  * ============================================================
+ *
+ * This is the FINAL high-resolution PDF.
+ *
+ * Preview pagination and final PDF generation are separate:
+ *
+ * Preview
+ *   ↓
+ * /paginate
+ *
+ * Final PDF
+ *   ↓
+ * /generate
  */
 
 export async function generateAssignmentPDF({
   documentId,
-  draftId,
+  draftId = null,
   template,
   paper,
   handwritingStyle,
   ink,
   pageNumbers,
-  assignment,
-  handwriting,
+  assignment = {},
+  handwriting = {},
 }) {
   if (!documentId) {
     throw new Error(
@@ -390,32 +570,63 @@ export async function generateAssignmentPDF({
           String(documentId),
 
         draft_id:
-          draftId || null,
+          draftId
+            ? String(draftId)
+            : null,
 
         template:
           template ||
+          assignment?.template ||
           "college_assignment",
 
         paper:
           paper ||
+          assignment?.paper ||
           "ruled",
 
         handwriting_style:
           handwritingStyle ||
+          handwriting?.style ||
           "school_notebook",
 
         ink:
           ink ||
+          handwriting?.ink ||
           "blue",
 
         page_numbers:
           pageNumbers !== false,
 
         assignment:
-          assignment || {},
+          {
+            ...assignment,
+
+            page:
+              assignment?.page ||
+              buildAssignmentPageConfig(
+                assignment
+              ),
+          },
 
         handwriting:
-          handwriting || {},
+          {
+            ...handwriting,
+
+            style:
+              handwriting?.style ||
+              handwritingStyle ||
+              "school_notebook",
+
+            ink:
+              handwriting?.ink ||
+              ink ||
+              "blue",
+
+            paper:
+              handwriting?.paper ||
+              paper ||
+              "ruled",
+          },
       }),
     }
   );
@@ -424,15 +635,25 @@ export async function generateAssignmentPDF({
     await handleResponse(response);
 
   /*
-   * Convert relative backend download URLs
-   * into complete URLs.
+   * If backend returns a relative download URL,
+   * convert it to the complete API URL.
    */
-  if (result?.download_url) {
-    return {
-      ...result,
-      download_url:
-        buildUrl(result.download_url),
-    };
+
+  if (
+    result &&
+    typeof result.download_url ===
+      "string"
+  ) {
+    if (
+      result.download_url.startsWith(
+        "/"
+      )
+    ) {
+      result.download_url =
+        buildUrl(
+          result.download_url
+        );
+    }
   }
 
   return result;
@@ -440,7 +661,8 @@ export async function generateAssignmentPDF({
 
 /*
  * ============================================================
- * STEP 25 — REGENERATE ASSIGNMENT
+ * STEP 25
+ * REGENERATE ASSIGNMENT
  * ============================================================
  */
 
@@ -450,8 +672,8 @@ export async function regenerateAssignment({
   handwritingStyle,
   ink,
   pageNumbers,
-  assignment,
-  handwriting,
+  assignment = {},
+  handwriting = {},
 }) {
   if (!assignmentId) {
     throw new Error(
@@ -477,10 +699,13 @@ export async function regenerateAssignment({
 
         handwriting_style:
           handwritingStyle ||
+          handwriting?.style ||
           undefined,
 
         ink:
-          ink || undefined,
+          ink ||
+          handwriting?.ink ||
+          undefined,
 
         page_numbers:
           pageNumbers !== undefined
@@ -499,12 +724,18 @@ export async function regenerateAssignment({
   const result =
     await handleResponse(response);
 
-  if (result?.download_url) {
-    return {
-      ...result,
-      download_url:
-        buildUrl(result.download_url),
-    };
+  if (
+    result &&
+    typeof result.download_url ===
+      "string" &&
+    result.download_url.startsWith(
+      "/"
+    )
+  ) {
+    result.download_url =
+      buildUrl(
+        result.download_url
+      );
   }
 
   return result;
@@ -512,7 +743,8 @@ export async function regenerateAssignment({
 
 /*
  * ============================================================
- * STEP 26 — DUPLICATE ASSIGNMENT
+ * STEP 26
+ * DUPLICATE ASSIGNMENT
  * ============================================================
  */
 
@@ -545,42 +777,28 @@ export async function duplicateAssignment(
     }
   );
 
-  const result =
-    await handleResponse(response);
-
-  if (result?.download_url) {
-    return {
-      ...result,
-      download_url:
-        buildUrl(result.download_url),
-    };
-  }
-
-  return result;
+  return handleResponse(response);
 }
 
 /*
  * ============================================================
- * STEP 31 — SAVE ASSIGNMENT DRAFT
+ * STEP 31
+ * SAVE ASSIGNMENT DRAFT
  * ============================================================
  *
- * If draftId exists:
- *     update existing draft
- *
- * If draftId does not exist:
- *     create a new draft
+ * Drafts preserve the user's complete Phase 8 configuration.
  */
 
 export async function saveAssignmentDraft({
-  draftId,
+  draftId = null,
   documentId,
   template,
   paper,
   handwritingStyle,
   ink,
   pageNumbers,
-  assignment,
-  handwriting,
+  assignment = {},
+  handwriting = {},
 }) {
   if (!documentId) {
     throw new Error(
@@ -589,7 +807,9 @@ export async function saveAssignmentDraft({
   }
 
   const response = await fetch(
-    buildUrl("/api/assignments/draft"),
+    buildUrl(
+      "/api/assignments/draft"
+    ),
     {
       method: "POST",
 
@@ -600,25 +820,31 @@ export async function saveAssignmentDraft({
 
       body: JSON.stringify({
         draft_id:
-          draftId || null,
+          draftId
+            ? String(draftId)
+            : null,
 
         document_id:
           String(documentId),
 
         template:
           template ||
+          assignment?.template ||
           "college_assignment",
 
         paper:
           paper ||
+          assignment?.paper ||
           "ruled",
 
         handwriting_style:
           handwritingStyle ||
+          handwriting?.style ||
           "school_notebook",
 
         ink:
           ink ||
+          handwriting?.ink ||
           "blue",
 
         page_numbers:
@@ -638,11 +864,9 @@ export async function saveAssignmentDraft({
 
 /*
  * ============================================================
- * STEP 31 — GET ASSIGNMENT DRAFT
+ * STEP 31
+ * GET ASSIGNMENT DRAFT
  * ============================================================
- *
- * Used by AssignmentHistoryPage when
- * "Continue Editing" is clicked.
  */
 
 export async function getAssignmentDraft(
@@ -665,19 +889,90 @@ export async function getAssignmentDraft(
 
 /*
  * ============================================================
- * DEFAULT EXPORT
+ * ASSIGNMENT HISTORY
  * ============================================================
  */
 
-export default {
+/*
+ * GET ALL ASSIGNMENTS
+ */
+
+export async function getAssignments() {
+  const response = await fetch(
+    buildUrl(
+      "/api/assignments"
+    )
+  );
+
+  return handleResponse(response);
+}
+
+/*
+ * DELETE ASSIGNMENT
+ */
+
+export async function deleteAssignment(
+  assignmentId
+) {
+  if (!assignmentId) {
+    throw new Error(
+      "Assignment ID is required."
+    );
+  }
+
+  const response = await fetch(
+    buildUrl(
+      `/api/assignments/${assignmentId}`
+    ),
+    {
+      method: "DELETE",
+    }
+  );
+
+  return handleResponse(response);
+}
+
+/*
+ * ============================================================
+ * DEFAULT EXPORT
+ * ============================================================
+ *
+ * Allows both:
+ *
+ * import {
+ *   paginateAssignment
+ * } from "../services/assignmentService";
+ *
+ * and:
+ *
+ * import assignmentService
+ * from "../services/assignmentService";
+ */
+
+const assignmentService = {
   normalizePhase6Document,
+
   getPhase6Document,
+
   createAssignmentDocument,
+
   createHandwritingAssignmentPayload,
+
   paginateAssignment,
+
   generateAssignmentPDF,
+
   regenerateAssignment,
+
   duplicateAssignment,
+
   saveAssignmentDraft,
+
   getAssignmentDraft,
+
+  getAssignments,
+
+  deleteAssignment,
 };
+
+export default assignmentService;

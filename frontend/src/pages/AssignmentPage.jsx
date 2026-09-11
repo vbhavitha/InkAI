@@ -226,6 +226,13 @@ const DEFAULT_ASSIGNMENT = {
     left: 50,
   },
 
+  customMarginsUnit: "points",
+
+  customPageSize: {
+    widthMm: 210,
+    heightMm: 297,
+  },
+
   /* ----------------------------------------------------------
      Header Display Fields
   ---------------------------------------------------------- */
@@ -1357,6 +1364,7 @@ function AssignmentPage() {
               orientation={assignment.orientation}
               marginPreset={assignment.marginPreset}
               customMargins={assignment.customMargins}
+              customPageSize={assignment.customPageSize}
 
               headerEnabled={assignment.headerEnabled}
               headerText={assignment.headerText}
@@ -1458,6 +1466,13 @@ function AssignmentPage() {
                 updateAssignment(
                   "customMargins",
                   customMargins
+                )
+              }
+
+              onCustomPageSizeChange={(customPageSize) =>
+                updateAssignment(
+                  "customPageSize",
+                  customPageSize
                 )
               }
             />

@@ -60,6 +60,11 @@ export default function PageSettings({
     left: 50,
   },
 
+  customPageSize = {
+    widthMm: 210,
+    heightMm: 297,
+  },
+
   onPaperSizeChange,
   onOrientationChange,
   onMarginPresetChange,
@@ -163,6 +168,48 @@ export default function PageSettings({
             </select>
           </div>
         </div>
+
+        {paperSize === "Custom" ? (
+          <div className="mt-4 rounded-lg border border-indigo-400/10 bg-indigo-500/5 p-4">
+            <p className="mb-3 text-xs font-medium text-slate-300">
+              Custom Page Size
+            </p>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                ["widthMm", "Width"],
+                ["heightMm", "Height"],
+              ].map(([key, label]) => (
+                <label key={key} className="block">
+                  <span className="mb-2 block text-xs text-slate-400">
+                    {label}
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="50"
+                      step="1"
+                      value={customPageSize?.[key] ?? ""}
+                      onChange={(event) =>
+                        onCustomPageSizeChange?.({
+                          ...customPageSize,
+                          [key]: Number(event.target.value),
+                        })
+                      }
+                      className="w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
+                    />
+                    <span className="text-xs text-slate-500">mm</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <p className="mt-3 text-[11px] text-slate-500">
+              Custom dimensions are stored in millimetres.
+            </p>
+          </div>
+        ) : null}
 
         <div className="mt-4">
           <label className="mb-2 block text-xs text-slate-400">
