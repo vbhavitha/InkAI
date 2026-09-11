@@ -951,49 +951,6 @@ export async function deleteAssignment(
 
 /*
  * ============================================================
- * ASSIGNMENT HISTORY
- * ============================================================
- */
-
-/*
- * GET ALL ASSIGNMENTS
- */
-
-export async function getAssignments() {
-  const response = await fetch(
-    buildUrl("/api/assignments")
-  );
-
-  return handleResponse(response);
-}
-
-/*
- * DELETE ASSIGNMENT
- */
-
-export async function deleteAssignment(
-  assignmentId
-) {
-  if (!assignmentId) {
-    throw new Error(
-      "Assignment ID is required."
-    );
-  }
-
-  const response = await fetch(
-    buildUrl(
-      `/api/assignments/${assignmentId}`
-    ),
-    {
-      method: "DELETE",
-    }
-  );
-
-  return handleResponse(response);
-}
-
-/*
- * ============================================================
  * DEFAULT EXPORT
  * ============================================================
  */

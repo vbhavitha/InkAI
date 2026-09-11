@@ -26,7 +26,10 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from reportlab.lib.utils import ImageReader
+from app.pdf.images import (
+    calculate_image_size,
+    load_image,
+)
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
 
@@ -730,6 +733,18 @@ class AssignmentPDFRenderer:
         y,
         max_width,
     ):
+        """
+        Render a structured TipTap table.
+
+        Supports:
+            - header row
+            - borders
+            - padding
+            - wrapping
+            - column sizing
+            - alignment
+        """
+
         rows = (
             node.get("content")
             or []
@@ -737,6 +752,52 @@ class AssignmentPDFRenderer:
 
         if not rows:
             return y
+
+        data = []
+
+        for row in rows:
+
+            cells = (
+                row.get("content")
+                or []
+            )
+
+            values = []
+
+            for cell in cells:
+
+                value = self.extract_text(
+                    cell
+                )
+
+                values.append(
+                    value
+                )
+
+            data.append(
+                values
+            )
+
+        if not data:
+            return y
+
+        # --------------------------------------------------------
+        # Determine available height.
+        # --------------------------------------------------------
+
+        bottom_limit = (
+            self.page_config.bottom
+            + self.page_config.footer_height
+        )
+
+        available_height = max(
+            1.0,
+            y - bottom_limit,
+        )
+
+        # --------------------------------------------------------
+        # Font configuration.
+        # --------------------------------------------------------
 
         if self.handwriting:
 
@@ -760,102 +821,69 @@ class AssignmentPDFRenderer:
             font_size = 10
             font_name = "Helvetica"
 
-        pdf.setFont(
-            font_name,
-            font_size,
+        # --------------------------------------------------------
+        # Build table.
+        # --------------------------------------------------------
+
+        table = build_table(
+            data,
+            available_width=(
+                max_width
+            ),
+            header_row=True,
+            repeat_header=True,
+            font_name=font_name,
+            font_size=font_size,
+            header_font_size=(
+                font_size
+            ),
+            alignment="left",
+            vertical_alignment="middle",
+            cell_padding=6,
         )
 
-        self._set_ink_color(pdf)
+        # --------------------------------------------------------
+        # Calculate actual table size.
+        # --------------------------------------------------------
 
-        # Determine number of columns.
-        column_count = 1
-
-        for row in rows:
-
-            cells = (
-                row.get("content")
-                or []
+        table_width, table_height = (
+            table.wrap(
+                max_width,
+                available_height,
             )
-
-            column_count = max(
-                column_count,
-                len(cells),
-            )
-
-        cell_width = (
-            max_width
-            / column_count
         )
 
-        row_height = max(
-            24,
-            font_size + 12,
+        # --------------------------------------------------------
+        # Safety check.
+        # --------------------------------------------------------
+
+        if table_height > available_height:
+
+            # The pagination layer should normally move the table
+            # when it cannot fit. Do not allow drawing outside the
+            # content area.
+            return y
+
+        # --------------------------------------------------------
+        # ReportLab Table.wrap() returns the required size.
+        #
+        # Table.drawOn() uses bottom-left coordinates.
+        # --------------------------------------------------------
+
+        table_y = (
+            y - table_height
         )
 
-        for row in rows:
+        table.drawOn(
+            pdf,
+            x,
+            table_y,
+        )
 
-            cells = (
-                row.get("content")
-                or []
-            )
-
-            for column in range(
-                column_count
-            ):
-
-                cell = (
-                    cells[column]
-                    if column < len(cells)
-                    else {}
-                )
-
-                text = (
-                    self.extract_text(
-                        cell
-                    )
-                )
-
-                cell_x = (
-                    x
-                    + column
-                    * cell_width
-                )
-
-                cell_y = (
-                    y
-                    - row_height
-                )
-
-                pdf.rect(
-                    cell_x,
-                    cell_y,
-                    cell_width,
-                    row_height,
-                )
-
-                if text:
-
-                    lines = self.wrap_text(
-                        text,
-                        max(
-                            cell_width - 10,
-                            10,
-                        ),
-                        font_name,
-                        font_size,
-                    )
-
-                    if lines:
-
-                        pdf.drawString(
-                            cell_x + 5,
-                            cell_y + 6,
-                            lines[0][:200],
-                        )
-
-            y -= row_height
-
-        return y - 8
+        return (
+            table_y
+            - 12
+        )
 
     # ========================================================
     # IMAGE
@@ -869,6 +897,16 @@ class AssignmentPDFRenderer:
         y,
         max_width,
     ):
+        """
+        Render a structured TipTap image node.
+
+        Images:
+            - preserve aspect ratio
+            - never exceed content width
+            - never exceed remaining page height
+            - respect page margins
+        """
+
         attrs = (
             node.get("attrs")
             or {}
@@ -888,48 +926,96 @@ class AssignmentPDFRenderer:
 
         try:
 
-            image = ImageReader(
+            resource = load_image(
                 src
             )
 
-            width = float(
-                attrs.get(
-                    "width",
-                    max_width,
-                )
+            page_width, page_height = (
+                self.layout.get_page_size()
             )
 
-            height = float(
-                attrs.get(
-                    "height",
-                    width * 0.6,
-                )
+            bottom_limit = (
+                self.page_config.bottom
+                + self.page_config.footer_height
             )
 
-            if width > max_width:
+            available_height = max(
+                1.0,
+                y - bottom_limit,
+            )
 
-                ratio = (
-                    max_width
-                    / width
-                )
+            requested_width = (
+                attrs.get("width")
+            )
 
-                width *= ratio
-                height *= ratio
+            requested_height = (
+                attrs.get("height")
+            )
+
+            requested_width = (
+                float(requested_width)
+                if requested_width
+                else None
+            )
+
+            requested_height = (
+                float(requested_height)
+                if requested_height
+                else None
+            )
+
+            size = calculate_image_size(
+                resource,
+                max_width=max_width,
+                max_height=(
+                    available_height
+                ),
+                requested_width=(
+                    requested_width
+                ),
+                requested_height=(
+                    requested_height
+                ),
+            )
+
+            # ----------------------------------------------------
+            # Image coordinate.
+            #
+            # ReportLab uses bottom-left coordinates.
+            # ----------------------------------------------------
+
+            image_y = (
+                y - size.height
+            )
+
+            if image_y < bottom_limit:
+
+                # The authoritative pagination layer should normally
+                # have placed this node on the next page.
+                #
+                # As a safety guard, do not draw outside the content
+                # area.
+                return y
+
+            from reportlab.lib.utils import (
+                ImageReader,
+            )
 
             pdf.drawImage(
-                image,
+                ImageReader(
+                    resource.image
+                ),
                 x,
-                y - height,
-                width=width,
-                height=height,
+                image_y,
+                width=size.width,
+                height=size.height,
                 preserveAspectRatio=True,
                 mask="auto",
             )
 
             return (
-                y
-                - height
-                - 10
+                image_y
+                - 12
             )
 
         except Exception:
