@@ -176,6 +176,11 @@ class AssignmentGenerateRequest(BaseModel):
         default_factory=dict
     )
 
+    # STEP 20 — Optional PDF watermark configuration.
+    watermark: Dict[str, Any] = Field(
+        default_factory=dict
+    )
+
 # ============================================================
 # STEP 31 — DRAFT REQUEST
 # ============================================================
@@ -604,8 +609,10 @@ def build_page_config(
         )
     )
 
+    # STEP 19 — Reserve a dedicated header band.
+    # Body pagination must never consume this space.
     header_height = (
-        header_font_size + 12
+        max(header_font_size + 16, 28)
         if header_enabled and header_text
         else 0
     )
@@ -701,12 +708,18 @@ def build_page_config(
         )
     )
 
-    # Reserve one shared footer band. Page numbering and footer text
-    # can coexist without changing the authoritative pagination rules.
-    footer_height = 40 if (
-        show_footer
-        or show_page_number
-    ) else 0
+    # STEP 19 — Reserve a dedicated footer band.
+    # Footer text and page numbers share this band; body pagination never
+    # uses it.
+    footer_height = (
+        max(
+            footer_font_size + 18,
+            page_number_font_size + 18,
+            40,
+        )
+        if (show_footer or show_page_number)
+        else 0
+    )
 
     return PageConfig(
         paper_size=paper_size,
@@ -1174,6 +1187,7 @@ def generate_assignment(
         renderer = AssignmentPDFRenderer(
             page_config=page_config,
             handwriting=request.handwriting,
+            watermark=request.watermark,
         )
 
         renderer.render(

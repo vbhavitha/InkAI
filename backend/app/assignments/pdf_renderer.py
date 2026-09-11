@@ -43,6 +43,7 @@ from app.pdf.images import (
 from app.pdf.layout import format_page_number
 from app.pdf.tables import build_table
 from app.pdf.watermark import WatermarkRenderer
+from app.pdf.bookmarks import bookmark_page
 
 from .page_layout import (
     AssignmentPageLayout,
@@ -150,10 +151,39 @@ class AssignmentPDFRenderer:
         total_pages = len(pages)
 
         for page in pages:
+            page_number = int(
+                page.get(
+                    "pageNumber",
+                    page.get("number", 1),
+                )
+                or 1
+            )
+
+            # STEP 20 — Register the assignment root destination while
+            # page 1 is the active PDF page.
+            if page_number == 1:
+                pdf.bookmarkPage(
+                    "assignment_root",
+                    fit="Fit",
+                )
+
+                pdf.addOutlineEntry(
+                    self._bookmark_root_title(),
+                    "assignment_root",
+                    level=0,
+                    closed=False,
+                )
+
             self.render_page(
                 pdf,
                 page,
                 total_pages,
+            )
+
+            # STEP 20 — Register heading bookmarks on the active page.
+            self._add_page_bookmarks(
+                pdf,
+                page,
             )
 
             # render_page draws only the current page. This is the actual
@@ -181,6 +211,120 @@ class AssignmentPDFRenderer:
             )
 
         return pdf_bytes
+
+    # ========================================================
+    # STEP 20 — PDF BOOKMARKS
+    # ========================================================
+
+    def _bookmark_root_title(self) -> str:
+        """Return the assignment title used for the root bookmark."""
+        title = str(
+            getattr(
+                self.page_config,
+                "header_text",
+                "",
+            )
+            or ""
+        ).strip()
+
+        return title or "Assignment"
+
+    def _add_page_bookmarks(
+        self,
+        pdf,
+        page: Dict[str, Any],
+    ):
+        """
+        Add bookmarks for heading nodes on the currently active PDF page.
+
+        Pagination has already happened. This method only creates PDF outline
+        destinations and never changes the TipTap document.
+        """
+        page_number = int(
+            page.get(
+                "pageNumber",
+                page.get("number", 1),
+            )
+            or 1
+        )
+
+        nodes = page.get("nodes") or []
+
+        for index, node in enumerate(nodes):
+            if not isinstance(node, dict):
+                continue
+
+            if node.get("type") != "heading":
+                continue
+
+            title = self._extract_bookmark_text(node)
+
+            if not title:
+                continue
+
+            attrs = node.get("attrs") or {}
+
+            try:
+                heading_level = int(
+                    attrs.get("level", 1)
+                )
+            except (TypeError, ValueError):
+                heading_level = 1
+
+            # Keep the outline level bounded and avoid invalid gaps.
+            heading_level = max(
+                1,
+                min(heading_level, 6),
+            )
+
+            bookmark_key = (
+                f"assignment_page_"
+                f"{page_number}_heading_"
+                f"{index}"
+            )
+
+            bookmark_page(
+                pdf,
+                bookmark_key,
+                title,
+                level=heading_level,
+                closed=False,
+            )
+
+    def _extract_bookmark_text(
+        self,
+        node: Dict[str, Any],
+    ) -> str:
+        """Extract visible heading text for the bookmark label only."""
+        parts: List[str] = []
+
+        def walk(current: Any):
+            if not isinstance(current, dict):
+                return
+
+            if current.get("type") == "text":
+                parts.append(
+                    str(
+                        current.get(
+                            "text",
+                            "",
+                        )
+                    )
+                )
+                return
+
+            if current.get("type") == "hardBreak":
+                parts.append(" ")
+                return
+
+            for child in current.get("content") or []:
+                walk(child)
+
+        walk(node)
+
+        return " ".join(
+            "".join(parts).split()
+        ).strip()
 
     # ========================================================
     # PAGE
@@ -371,16 +515,21 @@ class AssignmentPDFRenderer:
 
         x = self.page_config.left
 
-        y = (
+        # STEP 19 — Body coordinates are strictly inside the reserved
+        # header/footer bands. The renderer never expands into those bands.
+        body_top = (
             page_height
             - self.page_config.top
             - self.page_config.header_height
         )
 
-        bottom_limit = (
+        body_bottom = (
             self.page_config.bottom
             + self.page_config.footer_height
         )
+
+        y = body_top
+        bottom_limit = body_bottom
 
         for node in nodes:
             if not isinstance(node, dict):
