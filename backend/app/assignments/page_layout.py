@@ -1,31 +1,46 @@
 """
-Phase 8 — Assignment Page Layout
+InkAI Assignment Page Layout
+============================
 
-Handles:
-- Paper size
-- Orientation
-- Margins
-- Automatic pagination
-- Manual page breaks from Phase 6
-- Page numbering
+Authoritative assignment pagination engine.
 
-Important:
-This module works with structured TipTap JSON.
-It does NOT flatten the document into plain text.
+Responsibilities:
+- Resolve PDF page size/orientation.
+- Resolve margins.
+- Reserve header/footer/page-number space.
+- Estimate structured TipTap node heights.
+- Automatically paginate structured nodes.
+- Preserve explicit pageBreak nodes.
+
+This module does NOT flatten documents and does NOT implement a second
+pagination algorithm. It is the existing assignment pagination layer,
+now backed by the reusable PDF layout configuration.
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+
+from app.pdf.layout import (
+    DEFAULT_MARGIN_PRESET,
+    DEFAULT_PAGE_SIZE,
+    build_layout,
+    get_page_size,
+    mm_to_points,
+)
 
 
 # ============================================================
 # PAGE SIZES
 # ============================================================
 
+# Keep A5 for backwards compatibility with the existing Phase 8 UI.
 PAGE_SIZES = {
     "A4": (595.28, 841.89),
     "A5": (419.53, 595.28),
     "Letter": (612.0, 792.0),
+    "Legal": (612.0, 1008.0),
 }
 
 
@@ -35,22 +50,22 @@ PAGE_SIZES = {
 
 MARGIN_PRESETS = {
     "normal": {
-        "top": 56,
-        "right": 50,
-        "bottom": 56,
-        "left": 50,
+        "top": mm_to_points(20),
+        "right": mm_to_points(20),
+        "bottom": mm_to_points(20),
+        "left": mm_to_points(20),
     },
     "narrow": {
-        "top": 36,
-        "right": 36,
-        "bottom": 36,
-        "left": 36,
+        "top": mm_to_points(12),
+        "right": mm_to_points(12),
+        "bottom": mm_to_points(12),
+        "left": mm_to_points(12),
     },
     "wide": {
-        "top": 72,
-        "right": 65,
-        "bottom": 72,
-        "left": 65,
+        "top": mm_to_points(30),
+        "right": mm_to_points(30),
+        "bottom": mm_to_points(30),
+        "left": mm_to_points(30),
     },
 }
 
@@ -61,30 +76,47 @@ MARGIN_PRESETS = {
 
 @dataclass
 class PageConfig:
-    paper_size: str = "A4"
+    paper_size: str = DEFAULT_PAGE_SIZE
     orientation: str = "portrait"
 
-    margin_preset: str = "normal"
+    margin_preset: str = DEFAULT_MARGIN_PRESET
 
-    top: float = 56
-    right: float = 50
-    bottom: float = 56
-    left: float = 50
+    top: float = MARGIN_PRESETS["normal"]["top"]
+    right: float = MARGIN_PRESETS["normal"]["right"]
+    bottom: float = MARGIN_PRESETS["normal"]["bottom"]
+    left: float = MARGIN_PRESETS["normal"]["left"]
 
     line_height: float = 28
 
+    # Space reserved for display elements.
     header_height: float = 0
+    footer_height: float = 0
 
-    # Reserve space for footer/page number.
-    footer_height: float = 24
+    # Header.
+    header_enabled: bool = False
+    header_text: str = ""
+    header_position: str = "center"
+    header_font_size: float = 11.0
+    header_bold: bool = False
 
-    # Footer settings.
+    # Footer.
     show_footer: bool = True
     footer_text: str = "InkAI"
+    footer_position: str = "center"
+    footer_font_size: float = 9.0
+    footer_bold: bool = False
 
-    # Page number settings.
+    # Page numbers.
     show_page_number: bool = True
     page_number_position: str = "center"
+    page_number_show_total: bool = False
+    page_number_prefix: str = "Page"
+    page_number_font_size: float = 9.0
+    page_number_bold: bool = False
+
+    # Custom page size, in millimetres.
+    custom_width_mm: float | None = None
+    custom_height_mm: float | None = None
 
 
 # ============================================================
@@ -96,6 +128,12 @@ class Page:
     number: int
     nodes: List[Dict[str, Any]]
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "pageNumber": self.number,
+            "nodes": self.nodes,
+        }
+
 
 # ============================================================
 # PAGE LAYOUT ENGINE
@@ -103,61 +141,157 @@ class Page:
 
 class AssignmentPageLayout:
     """
-    Calculates page dimensions and automatically divides
-    structured document nodes into pages.
+    Calculates page dimensions and automatically divides structured
+    document nodes into pages.
 
-    A page break node always forces a new page.
-
-    Normal nodes are automatically moved to the next page
-    when there is not enough vertical space.
+    The pagination algorithm remains the existing assignment algorithm.
+    The reusable app.pdf.layout module only supplies page geometry and
+    display-space configuration.
     """
 
     def __init__(self, config: Optional[PageConfig] = None):
         self.config = config or PageConfig()
+        self._layout = self._build_reusable_layout()
+
+    # --------------------------------------------------------
+    # REUSABLE PDF LAYOUT
+    # --------------------------------------------------------
+
+    def _build_reusable_layout(self):
+        """
+        Build the reusable PDF layout from the assignment PageConfig.
+
+        A5 remains handled locally for backwards compatibility because
+        the existing assignment UI historically exposed it.
+        """
+        if self.config.paper_size == "A5":
+            # A5 compatibility path. Geometry is equivalent to the
+            # existing assignment engine.
+            from app.pdf.layout import PageSize, Margins, HeaderConfig, FooterConfig, PageNumberConfig
+
+            width, height = PAGE_SIZES["A5"]
+
+            if self.config.orientation.lower() == "landscape":
+                width, height = height, width
+
+            return type(
+                "AssignmentReusableLayout",
+                (),
+                {
+                    "page_size": PageSize(
+                        name="A5",
+                        width=width,
+                        height=height,
+                    ),
+                    "margins": Margins(
+                        top=self.config.top,
+                        right=self.config.right,
+                        bottom=self.config.bottom,
+                        left=self.config.left,
+                    ),
+                    "header": HeaderConfig(
+                        enabled=self.config.header_enabled,
+                        text=self.config.header_text,
+                        position=self.config.header_position,
+                        font_size=self.config.header_font_size,
+                        bold=self.config.header_bold,
+                    ),
+                    "footer": FooterConfig(
+                        enabled=self.config.show_footer,
+                        text=self.config.footer_text,
+                        position=self.config.footer_position,
+                        font_size=self.config.footer_font_size,
+                        bold=self.config.footer_bold,
+                    ),
+                    "page_numbers": PageNumberConfig(
+                        enabled=self.config.show_page_number,
+                        position=self.config.page_number_position,
+                        show_total=self.config.page_number_show_total,
+                        prefix=self.config.page_number_prefix,
+                        font_size=self.config.page_number_font_size,
+                        bold=self.config.page_number_bold,
+                    ),
+                },
+            )()
+
+        return build_layout(
+            page_size=self.config.paper_size,
+            orientation=self.config.orientation,
+            margin_preset=self.config.margin_preset,
+            custom_width_mm=self.config.custom_width_mm,
+            custom_height_mm=self.config.custom_height_mm,
+            custom_margins={
+                "top": self.config.top / (72 / 25.4),
+                "right": self.config.right / (72 / 25.4),
+                "bottom": self.config.bottom / (72 / 25.4),
+                "left": self.config.left / (72 / 25.4),
+            },
+            header_enabled=self.config.header_enabled,
+            header_text=self.config.header_text,
+            header_position=self.config.header_position,
+            header_font_size=self.config.header_font_size,
+            header_bold=self.config.header_bold,
+            footer_enabled=self.config.show_footer,
+            footer_text=self.config.footer_text,
+            footer_position=self.config.footer_position,
+            footer_font_size=self.config.footer_font_size,
+            footer_bold=self.config.footer_bold,
+            page_numbers_enabled=self.config.show_page_number,
+            page_number_position=self.config.page_number_position,
+            page_number_show_total=self.config.page_number_show_total,
+            page_number_prefix=self.config.page_number_prefix,
+            page_number_font_size=self.config.page_number_font_size,
+            page_number_bold=self.config.page_number_bold,
+        )
 
     # --------------------------------------------------------
     # PAGE SIZE
     # --------------------------------------------------------
 
     def get_page_size(self):
-        size = PAGE_SIZES.get(
+        if self.config.paper_size == "A5":
+            width, height = PAGE_SIZES["A5"]
+
+            if self.config.orientation.lower() == "landscape":
+                width, height = height, width
+
+            return width, height
+
+        resolved = get_page_size(
             self.config.paper_size,
-            PAGE_SIZES["A4"],
+            custom_width_mm=self.config.custom_width_mm,
+            custom_height_mm=self.config.custom_height_mm,
         )
 
-        width, height = size
-
         if self.config.orientation.lower() == "landscape":
-            width, height = height, width
+            return resolved.height, resolved.width
 
-        return width, height
+        return resolved.width, resolved.height
 
     # --------------------------------------------------------
-    # USABLE PAGE HEIGHT
+    # CONTENT BOUNDS
     # --------------------------------------------------------
 
     def get_usable_height(self):
         _, page_height = self.get_page_size()
 
-        return (
+        return max(
+            0,
             page_height
             - self.config.top
             - self.config.bottom
             - self.config.header_height
-            - self.config.footer_height
+            - self.config.footer_height,
         )
-
-    # --------------------------------------------------------
-    # USABLE PAGE WIDTH
-    # --------------------------------------------------------
 
     def get_usable_width(self):
         page_width, _ = self.get_page_size()
 
-        return (
+        return max(
+            0,
             page_width
             - self.config.left
-            - self.config.right
+            - self.config.right,
         )
 
     # --------------------------------------------------------
@@ -168,35 +302,13 @@ class AssignmentPageLayout:
         self,
         node: Dict[str, Any],
     ) -> float:
-        """
-        Estimate how much vertical space a structured
-        TipTap node requires.
-
-        This is intentionally an estimate.
-
-        The PDF renderer can perform more precise wrapping
-        when rendering individual nodes.
-        """
-
         node_type = node.get("type")
-
-        # ----------------------------------------------------
-        # Manual page break
-        # ----------------------------------------------------
 
         if node_type == "pageBreak":
             return 0
 
-        # ----------------------------------------------------
-        # Hard break
-        # ----------------------------------------------------
-
         if node_type == "hardBreak":
             return self.config.line_height
-
-        # ----------------------------------------------------
-        # Image
-        # ----------------------------------------------------
 
         if node_type == "image":
             attrs = node.get("attrs") or {}
@@ -211,22 +323,13 @@ class AssignmentPageLayout:
 
             return self.config.line_height * 6
 
-        # ----------------------------------------------------
-        # Table
-        # ----------------------------------------------------
-
         if node_type == "table":
             rows = node.get("content") or []
-
             row_count = max(len(rows), 1)
 
             return row_count * (
                 self.config.line_height * 1.4
             )
-
-        # ----------------------------------------------------
-        # Lists
-        # ----------------------------------------------------
 
         if node_type in (
             "bulletList",
@@ -246,10 +349,6 @@ class AssignmentPageLayout:
                 self.config.line_height,
             )
 
-        # ----------------------------------------------------
-        # List item
-        # ----------------------------------------------------
-
         if node_type == "listItem":
             children = node.get("content") or []
 
@@ -265,51 +364,23 @@ class AssignmentPageLayout:
                 self.config.line_height,
             )
 
-        # ----------------------------------------------------
-        # Heading
-        # ----------------------------------------------------
-
         if node_type == "heading":
             return self.config.line_height * 1.6
-
-        # ----------------------------------------------------
-        # Paragraph
-        # ----------------------------------------------------
 
         if node_type == "paragraph":
             return self._estimate_paragraph_height(node)
 
-        # ----------------------------------------------------
-        # Default
-        # ----------------------------------------------------
-
         return self.config.line_height
-
-    # --------------------------------------------------------
-    # PARAGRAPH HEIGHT
-    # --------------------------------------------------------
 
     def _estimate_paragraph_height(
         self,
         node: Dict[str, Any],
     ) -> float:
-        """
-        Estimate paragraph height based on text length and
-        usable page width.
-
-        This prevents very long paragraphs from being treated
-        as a single line.
-        """
-
         text = self._extract_text(node)
 
         if not text:
             return self.config.line_height
 
-        # Approximate characters per line.
-        #
-        # This intentionally uses an estimate because actual
-        # handwriting width depends on font and letter spacing.
         usable_width = max(
             self.get_usable_width(),
             100,
@@ -327,7 +398,11 @@ class AssignmentPageLayout:
 
         line_count = max(
             1,
-            (len(text) + chars_per_line - 1)
+            (
+                len(text)
+                + chars_per_line
+                - 1
+            )
             // chars_per_line,
         )
 
@@ -337,7 +412,7 @@ class AssignmentPageLayout:
         )
 
     # --------------------------------------------------------
-    # EXTRACT TEXT
+    # TEXT EXTRACTION
     # --------------------------------------------------------
 
     def _extract_text(
@@ -372,38 +447,26 @@ class AssignmentPageLayout:
         self,
         nodes: List[Dict[str, Any]],
     ) -> List[Page]:
-        """
-        Divide structured document nodes into pages.
-
-        Rules:
-
-        1. Nodes are placed sequentially.
-        2. When the current page runs out of space,
-           a new page is created automatically.
-        3. A pageBreak node always starts a new page.
-        4. The pageBreak node itself is not rendered.
-        """
-
         pages: List[Page] = []
 
         current_nodes: List[Dict[str, Any]] = []
         current_height = 0
 
-        usable_height = self.get_usable_height()
+        usable_height = max(
+            self.get_usable_height(),
+            self.config.line_height,
+        )
 
         page_number = 1
 
         for node in nodes:
-
             node_type = node.get("type")
 
             # ==================================================
-            # STEP 14 — MANUAL PAGE BREAK
+            # MANUAL PAGE BREAK
             # ==================================================
 
             if node_type == "pageBreak":
-
-                # Save current page.
                 if current_nodes:
                     pages.append(
                         Page(
@@ -412,9 +475,7 @@ class AssignmentPageLayout:
                         )
                     )
 
-                # Start a new page.
                 page_number += 1
-
                 current_nodes = []
                 current_height = 0
 
@@ -428,14 +489,7 @@ class AssignmentPageLayout:
                 node
             )
 
-            # --------------------------------------------------
-            # If a single node is taller than the entire page
-            # --------------------------------------------------
-
             if node_height > usable_height:
-
-                # If page already contains content,
-                # finish it first.
                 if current_nodes:
                     pages.append(
                         Page(
@@ -448,15 +502,10 @@ class AssignmentPageLayout:
                     current_nodes = []
                     current_height = 0
 
-                # Add oversized node to its own page.
                 current_nodes.append(node)
                 current_height = node_height
 
                 continue
-
-            # --------------------------------------------------
-            # Normal overflow
-            # --------------------------------------------------
 
             if (
                 current_height + node_height
@@ -474,16 +523,8 @@ class AssignmentPageLayout:
                 current_nodes = []
                 current_height = 0
 
-            # --------------------------------------------------
-            # Add node to current page
-            # --------------------------------------------------
-
             current_nodes.append(node)
             current_height += node_height
-
-        # ======================================================
-        # FINAL PAGE
-        # ======================================================
 
         if current_nodes:
             pages.append(
@@ -493,7 +534,6 @@ class AssignmentPageLayout:
                 )
             )
 
-        # Empty document still gets one page.
         if not pages:
             pages.append(
                 Page(
@@ -506,26 +546,13 @@ class AssignmentPageLayout:
 
 
 # ============================================================
-# HELPER FUNCTION
+# HELPER
 # ============================================================
 
 def paginate_document(
     document: Dict[str, Any],
     config: Optional[PageConfig] = None,
 ) -> List[Page]:
-    """
-    Convenience function.
-
-    Accepts either:
-
-        {
-            "type": "doc",
-            "content": [...]
-        }
-
-    or directly a list of nodes.
-    """
-
     if isinstance(document, dict):
         nodes = document.get("content") or []
     elif isinstance(document, list):

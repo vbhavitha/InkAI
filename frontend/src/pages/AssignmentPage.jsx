@@ -211,20 +211,19 @@ const DEFAULT_ASSIGNMENT = {
   ---------------------------------------------------------- */
 
   paperSize: "A4",
-  customPageSize: {
-    widthMm: 210,
-    heightMm: 297,
-  },
-
   orientation: "portrait",
+
+  /* ----------------------------------------------------------
+     Page Margins
+  ---------------------------------------------------------- */
 
   marginPreset: "normal",
 
   customMargins: {
-    top: 20,
-    right: 20,
-    bottom: 20,
-    left: 20,
+    top: 56,
+    right: 50,
+    bottom: 56,
+    left: 50,
   },
 
   /* ----------------------------------------------------------
@@ -240,13 +239,28 @@ const DEFAULT_ASSIGNMENT = {
   showTeacher: false,
 
   /* ----------------------------------------------------------
-     Footer
+     STEP 10 — Header
+  ---------------------------------------------------------- */
+
+  headerEnabled: false,
+  headerText: "",
+  headerPosition: "center",
+
+  /* ----------------------------------------------------------
+     STEP 11 — Footer
   ---------------------------------------------------------- */
 
   showFooter: true,
-  footerText: "InkAI",
+  footerText: "InkAI — Assignment",
+  footerPosition: "center",
+
+  /* ----------------------------------------------------------
+     STEP 12 — Page Numbers
+  ---------------------------------------------------------- */
+
   showPageNumber: true,
   pageNumberPosition: "center",
+  pageNumberShowTotal: false,
 
   /* ----------------------------------------------------------
      Font Sizes
@@ -1343,6 +1357,81 @@ function AssignmentPage() {
               orientation={assignment.orientation}
               marginPreset={assignment.marginPreset}
               customMargins={assignment.customMargins}
+
+              headerEnabled={assignment.headerEnabled}
+              headerText={assignment.headerText}
+              headerPosition={assignment.headerPosition}
+
+              onHeaderEnabledChange={(value) =>
+                updateAssignment(
+                  "headerEnabled",
+                  value
+                )
+              }
+
+              onHeaderTextChange={(value) =>
+                updateAssignment(
+                  "headerText",
+                  value
+                )
+              }
+
+              onHeaderPositionChange={(value) =>
+                updateAssignment(
+                  "headerPosition",
+                  value
+                )
+              }
+
+              showFooter={assignment.showFooter}
+              footerText={assignment.footerText}
+              footerPosition={assignment.footerPosition}
+
+              onShowFooterChange={(value) =>
+                updateAssignment(
+                  "showFooter",
+                  value
+                )
+              }
+
+              onFooterTextChange={(value) =>
+                updateAssignment(
+                  "footerText",
+                  value
+                )
+              }
+
+              onFooterPositionChange={(value) =>
+                updateAssignment(
+                  "footerPosition",
+                  value
+                )
+              }
+
+              showPageNumber={assignment.showPageNumber}
+              pageNumberPosition={assignment.pageNumberPosition}
+              pageNumberShowTotal={assignment.pageNumberShowTotal}
+
+              onShowPageNumberChange={(value) =>
+                updateAssignment(
+                  "showPageNumber",
+                  value
+                )
+              }
+
+              onPageNumberPositionChange={(value) =>
+                updateAssignment(
+                  "pageNumberPosition",
+                  value
+                )
+              }
+
+              onPageNumberShowTotalChange={(value) =>
+                updateAssignment(
+                  "pageNumberShowTotal",
+                  value
+                )
+              }
 
               onPaperSizeChange={(paperSize) =>
                 updateAssignment(

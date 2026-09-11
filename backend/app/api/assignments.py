@@ -407,47 +407,45 @@ def build_page_config(
     page: Dict[str, Any] | None = None,
     assignment: Dict[str, Any] | None = None,
 ) -> PageConfig:
+    """
+    Build the authoritative assignment pagination configuration.
 
+    The existing AssignmentPageLayout remains responsible for
+    pagination. The reusable PDF layout is used for page geometry
+    and display configuration.
+
+    Legacy custom margins in points are still accepted. New callers
+    may send customMarginsUnit="mm" to use millimetres.
+    """
     page = page or {}
     assignment = assignment or {}
 
-    # --------------------------------------------------------
-    # Paper
-    # --------------------------------------------------------
-
     paper_size = page.get(
         "paperSize",
-        "A4",
+        assignment.get("paperSize", "A4"),
     )
 
     orientation = page.get(
         "orientation",
-        "portrait",
+        assignment.get("orientation", "portrait"),
+    )
+
+    margin_preset = page.get(
+        "marginPreset",
+        assignment.get("marginPreset", "normal"),
+    )
+
+    custom_margins = (
+        page.get("customMargins")
+        or assignment.get("customMargins")
+        or {}
     )
 
     # --------------------------------------------------------
     # Margins
     # --------------------------------------------------------
 
-    margin_preset = page.get(
-        "marginPreset",
-        "normal",
-    )
-
-    custom_margins = (
-        page.get("customMargins")
-        or {}
-    )
-
-    margins = {
-        "top": 56,
-        "right": 50,
-        "bottom": 56,
-        "left": 50,
-    }
-
     if margin_preset == "narrow":
-
         margins = {
             "top": 36,
             "right": 36,
@@ -456,7 +454,6 @@ def build_page_config(
         }
 
     elif margin_preset == "wide":
-
         margins = {
             "top": 72,
             "right": 65,
@@ -465,53 +462,251 @@ def build_page_config(
         }
 
     elif margin_preset == "custom":
+        unit = str(
+            page.get(
+                "customMarginsUnit",
+                assignment.get(
+                    "customMarginsUnit",
+                    "points",
+                ),
+            )
+            or "points"
+        ).lower()
 
+        if unit == "mm":
+            from app.pdf.layout import mm_to_points
+
+            margins = {
+                "top": mm_to_points(
+                    float(custom_margins.get("top", 20))
+                ),
+                "right": mm_to_points(
+                    float(custom_margins.get("right", 20))
+                ),
+                "bottom": mm_to_points(
+                    float(custom_margins.get("bottom", 20))
+                ),
+                "left": mm_to_points(
+                    float(custom_margins.get("left", 20))
+                ),
+            }
+        else:
+            # Legacy Phase 8 point-based settings.
+            margins = {
+                "top": float(
+                    custom_margins.get("top", 56)
+                ),
+                "right": float(
+                    custom_margins.get("right", 50)
+                ),
+                "bottom": float(
+                    custom_margins.get("bottom", 56)
+                ),
+                "left": float(
+                    custom_margins.get("left", 50)
+                ),
+            }
+
+    else:
         margins = {
-            "top": custom_margins.get(
-                "top",
-                56,
-            ),
-            "right": custom_margins.get(
-                "right",
-                50,
-            ),
-            "bottom": custom_margins.get(
-                "bottom",
-                56,
-            ),
-            "left": custom_margins.get(
-                "left",
-                50,
-            ),
+            "top": 56,
+            "right": 50,
+            "bottom": 56,
+            "left": 50,
         }
 
     # --------------------------------------------------------
-    # Footer / Page numbers
+    # Custom page size
     # --------------------------------------------------------
 
-    show_footer = assignment.get(
-        "showFooter",
-        True,
+    custom_page_size = (
+        page.get("customPageSize")
+        or assignment.get("customPageSize")
+        or {}
     )
 
-    footer_text = assignment.get(
-        "footerText",
-        "InkAI",
+    custom_width_mm = custom_page_size.get(
+        "widthMm"
     )
 
-    show_page_number = assignment.get(
-        "showPageNumber",
-        True,
-    )
-
-    page_number_position = assignment.get(
-        "pageNumberPosition",
-        "center",
+    custom_height_mm = custom_page_size.get(
+        "heightMm"
     )
 
     # --------------------------------------------------------
-    # Page configuration
+    # Header
     # --------------------------------------------------------
+
+    header_enabled = bool(
+        assignment.get(
+            "headerEnabled",
+            page.get("headerEnabled", False),
+        )
+    )
+
+    header_text = str(
+        assignment.get(
+            "headerText",
+            page.get("headerText", ""),
+        )
+        or ""
+    ).strip()
+
+    if header_enabled and not header_text:
+        title = str(
+            assignment.get("title")
+            or assignment.get("assignmentTitle")
+            or ""
+        ).strip()
+
+        subject = str(
+            assignment.get("subject")
+            or ""
+        ).strip()
+
+        student = str(
+            assignment.get("studentName")
+            or ""
+        ).strip()
+
+        if title:
+            header_text = title
+        elif student and subject:
+            header_text = (
+                f"Name: {student} | "
+                f"Subject: {subject}"
+            )
+        elif subject:
+            header_text = (
+                f"Subject: {subject}"
+            )
+
+    header_position = str(
+        assignment.get(
+            "headerPosition",
+            page.get("headerPosition", "center"),
+        )
+        or "center"
+    ).lower()
+
+    header_font_size = float(
+        assignment.get(
+            "headerFontSize",
+            11,
+        )
+        or 11
+    )
+
+    header_bold = bool(
+        assignment.get(
+            "headerBold",
+            False,
+        )
+    )
+
+    header_height = (
+        header_font_size + 12
+        if header_enabled and header_text
+        else 0
+    )
+
+    # --------------------------------------------------------
+    # Footer
+    # --------------------------------------------------------
+
+    show_footer = bool(
+        assignment.get(
+            "showFooter",
+            True,
+        )
+    )
+
+    footer_text = str(
+        assignment.get(
+            "footerText",
+            "InkAI — Assignment",
+        )
+        or ""
+    )
+
+    footer_position = str(
+        assignment.get(
+            "footerPosition",
+            "center",
+        )
+        or "center"
+    ).lower()
+
+    footer_font_size = float(
+        assignment.get(
+            "footerFontSize",
+            9,
+        )
+        or 9
+    )
+
+    footer_bold = bool(
+        assignment.get(
+            "footerBold",
+            False,
+        )
+    )
+
+    # --------------------------------------------------------
+    # Page numbers
+    # --------------------------------------------------------
+
+    show_page_number = bool(
+        assignment.get(
+            "showPageNumber",
+            True,
+        )
+    )
+
+    page_number_position = str(
+        assignment.get(
+            "pageNumberPosition",
+            "center",
+        )
+        or "center"
+    ).lower()
+
+    page_number_show_total = bool(
+        assignment.get(
+            "pageNumberShowTotal",
+            False,
+        )
+    )
+
+    page_number_prefix = str(
+        assignment.get(
+            "pageNumberPrefix",
+            "Page",
+        )
+        or "Page"
+    )
+
+    page_number_font_size = float(
+        assignment.get(
+            "pageNumberFontSize",
+            9,
+        )
+        or 9
+    )
+
+    page_number_bold = bool(
+        assignment.get(
+            "pageNumberBold",
+            False,
+        )
+    )
+
+    # Reserve one shared footer band. Page numbering and footer text
+    # can coexist without changing the authoritative pagination rules.
+    footer_height = 40 if (
+        show_footer
+        or show_page_number
+    ) else 0
 
     return PageConfig(
         paper_size=paper_size,
@@ -523,14 +718,46 @@ def build_page_config(
         bottom=margins["bottom"],
         left=margins["left"],
 
-        # Reserve space for footer/page number.
-        footer_height=40,
+        line_height=float(
+            assignment.get(
+                "lineHeight",
+                28,
+            )
+            or 28
+        ),
+
+        header_height=header_height,
+        footer_height=footer_height,
+
+        header_enabled=header_enabled,
+        header_text=header_text,
+        header_position=header_position,
+        header_font_size=header_font_size,
+        header_bold=header_bold,
 
         show_footer=show_footer,
         footer_text=footer_text,
+        footer_position=footer_position,
+        footer_font_size=footer_font_size,
+        footer_bold=footer_bold,
 
         show_page_number=show_page_number,
         page_number_position=page_number_position,
+        page_number_show_total=page_number_show_total,
+        page_number_prefix=page_number_prefix,
+        page_number_font_size=page_number_font_size,
+        page_number_bold=page_number_bold,
+
+        custom_width_mm=(
+            float(custom_width_mm)
+            if custom_width_mm is not None
+            else None
+        ),
+        custom_height_mm=(
+            float(custom_height_mm)
+            if custom_height_mm is not None
+            else None
+        ),
     )
 
 
@@ -945,7 +1172,8 @@ def generate_assignment(
         )
 
         renderer = AssignmentPDFRenderer(
-            page_config=page_config
+            page_config=page_config,
+            handwriting=request.handwriting,
         )
 
         renderer.render(
@@ -1416,7 +1644,8 @@ def regenerate_assignment(
         )
 
         renderer = AssignmentPDFRenderer(
-            page_config=page_config
+            page_config=page_config,
+            handwriting=request.handwriting,
         )
 
         renderer.render(
