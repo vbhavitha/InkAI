@@ -8,6 +8,9 @@ Responsibilities:
 - Render headers.
 - Render structured TipTap nodes in order.
 - Use Phase 7 handwriting font configuration.
+- Render images through the reusable PDF image helpers.
+- Render tables through the reusable PDF table helpers.
+- Render watermark as a page-level background element.
 - Render footer.
 - Render Page N / Page N of M.
 - Respect left/center/right positioning.
@@ -18,6 +21,8 @@ IMPORTANT:
 This renderer does NOT perform pagination.
 
 Pagination is handled by AssignmentPageLayout.
+Large tables are split into structured table chunks by the assignment
+pagination layer before they reach this renderer.
 """
 
 from __future__ import annotations
@@ -26,15 +31,18 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.pdf.images import (
-    calculate_image_size,
-    load_image,
-)
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
 
 from app.pdf.fonts import font_manager
+from app.pdf.images import (
+    calculate_image_size,
+    load_image,
+)
 from app.pdf.layout import format_page_number
+from app.pdf.tables import build_table
+from app.pdf.watermark import WatermarkRenderer
 
 from .page_layout import (
     AssignmentPageLayout,
@@ -74,6 +82,7 @@ class AssignmentPDFRenderer:
         self,
         page_config: Optional[PageConfig] = None,
         handwriting: Optional[Dict[str, Any]] = None,
+        watermark: Optional[Dict[str, Any]] = None,
     ):
         self.page_config = (
             page_config
@@ -89,8 +98,15 @@ class AssignmentPDFRenderer:
             or {}
         )
 
+        # Watermark is disabled by default by WatermarkRenderer.
+        self.watermark = WatermarkRenderer(
+            watermark
+        )
+
+        self.font_manager = font_manager
+
         # Make sure font directories exist.
-        font_manager.ensure_directories()
+        self.font_manager.ensure_directories()
 
     # ========================================================
     # RENDER COMPLETE PDF
@@ -140,6 +156,8 @@ class AssignmentPDFRenderer:
                 total_pages,
             )
 
+            # render_page draws only the current page. This is the actual
+            # page transition and remains outside the pagination algorithm.
             pdf.showPage()
 
         pdf.save()
@@ -176,6 +194,15 @@ class AssignmentPDFRenderer:
     ):
         """
         Render one already-paginated page.
+
+        Rendering order:
+
+            1. Watermark background
+            2. Header
+            3. Structured content
+            4. Footer / page number
+
+        The watermark is intentionally not a TipTap node.
         """
 
         page_number = int(
@@ -194,20 +221,64 @@ class AssignmentPDFRenderer:
             [],
         )
 
-        # Header.
+        # ----------------------------------------------------
+        # PAGE-LEVEL WATERMARK
+        # ----------------------------------------------------
+        #
+        # Draw this before normal content so it behaves like a background.
+        # WatermarkRenderer handles opacity, rotation and positioning.
+        self._draw_watermark(pdf)
+
+        # ----------------------------------------------------
+        # HEADER
+        # ----------------------------------------------------
+
         self.render_header(pdf)
 
-        # Structured document content.
+        # ----------------------------------------------------
+        # STRUCTURED DOCUMENT CONTENT
+        # ----------------------------------------------------
+
         self.render_nodes(
             pdf,
             nodes,
         )
 
-        # Footer + page number.
+        # ----------------------------------------------------
+        # FOOTER + PAGE NUMBER
+        # ----------------------------------------------------
+
         self.render_footer(
             pdf,
             page_number,
             total_pages,
+        )
+
+    # ========================================================
+    # WATERMARK
+    # ========================================================
+
+    def _draw_watermark(
+        self,
+        pdf,
+    ):
+        """
+        Draw the configured watermark on the current PDF page.
+
+        This is a page-level operation. It never modifies the TipTap
+        document and never participates in pagination.
+        """
+        if not self.watermark.enabled():
+            return
+
+        page_width, page_height = (
+            self.layout.get_page_size()
+        )
+
+        self.watermark.draw(
+            pdf,
+            page_width,
+            page_height,
         )
 
     # ========================================================
@@ -290,8 +361,8 @@ class AssignmentPDFRenderer:
         """
         Render structured TipTap nodes.
 
-        The nodes have already been assigned to this
-        page by AssignmentPageLayout.
+        The nodes have already been assigned to this page by
+        AssignmentPageLayout.
         """
 
         page_width, page_height = (
@@ -312,6 +383,8 @@ class AssignmentPDFRenderer:
         )
 
         for node in nodes:
+            if not isinstance(node, dict):
+                continue
 
             y = self._render_node(
                 pdf=pdf,
@@ -348,8 +421,7 @@ class AssignmentPDFRenderer:
             or "paragraph"
         )
 
-        # Manual page breaks have already been
-        # processed by pagination.
+        # Manual page breaks have already been processed by pagination.
         if node_type == "pageBreak":
             return y
 
@@ -394,6 +466,7 @@ class AssignmentPDFRenderer:
                 x,
                 y,
                 max_width,
+                bottom_limit,
             )
 
         if node_type == "image":
@@ -403,6 +476,7 @@ class AssignmentPDFRenderer:
                 x,
                 y,
                 max_width,
+                bottom_limit,
             )
 
         if node_type == "hardBreak":
@@ -418,7 +492,6 @@ class AssignmentPDFRenderer:
         )
 
         for child in content:
-
             y = self._render_node(
                 pdf=pdf,
                 node=child,
@@ -427,6 +500,9 @@ class AssignmentPDFRenderer:
                 max_width=max_width,
                 bottom_limit=bottom_limit,
             )
+
+            if y <= bottom_limit:
+                break
 
         return y
 
@@ -477,8 +553,6 @@ class AssignmentPDFRenderer:
                 - self.page_config.line_height
             )
 
-        # IMPORTANT:
-        # Handwriting configuration is passed here.
         font_name = font_manager.resolve(
             bold=True,
             handwriting=self.handwriting,
@@ -499,7 +573,6 @@ class AssignmentPDFRenderer:
         )
 
         for line in lines:
-
             pdf.drawString(
                 x,
                 y - size,
@@ -540,7 +613,6 @@ class AssignmentPDFRenderer:
         # ----------------------------------------------------
 
         if self.handwriting:
-
             font_size = float(
                 self.handwriting.get(
                     "fontSize",
@@ -557,12 +629,8 @@ class AssignmentPDFRenderer:
             )
 
         else:
-
             font_size = 11
-
-            font_name = (
-                "Helvetica"
-            )
+            font_name = "Helvetica"
 
         # ----------------------------------------------------
         # Ink
@@ -604,7 +672,6 @@ class AssignmentPDFRenderer:
         )
 
         for line in lines:
-
             pdf.drawString(
                 x,
                 y - font_size,
@@ -634,7 +701,6 @@ class AssignmentPDFRenderer:
         )
 
         if self.handwriting:
-
             font_size = float(
                 self.handwriting.get(
                     "fontSize",
@@ -651,7 +717,6 @@ class AssignmentPDFRenderer:
             )
 
         else:
-
             font_size = 11
             font_name = "Helvetica"
 
@@ -666,7 +731,6 @@ class AssignmentPDFRenderer:
             items,
             start=1,
         ):
-
             item_text = (
                 self.extract_text(
                     item
@@ -690,8 +754,11 @@ class AssignmentPDFRenderer:
 
             lines = self.wrap_text(
                 item_text,
-                max_width
-                - marker_width,
+                max(
+                    max_width
+                    - marker_width,
+                    20,
+                ),
                 font_name,
                 font_size,
             )
@@ -699,7 +766,6 @@ class AssignmentPDFRenderer:
             for line_index, line in enumerate(
                 lines
             ):
-
                 prefix = (
                     marker + " "
                     if line_index == 0
@@ -732,17 +798,22 @@ class AssignmentPDFRenderer:
         x,
         y,
         max_width,
+        bottom_limit,
     ):
         """
         Render a structured TipTap table.
 
+        Large tables are already split into page-sized structured table
+        chunks by AssignmentPageLayout. This method therefore renders only
+        the table chunk assigned to the current page.
+
         Supports:
-            - header row
-            - borders
-            - padding
-            - wrapping
-            - column sizing
-            - alignment
+        - header row
+        - borders
+        - padding
+        - wrapping
+        - column sizing
+        - alignment
         """
 
         rows = (
@@ -753,98 +824,125 @@ class AssignmentPDFRenderer:
         if not rows:
             return y
 
-        data = []
+        data: List[List[str]] = []
 
         for row in rows:
+            if not isinstance(row, dict):
+                continue
 
             cells = (
                 row.get("content")
                 or []
             )
 
-            values = []
+            values: List[str] = []
 
             for cell in cells:
-
-                value = self.extract_text(
-                    cell
-                )
-
                 values.append(
-                    value
+                    self.extract_text(
+                        cell
+                    )
                 )
 
-            data.append(
-                values
-            )
+            if values:
+                data.append(values)
 
         if not data:
             return y
 
-        # --------------------------------------------------------
-        # Determine available height.
-        # --------------------------------------------------------
-
-        bottom_limit = (
-            self.page_config.bottom
-            + self.page_config.footer_height
+        attrs = (
+            node.get("attrs")
+            or {}
         )
+
+        # TipTap/front-end aliases supported by the page settings.
+        column_widths = (
+            attrs.get("columnWidths")
+            or attrs.get("colWidths")
+            or attrs.get("column_widths")
+        )
+
+        alignments = (
+            attrs.get("alignments")
+            or attrs.get("alignment")
+            or attrs.get("columnAlignments")
+        )
+
+        if isinstance(alignments, str):
+            alignments = [
+                alignments
+                for _ in data[0]
+            ]
+
+        if not isinstance(alignments, (list, tuple)):
+            alignments = [
+                "left"
+                for _ in data[0]
+            ]
+
+        try:
+            header_rows = int(
+                attrs.get(
+                    "headerRows",
+                    1,
+                )
+            )
+        except (TypeError, ValueError):
+            header_rows = 1
+
+        header_rows = max(
+            0,
+            min(
+                header_rows,
+                len(data),
+            ),
+        )
+
+        # ----------------------------------------------------
+        # Build table.
+        # ----------------------------------------------------
+
+        table = build_table(
+            data,
+            col_widths=column_widths,
+            repeat_rows=header_rows,
+            header_row=header_rows > 0,
+            padding=attrs.get(
+                "cellPadding",
+                attrs.get(
+                    "cell_padding",
+                    6,
+                ),
+            ),
+            alignments=alignments,
+            font_size=float(
+                attrs.get(
+                    "fontSize",
+                    9,
+                )
+                or 9
+            ),
+            header_font_size=float(
+                attrs.get(
+                    "headerFontSize",
+                    attrs.get(
+                        "fontSize",
+                        9,
+                    ),
+                )
+                or 9
+            ),
+            available_width=max_width,
+        )
+
+        # ----------------------------------------------------
+        # Calculate actual table size.
+        # ----------------------------------------------------
 
         available_height = max(
             1.0,
             y - bottom_limit,
         )
-
-        # --------------------------------------------------------
-        # Font configuration.
-        # --------------------------------------------------------
-
-        if self.handwriting:
-
-            font_size = float(
-                self.handwriting.get(
-                    "fontSize",
-                    10,
-                )
-            )
-
-            font_name = (
-                font_manager.resolve(
-                    handwriting=(
-                        self.handwriting
-                    )
-                )
-            )
-
-        else:
-
-            font_size = 10
-            font_name = "Helvetica"
-
-        # --------------------------------------------------------
-        # Build table.
-        # --------------------------------------------------------
-
-        table = build_table(
-            data,
-            available_width=(
-                max_width
-            ),
-            header_row=True,
-            repeat_header=True,
-            font_name=font_name,
-            font_size=font_size,
-            header_font_size=(
-                font_size
-            ),
-            alignment="left",
-            vertical_alignment="middle",
-            cell_padding=6,
-        )
-
-        # --------------------------------------------------------
-        # Calculate actual table size.
-        # --------------------------------------------------------
 
         table_width, table_height = (
             table.wrap(
@@ -853,22 +951,20 @@ class AssignmentPDFRenderer:
             )
         )
 
-        # --------------------------------------------------------
+        # ----------------------------------------------------
         # Safety check.
-        # --------------------------------------------------------
+        # ----------------------------------------------------
+        #
+        # Normally AssignmentPageLayout has already moved/split the table.
+        # Do not draw outside the current page's content bounds if a
+        # malformed/custom table somehow remains too large.
 
         if table_height > available_height:
-
-            # The pagination layer should normally move the table
-            # when it cannot fit. Do not allow drawing outside the
-            # content area.
             return y
 
-        # --------------------------------------------------------
-        # ReportLab Table.wrap() returns the required size.
-        #
-        # Table.drawOn() uses bottom-left coordinates.
-        # --------------------------------------------------------
+        # ----------------------------------------------------
+        # ReportLab Table.drawOn() uses bottom-left coordinates.
+        # ----------------------------------------------------
 
         table_y = (
             y - table_height
@@ -896,15 +992,18 @@ class AssignmentPDFRenderer:
         x,
         y,
         max_width,
+        bottom_limit,
     ):
         """
         Render a structured TipTap image node.
 
         Images:
-            - preserve aspect ratio
-            - never exceed content width
-            - never exceed remaining page height
-            - respect page margins
+        - support PNG/JPEG/WEBP through app.pdf.images
+        - preserve aspect ratio
+        - resize large images
+        - never exceed content width
+        - never exceed remaining page height
+        - respect page margins
         """
 
         attrs = (
@@ -916,6 +1015,7 @@ class AssignmentPDFRenderer:
             attrs.get("src")
             or attrs.get("url")
             or attrs.get("path")
+            or attrs.get("image")
         )
 
         if not src:
@@ -925,18 +1025,18 @@ class AssignmentPDFRenderer:
             )
 
         try:
-
             resource = load_image(
                 src
             )
 
+            if resource is None:
+                return (
+                    y
+                    - self.page_config.line_height
+                )
+
             page_width, page_height = (
                 self.layout.get_page_size()
-            )
-
-            bottom_limit = (
-                self.page_config.bottom
-                + self.page_config.footer_height
             )
 
             available_height = max(
@@ -952,63 +1052,67 @@ class AssignmentPDFRenderer:
                 attrs.get("height")
             )
 
-            requested_width = (
-                float(requested_width)
-                if requested_width
-                else None
-            )
+            try:
+                requested_width = (
+                    float(requested_width)
+                    if requested_width
+                    else None
+                )
+            except (TypeError, ValueError):
+                requested_width = None
 
-            requested_height = (
-                float(requested_height)
-                if requested_height
-                else None
-            )
+            try:
+                requested_height = (
+                    float(requested_height)
+                    if requested_height
+                    else None
+                )
+            except (TypeError, ValueError):
+                requested_height = None
 
             size = calculate_image_size(
                 resource,
                 max_width=max_width,
-                max_height=(
-                    available_height
-                ),
-                requested_width=(
-                    requested_width
-                ),
-                requested_height=(
-                    requested_height
-                ),
+                max_height=available_height,
+                requested_width=requested_width,
+                requested_height=requested_height,
             )
 
-            # ----------------------------------------------------
-            # Image coordinate.
-            #
-            # ReportLab uses bottom-left coordinates.
-            # ----------------------------------------------------
+            # The helper may return either a size object or a tuple depending
+            # on the reusable image helper implementation.
+            image_width, image_height = self._normalize_image_size(
+                size
+            )
+
+            if image_width <= 0 or image_height <= 0:
+                return (
+                    y
+                    - self.page_config.line_height
+                )
 
             image_y = (
-                y - size.height
+                y - image_height
             )
 
             if image_y < bottom_limit:
-
-                # The authoritative pagination layer should normally
-                # have placed this node on the next page.
-                #
-                # As a safety guard, do not draw outside the content
-                # area.
+                # The authoritative pagination layer should normally have
+                # placed this node on the next page.
                 return y
 
-            from reportlab.lib.utils import (
-                ImageReader,
+            image_source = getattr(
+                resource,
+                "image",
+                resource,
             )
 
             pdf.drawImage(
                 ImageReader(
-                    resource.image
+                    image_source
                 ),
                 x,
                 image_y,
-                width=size.width,
-                height=size.height,
+                width=image_width,
+                height=image_height,
                 preserveAspectRatio=True,
                 mask="auto",
             )
@@ -1019,10 +1123,40 @@ class AssignmentPDFRenderer:
             )
 
         except Exception:
+            # A bad image must not break assignment generation.
             return (
                 y
                 - self.page_config.line_height
             )
+
+    @staticmethod
+    def _normalize_image_size(
+        size,
+    ) -> tuple[float, float]:
+        """
+        Normalize calculate_image_size() output.
+
+        Supports the reusable helper's Size-like object as well as a normal
+        (width, height) tuple.
+        """
+        if hasattr(size, "width") and hasattr(
+            size,
+            "height",
+        ):
+            return (
+                float(size.width),
+                float(size.height),
+            )
+
+        if isinstance(size, (tuple, list)) and len(size) >= 2:
+            return (
+                float(size[0]),
+                float(size[1]),
+            )
+
+        raise ValueError(
+            "Unsupported image size result"
+        )
 
     # ========================================================
     # TEXT EXTRACTION
@@ -1041,7 +1175,6 @@ class AssignmentPDFRenderer:
         )
 
         if node_type == "text":
-
             return str(
                 node.get(
                     "text",
@@ -1053,23 +1186,20 @@ class AssignmentPDFRenderer:
             node.get("text"),
             str,
         ):
-
             return node["text"]
 
         if isinstance(
             node.get("content"),
             str,
         ):
-
             return node["content"]
 
-        parts = []
+        parts: List[str] = []
 
         for child in (
             node.get("content")
             or []
         ):
-
             child_text = (
                 self.extract_text(
                     child
@@ -1087,11 +1217,8 @@ class AssignmentPDFRenderer:
             "listItem",
             "tableRow",
         ):
-
             separator = "\n"
-
         else:
-
             separator = " "
 
         return separator.join(
@@ -1113,7 +1240,12 @@ class AssignmentPDFRenderer:
         if not text:
             return []
 
-        result = []
+        max_width = max(
+            float(max_width),
+            20.0,
+        )
+
+        result: List[str] = []
 
         for raw_line in str(
             text
@@ -1122,15 +1254,12 @@ class AssignmentPDFRenderer:
             words = raw_line.split()
 
             if not words:
-
                 result.append("")
-
                 continue
 
             current = ""
 
             for word in words:
-
                 candidate = (
                     word
                     if not current
@@ -1145,13 +1274,10 @@ class AssignmentPDFRenderer:
                     )
                     <= max_width
                 ):
-
                     current = candidate
-
                     continue
 
                 if current:
-
                     result.append(
                         current
                     )
@@ -1163,7 +1289,6 @@ class AssignmentPDFRenderer:
                 current = ""
 
                 for character in word:
-
                     candidate_char = (
                         current
                         + character
@@ -1177,15 +1302,11 @@ class AssignmentPDFRenderer:
                         )
                         <= max_width
                     ):
-
                         current = (
                             candidate_char
                         )
-
                     else:
-
                         if current:
-
                             result.append(
                                 current
                             )
@@ -1193,7 +1314,6 @@ class AssignmentPDFRenderer:
                         current = character
 
             if current:
-
                 result.append(
                     current
                 )
@@ -1219,14 +1339,12 @@ class AssignmentPDFRenderer:
         # ----------------------------------------------------
 
         if self.page_config.show_footer:
-
             footer_text = str(
                 self.page_config.footer_text
                 or ""
             ).strip()
 
             if footer_text:
-
                 font_name = (
                     font_manager.resolve(
                         bold=(
@@ -1280,7 +1398,6 @@ class AssignmentPDFRenderer:
         # ----------------------------------------------------
 
         if self.page_config.show_page_number:
-
             page_text = (
                 format_page_number(
                     page_number,
@@ -1335,7 +1452,6 @@ class AssignmentPDFRenderer:
             ).lower()
 
             if position == "left":
-
                 pdf.drawString(
                     self.page_config.left,
                     y,
@@ -1343,7 +1459,6 @@ class AssignmentPDFRenderer:
                 )
 
             elif position == "right":
-
                 pdf.drawRightString(
                     page_width
                     - self.page_config.right,
@@ -1352,7 +1467,6 @@ class AssignmentPDFRenderer:
                 )
 
             else:
-
                 pdf.drawCentredString(
                     page_width / 2,
                     y,
@@ -1379,11 +1493,9 @@ class AssignmentPDFRenderer:
         ).lower()
 
         if normalized == "left":
-
             return self.page_config.left
 
         if normalized == "right":
-
             return (
                 page_width
                 - self.page_config.right

@@ -32,7 +32,7 @@ from app.pdf.layout import (
     mm_to_points,
 )
 from app.pdf.images import calculate_image_size, load_image
-from app.pdf.tables import build_table
+from app.pdf.tables import build_table, split_table_node
 
 
 # ============================================================
@@ -657,12 +657,12 @@ class AssignmentPageLayout:
         """
         Paginate structured TipTap nodes.
 
-        This is the existing assignment pagination algorithm:
-        - manual pageBreak nodes always start a new page;
-        - normal nodes are kept together;
-        - nodes that do not fit are moved to the next page;
-        - oversized nodes are preserved as a whole node rather than
-          introducing a second pagination implementation.
+        Table nodes are first divided into page-sized table chunks using the
+        reusable table splitter. The existing assignment pagination loop then
+        decides where those chunks belong relative to surrounding content.
+
+        This gives large tables professional multi-page behavior while
+        preserving the existing single document pagination algorithm.
         """
         pages: List[Page] = []
 
@@ -674,44 +674,89 @@ class AssignmentPageLayout:
             self.config.line_height,
         )
 
+        usable_width = max(
+            self.get_usable_width(),
+            100,
+        )
+
         page_number = 1
 
-        for node in nodes:
-            if not isinstance(node, dict):
+        for original_node in nodes:
+            if not isinstance(original_node, dict):
                 continue
 
-            node_type = node.get("type")
-
-            # ==================================================
-            # MANUAL PAGE BREAK
-            # ==================================================
-
-            if node_type == "pageBreak":
-                if current_nodes:
-                    pages.append(
-                        Page(
-                            number=page_number,
-                            nodes=current_nodes,
-                        )
+            # ------------------------------------------------
+            # STEP 15 — AUTOMATIC TABLE PAGINATION
+            # ------------------------------------------------
+            #
+            # A large TipTap table becomes multiple structured table nodes.
+            # Each chunk retains the table header. The normal assignment
+            # pagination logic below still decides the final page placement.
+            if original_node.get("type") == "table":
+                try:
+                    node_sequence = split_table_node(
+                        original_node,
+                        available_width=usable_width,
+                        available_height=usable_height,
                     )
+                except Exception:
+                    node_sequence = [original_node]
+            else:
+                node_sequence = [original_node]
 
-                page_number += 1
-                current_nodes = []
-                current_height = 0.0
+            for node in node_sequence:
+                node_type = node.get("type")
 
-                continue
+                # ============================================
+                # MANUAL PAGE BREAK
+                # ============================================
 
-            # ==================================================
-            # AUTOMATIC PAGINATION
-            # ==================================================
+                if node_type == "pageBreak":
+                    if current_nodes:
+                        pages.append(
+                            Page(
+                                number=page_number,
+                                nodes=current_nodes,
+                            )
+                        )
 
-            node_height = self.estimate_node_height(node)
+                    page_number += 1
+                    current_nodes = []
+                    current_height = 0.0
 
-            # A node larger than one page is kept intact, preserving
-            # the existing assignment behavior. The renderer itself
-            # remains responsible for the final drawing behavior.
-            if node_height > usable_height:
-                if current_nodes:
+                    continue
+
+                # ============================================
+                # AUTOMATIC PAGINATION
+                # ============================================
+
+                node_height = self.estimate_node_height(node)
+
+                # An oversized node remains intact, preserving the existing
+                # assignment behavior. Table rows themselves are not split.
+                if node_height > usable_height:
+                    if current_nodes:
+                        pages.append(
+                            Page(
+                                number=page_number,
+                                nodes=current_nodes,
+                            )
+                        )
+
+                        page_number += 1
+                        current_nodes = []
+                        current_height = 0.0
+
+                    current_nodes.append(node)
+                    current_height = node_height
+
+                    continue
+
+                # Move the node to the next page when it does not fit.
+                if (
+                    current_height + node_height > usable_height
+                    and current_nodes
+                ):
                     pages.append(
                         Page(
                             number=page_number,
@@ -724,28 +769,7 @@ class AssignmentPageLayout:
                     current_height = 0.0
 
                 current_nodes.append(node)
-                current_height = node_height
-
-                continue
-
-            # Move the node to the next page when it does not fit.
-            if (
-                current_height + node_height > usable_height
-                and current_nodes
-            ):
-                pages.append(
-                    Page(
-                        number=page_number,
-                        nodes=current_nodes,
-                    )
-                )
-
-                page_number += 1
-                current_nodes = []
-                current_height = 0.0
-
-            current_nodes.append(node)
-            current_height += node_height
+                current_height += node_height
 
         # Flush final page.
         if current_nodes:

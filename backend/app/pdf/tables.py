@@ -1,29 +1,28 @@
 """
-InkAI PDF Table Utilities
-=========================
+InkAI PDF Tables
+================
 
-Reusable ReportLab table utilities.
+Reusable ReportLab table helpers.
 
-Supported:
-    - Header row
-    - Borders
-    - Cell padding
-    - Horizontal alignment
-    - Vertical alignment
-    - Column widths
-    - Wrapped cell content
-    - Repeating header rows
-    - Automatic table height calculation
+Features:
+- header row
+- borders
+- cell padding
+- alignment
+- column widths
+- wrapped cell content
+- repeated header rows
+- measurement for pagination
+- row-level table splitting for multi-page assignment tables
 
-This module creates ReportLab Table objects.
-
-Assignment-specific pagination remains outside this module.
+The table splitter returns independent table nodes. Each generated chunk
+contains the original header row, so ReportLab renders the header again
+on every page.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Iterable, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
@@ -32,679 +31,302 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, Table, TableStyle
 
 
-# ============================================================
-# DEFAULTS
-# ============================================================
-
-DEFAULT_FONT_NAME = "Helvetica"
-DEFAULT_FONT_SIZE = 10
-DEFAULT_HEADER_FONT_SIZE = 10
-
 DEFAULT_PADDING = 6
-
-DEFAULT_BORDER_WIDTH = 0.5
-
-DEFAULT_HEADER_BACKGROUND = (
-    colors.HexColor("#EDEDED")
-)
-
-DEFAULT_BORDER_COLOR = (
-    colors.HexColor("#777777")
-)
-
-DEFAULT_TEXT_COLOR = colors.black
+DEFAULT_FONT_SIZE = 9
+DEFAULT_HEADER_FONT_SIZE = 9
+DEFAULT_BORDER_WIDTH = 0.6
 
 
-# ============================================================
-# CONFIGURATION
-# ============================================================
+def _alignment(value: Any):
+    value = str(value or "left").lower()
 
-@dataclass(frozen=True)
-class TableConfig:
-    """
-    Reusable table rendering configuration.
-    """
-
-    header_row: bool = True
-
-    border_width: float = (
-        DEFAULT_BORDER_WIDTH
-    )
-
-    border_color: Any = (
-        DEFAULT_BORDER_COLOR
-    )
-
-    cell_padding: float = (
-        DEFAULT_PADDING
-    )
-
-    header_background: Any = (
-        DEFAULT_HEADER_BACKGROUND
-    )
-
-    font_name: str = (
-        DEFAULT_FONT_NAME
-    )
-
-    font_size: float = (
-        DEFAULT_FONT_SIZE
-    )
-
-    header_font_size: float = (
-        DEFAULT_HEADER_FONT_SIZE
-    )
-
-    text_color: Any = (
-        DEFAULT_TEXT_COLOR
-    )
-
-    horizontal_alignment: str = (
-        "left"
-    )
-
-    vertical_alignment: str = (
-        "middle"
-    )
-
-    repeat_header: bool = True
-
-
-# ============================================================
-# ALIGNMENT
-# ============================================================
-
-def normalize_horizontal_alignment(
-    alignment: str | None,
-) -> str:
-    normalized = str(
-        alignment or "left"
-    ).strip().lower()
-
-    aliases = {
-        "left": "left",
-        "center": "center",
-        "centre": "center",
-        "right": "right",
-    }
-
-    if normalized not in aliases:
-        raise ValueError(
-            "Horizontal alignment must be "
-            "left, center, or right."
-        )
-
-    return aliases[
-        normalized
-    ]
-
-
-def normalize_vertical_alignment(
-    alignment: str | None,
-) -> str:
-    normalized = str(
-        alignment or "middle"
-    ).strip().lower()
-
-    aliases = {
-        "top": "top",
-        "middle": "middle",
-        "center": "middle",
-        "centre": "middle",
-        "bottom": "bottom",
-    }
-
-    if normalized not in aliases:
-        raise ValueError(
-            "Vertical alignment must be "
-            "top, middle, or bottom."
-        )
-
-    return aliases[
-        normalized
-    ]
-
-
-def paragraph_alignment(
-    alignment: str,
-) -> int:
-    alignment = (
-        normalize_horizontal_alignment(
-            alignment
-        )
-    )
-
-    if alignment == "center":
+    if value in {"center", "centre"}:
         return TA_CENTER
 
-    if alignment == "right":
+    if value == "right":
         return TA_RIGHT
 
     return TA_LEFT
 
 
-# ============================================================
-# DATA NORMALIZATION
-# ============================================================
+def _normalize_padding(
+    padding: Any,
+) -> tuple[float, float, float, float]:
+    if padding is None:
+        return (
+            DEFAULT_PADDING,
+            DEFAULT_PADDING,
+            DEFAULT_PADDING,
+            DEFAULT_PADDING,
+        )
 
-def normalize_table_data(
+    if isinstance(padding, (int, float)):
+        value = max(0.0, float(padding))
+        return value, value, value, value
+
+    if isinstance(padding, (list, tuple)):
+        values = list(padding)
+
+        if len(values) == 2:
+            vertical = max(0.0, float(values[0]))
+            horizontal = max(0.0, float(values[1]))
+            return (
+                horizontal,
+                vertical,
+                horizontal,
+                vertical,
+            )
+
+        if len(values) == 4:
+            return tuple(
+                max(0.0, float(v))
+                for v in values
+            )
+
+    return (
+        DEFAULT_PADDING,
+        DEFAULT_PADDING,
+        DEFAULT_PADDING,
+        DEFAULT_PADDING,
+    )
+
+
+def _cell_text(value: Any) -> str:
+    if value is None:
+        return ""
+
+    if isinstance(value, dict):
+        if "text" in value:
+            return str(value.get("text") or "")
+
+        if "label" in value:
+            return str(value.get("label") or "")
+
+        return str(value)
+
+    return str(value)
+
+
+def _paragraph(
+    value: Any,
+    *,
+    header: bool = False,
+    font_size: Optional[float] = None,
+    alignment: Any = "left",
+    padding: Any = None,
+) -> Paragraph:
+    text = _cell_text(value)
+
+    size = (
+        font_size
+        if font_size is not None
+        else (
+            DEFAULT_HEADER_FONT_SIZE
+            if header
+            else DEFAULT_FONT_SIZE
+        )
+    )
+
+    left, _, right, _ = _normalize_padding(padding)
+
+    style = ParagraphStyle(
+        name="InkAI_TableCell",
+        fontName="Helvetica-Bold" if header else "Helvetica",
+        fontSize=size,
+        leading=max(size * 1.25, 10),
+        alignment=_alignment(alignment),
+        spaceAfter=0,
+        spaceBefore=0,
+        leftIndent=0,
+        rightIndent=0,
+    )
+
+    return Paragraph(
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\n", "<br/>"),
+        style,
+    )
+
+
+def _normalize_rows(
     data: Sequence[Sequence[Any]],
-) -> list[list[Any]]:
-    """
-    Convert arbitrary cell values into strings.
+) -> List[List[Any]]:
+    rows: List[List[Any]] = []
 
-    Ensures every row has the same number
-    of columns.
-    """
+    for row in data:
+        if isinstance(row, (list, tuple)):
+            rows.append(list(row))
+        else:
+            rows.append([row])
 
-    if not data:
+    if not rows:
         return []
-
-    rows = [
-        list(row)
-        for row in data
-    ]
 
     column_count = max(
         len(row)
         for row in rows
     )
 
-    normalized = []
-
     for row in rows:
+        if len(row) < column_count:
+            row.extend(
+                [""] * (column_count - len(row))
+            )
 
-        values = list(row)
+    return rows
 
-        if len(values) < column_count:
 
-            values.extend(
-                [""] *
-                (
-                    column_count
-                    - len(values)
+def _resolve_column_widths(
+    rows: List[List[Any]],
+    col_widths: Optional[Sequence[Any]],
+    available_width: Optional[float],
+) -> Optional[List[float]]:
+    if not rows:
+        return None
+
+    column_count = len(rows[0])
+
+    if col_widths:
+        resolved: List[float] = []
+
+        for value in list(col_widths)[:column_count]:
+            try:
+                resolved.append(float(value))
+            except (TypeError, ValueError):
+                resolved.append(0.0)
+
+        while len(resolved) < column_count:
+            resolved.append(0.0)
+
+        if available_width and available_width > 0:
+            explicit_total = sum(
+                value
+                for value in resolved
+                if value > 0
+            )
+
+            flexible_count = sum(
+                1
+                for value in resolved
+                if value <= 0
+            )
+
+            if flexible_count:
+                remaining = max(
+                    0.0,
+                    available_width - explicit_total,
                 )
-            )
-
-        normalized.append(
-            [
-                ""
-                if value is None
-                else str(value)
-                for value in values
-            ]
-        )
-
-    return normalized
-
-
-# ============================================================
-# COLUMN WIDTHS
-# ============================================================
-
-def calculate_column_widths(
-    data: Sequence[Sequence[Any]],
-    *,
-    available_width: float,
-    column_widths: Sequence[
-        float | None
-    ]
-    | None = None,
-) -> list[float]:
-    """
-    Calculate column widths.
-
-    Explicit widths are preserved.
-
-    Remaining width is distributed equally
-    among columns without an explicit width.
-    """
-
-    normalized = normalize_table_data(
-        data
-    )
-
-    if not normalized:
-        return []
-
-    column_count = len(
-        normalized[0]
-    )
-
-    if (
-        available_width
-        <= 0
-    ):
-        raise ValueError(
-            "Available table width must "
-            "be greater than 0."
-        )
-
-    if column_widths is None:
-
-        equal_width = (
-            available_width
-            / column_count
-        )
-
-        return [
-            equal_width
-            for _ in range(
-                column_count
-            )
-        ]
-
-    supplied = list(
-        column_widths
-    )
-
-    if len(supplied) > column_count:
-
-        raise ValueError(
-            "More column widths were supplied "
-            "than table columns."
-        )
-
-    widths = [
-        None
-        for _ in range(
-            column_count
-        )
-    ]
-
-    fixed_total = 0.0
-    flexible_columns = []
-
-    for index in range(
-        column_count
-    ):
-
-        if (
-            index
-            < len(supplied)
-            and supplied[index]
-            is not None
-        ):
-
-            width = float(
-                supplied[index]
-            )
-
-            if width <= 0:
-                raise ValueError(
-                    "Column widths must "
-                    "be greater than 0."
+                flexible_width = (
+                    remaining / flexible_count
+                    if flexible_count
+                    else 0
                 )
 
-            widths[index] = width
-            fixed_total += width
+                resolved = [
+                    value
+                    if value > 0
+                    else flexible_width
+                    for value in resolved
+                ]
 
-        else:
+        return resolved
 
-            flexible_columns.append(
-                index
-            )
-
-    if fixed_total > available_width:
-
-        # Scale fixed columns down so that
-        # they never overflow the page.
-        scale = (
-            available_width
-            / fixed_total
-        )
-
-        for index in range(
-            column_count
-        ):
-
-            if widths[index] is not None:
-
-                widths[index] *= scale
-
-        fixed_total = (
-            available_width
-        )
-
-    remaining = max(
-        0.0,
-        available_width
-        - fixed_total,
-    )
-
-    if flexible_columns:
-
-        flexible_width = (
-            remaining
-            / len(
-                flexible_columns
-            )
-        )
-
-        for index in flexible_columns:
-            widths[index] = (
-                flexible_width
-            )
+    if not available_width:
+        return None
 
     return [
-        float(width)
-        for width in widths
+        available_width / column_count
+        for _ in range(column_count)
     ]
 
-
-# ============================================================
-# PARAGRAPH CELL
-# ============================================================
-
-def _make_cell_paragraph(
-    value: Any,
-    *,
-    font_name: str,
-    font_size: float,
-    alignment: str,
-    text_color: Any,
-    bold: bool = False,
-):
-    """
-    Create a wrapped ReportLab Paragraph.
-
-    Paragraph is important because ordinary strings
-    do not provide reliable cell wrapping.
-    """
-
-    if value is None:
-        value = ""
-
-    text = str(value)
-
-    if bold:
-        text = (
-            "<b>"
-            + text.replace(
-                "&",
-                "&amp;",
-            )
-            + "</b>"
-        )
-    else:
-        text = text.replace(
-            "&",
-            "&amp;",
-        )
-
-    text = text.replace(
-        "\n",
-        "<br/>",
-    )
-
-    style = ParagraphStyle(
-        name="InkAITableCell",
-        fontName=font_name,
-        fontSize=font_size,
-        leading=max(
-            font_size * 1.25,
-            11,
-        ),
-        alignment=paragraph_alignment(
-            alignment
-        ),
-        textColor=text_color,
-        spaceBefore=0,
-        spaceAfter=0,
-        allowWidows=0,
-        allowOrphans=0,
-    )
-
-    return Paragraph(
-        text,
-        style,
-    )
-
-
-# ============================================================
-# BUILD TABLE
-# ============================================================
 
 def build_table(
     data: Sequence[Sequence[Any]],
+    col_widths: Optional[Sequence[Any]] = None,
+    repeat_rows: int = 1,
     *,
-    available_width: float | None = None,
-    col_widths: Sequence[
-        float | None
-    ]
-    | None = None,
     header_row: bool = True,
-    repeat_rows: int | None = None,
-    border_width: float = (
-        DEFAULT_BORDER_WIDTH
-    ),
-    border_color: Any = (
-        DEFAULT_BORDER_COLOR
-    ),
-    cell_padding: float = (
-        DEFAULT_PADDING
-    ),
-    header_background: Any = (
-        DEFAULT_HEADER_BACKGROUND
-    ),
-    font_name: str = (
-        DEFAULT_FONT_NAME
-    ),
-    font_size: float = (
-        DEFAULT_FONT_SIZE
-    ),
-    header_font_size: float = (
-        DEFAULT_HEADER_FONT_SIZE
-    ),
-    text_color: Any = (
-        DEFAULT_TEXT_COLOR
-    ),
-    alignment: str = "left",
-    vertical_alignment: str = "middle",
-    repeat_header: bool = True,
+    padding: Any = DEFAULT_PADDING,
+    alignments: Optional[Sequence[Any]] = None,
+    font_size: float = DEFAULT_FONT_SIZE,
+    header_font_size: float = DEFAULT_HEADER_FONT_SIZE,
+    available_width: Optional[float] = None,
+    border_width: float = DEFAULT_BORDER_WIDTH,
+    header_background=colors.whitesmoke,
+    border_color=colors.black,
 ) -> Table:
     """
-    Build a fully styled ReportLab table.
+    Build a wrapped ReportLab Table.
 
-    Example:
-
-        data = [
-            ["Name", "Marks"],
-            ["Bhavitha", "95"],
-            ["Anu", "89"],
-        ]
-
-        table = build_table(
-            data,
-            available_width=450,
-        )
-
-    Supports:
-        - header row
-        - borders
-        - padding
-        - alignment
-        - column widths
-        - wrapping
-        - repeated header rows
+    repeat_rows=1 means the first row is repeated on every page when
+    ReportLab splits the Table itself.
     """
-
-    rows = normalize_table_data(
-        data
-    )
+    rows = _normalize_rows(data)
 
     if not rows:
-        raise ValueError(
-            "Table data cannot be empty."
-        )
+        return Table([[""]])
 
-    normalized_alignment = (
-        normalize_horizontal_alignment(
-            alignment
-        )
+    column_count = len(rows[0])
+
+    if alignments is None:
+        alignments = ["left"] * column_count
+
+    left, top, right, bottom = _normalize_padding(
+        padding
     )
 
-    normalized_vertical = (
-        normalize_vertical_alignment(
-            vertical_alignment
-        )
-    )
+    converted: List[List[Any]] = []
 
-    column_count = len(
-        rows[0]
-    )
+    for row_index, row in enumerate(rows):
+        converted_row: List[Any] = []
 
-    if available_width is None:
-
-        if col_widths:
-
-            available_width = sum(
-                float(width)
-                for width in col_widths
-                if width is not None
+        for column_index, value in enumerate(row):
+            alignment = (
+                alignments[column_index]
+                if column_index < len(alignments)
+                else "left"
             )
-
-        else:
-
-            # Safe fallback.
-            available_width = (
-                170 * mm
-            )
-
-    widths = calculate_column_widths(
-        rows,
-        available_width=(
-            float(
-                available_width
-            )
-        ),
-        column_widths=col_widths,
-    )
-
-    # --------------------------------------------------------
-    # Convert cells into Paragraphs.
-    # --------------------------------------------------------
-
-    table_data = []
-
-    for row_index, row in enumerate(
-        rows
-    ):
-
-        is_header = (
-            header_row
-            and row_index == 0
-        )
-
-        current_font_size = (
-            header_font_size
-            if is_header
-            else font_size
-        )
-
-        current_alignment = (
-            "center"
-            if is_header
-            and normalized_alignment
-            == "left"
-            else normalized_alignment
-        )
-
-        converted_row = []
-
-        for value in row:
 
             converted_row.append(
-                _make_cell_paragraph(
+                _paragraph(
                     value,
-                    font_name=font_name,
+                    header=(
+                        header_row
+                        and row_index < max(repeat_rows, 1)
+                    ),
                     font_size=(
-                        current_font_size
+                        header_font_size
+                        if header_row
+                        and row_index < max(repeat_rows, 1)
+                        else font_size
                     ),
-                    alignment=(
-                        current_alignment
-                    ),
-                    text_color=(
-                        text_color
-                    ),
-                    bold=is_header,
+                    alignment=alignment,
+                    padding=padding,
                 )
             )
 
-        table_data.append(
-            converted_row
-        )
+        converted.append(converted_row)
 
-    # --------------------------------------------------------
-    # Repeat header.
-    # --------------------------------------------------------
-
-    if repeat_rows is not None:
-
-        effective_repeat_rows = max(
-            0,
-            int(repeat_rows),
-        )
-
-    elif (
-        header_row
-        and repeat_header
-    ):
-
-        effective_repeat_rows = 1
-
-    else:
-
-        effective_repeat_rows = 0
-
-    # --------------------------------------------------------
-    # ReportLab table.
-    # --------------------------------------------------------
+    widths = _resolve_column_widths(
+        converted,
+        col_widths,
+        available_width,
+    )
 
     table = Table(
-        table_data,
+        converted,
         colWidths=widths,
         repeatRows=(
-            effective_repeat_rows
+            max(0, int(repeat_rows))
+            if header_row
+            else 0
         ),
         hAlign="LEFT",
     )
 
-    # --------------------------------------------------------
-    # Base style.
-    # --------------------------------------------------------
-
     style_commands = [
-        (
-            "VALIGN",
-            (0, 0),
-            (-1, -1),
-            normalized_vertical,
-        ),
-        (
-            "LEFTPADDING",
-            (0, 0),
-            (-1, -1),
-            cell_padding,
-        ),
-        (
-            "RIGHTPADDING",
-            (0, 0),
-            (-1, -1),
-            cell_padding,
-        ),
-        (
-            "TOPPADDING",
-            (0, 0),
-            (-1, -1),
-            cell_padding,
-        ),
-        (
-            "BOTTOMPADDING",
-            (0, 0),
-            (-1, -1),
-            cell_padding,
-        ),
         (
             "GRID",
             (0, 0),
@@ -712,109 +334,330 @@ def build_table(
             border_width,
             border_color,
         ),
+        (
+            "VALIGN",
+            (0, 0),
+            (-1, -1),
+            "MIDDLE",
+        ),
+        (
+            "LEFTPADDING",
+            (0, 0),
+            (-1, -1),
+            left,
+        ),
+        (
+            "TOPPADDING",
+            (0, 0),
+            (-1, -1),
+            top,
+        ),
+        (
+            "RIGHTPADDING",
+            (0, 0),
+            (-1, -1),
+            right,
+        ),
+        (
+            "BOTTOMPADDING",
+            (0, 0),
+            (-1, -1),
+            bottom,
+        ),
     ]
 
-    # --------------------------------------------------------
-    # Header styling.
-    # --------------------------------------------------------
-
-    if header_row:
-
-        style_commands.extend(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, 0),
-                    header_background,
-                ),
-                (
-                    "LINEBELOW",
-                    (0, 0),
-                    (-1, 0),
-                    border_width,
-                    border_color,
-                ),
-            ]
+    if header_row and rows:
+        style_commands.append(
+            (
+                "BACKGROUND",
+                (0, 0),
+                (-1, max(repeat_rows, 1) - 1),
+                header_background,
+            )
         )
 
-    table.setStyle(
-        TableStyle(
-            style_commands
+    for index, alignment in enumerate(alignments):
+        if index >= column_count:
+            break
+
+        style_commands.append(
+            (
+                "ALIGN",
+                (index, 0),
+                (index, -1),
+                (
+                    "CENTER"
+                    if _alignment(alignment) == TA_CENTER
+                    else (
+                        "RIGHT"
+                        if _alignment(alignment) == TA_RIGHT
+                        else "LEFT"
+                    )
+                ),
+            )
         )
-    )
+
+    table.setStyle(TableStyle(style_commands))
 
     return table
 
 
-# ============================================================
-# TABLE SIZE
-# ============================================================
-
-def calculate_table_size(
-    table: Table,
+def table_dimensions(
+    data: Sequence[Sequence[Any]],
     *,
     available_width: float,
-    available_height: float | None = None,
+    col_widths: Optional[Sequence[Any]] = None,
+    repeat_rows: int = 1,
+    **kwargs,
 ) -> tuple[float, float]:
     """
-    Calculate the rendered table size.
-
-    Returns:
-        (width, height)
+    Return the actual ReportLab wrapped width and height.
     """
-
-    width, height = (
-        table.wrap(
-            available_width,
-            available_height
-            or 100000,
-        )
+    table = build_table(
+        data,
+        col_widths=col_widths,
+        repeat_rows=repeat_rows,
+        available_width=available_width,
+        **kwargs,
     )
 
-    return (
-        float(width),
-        float(height),
+    return table.wrap(
+        available_width,
+        1000000,
     )
 
 
-def table_fits(
-    table: Table,
+def split_table_rows(
+    data: Sequence[Sequence[Any]],
     *,
     available_width: float,
     available_height: float,
-) -> bool:
+    col_widths: Optional[Sequence[Any]] = None,
+    header_rows: int = 1,
+    padding: Any = DEFAULT_PADDING,
+    **kwargs,
+) -> List[List[List[Any]]]:
     """
-    Check whether a table fits within
-    the current content area.
-    """
+    Split a large table into page-sized chunks.
 
-    _, height = (
-        calculate_table_size(
-            table,
-            available_width=(
-                available_width
-            ),
-            available_height=(
-                available_height
-            ),
-        )
+    The first header_rows are copied into every chunk.
+
+    Rows remain intact. Cell content is allowed to wrap vertically. If one
+    individual row is taller than the page, it is kept as a single row so
+    the caller never loses structured table data.
+    """
+    rows = _normalize_rows(data)
+
+    if not rows:
+        return []
+
+    header_count = max(
+        0,
+        min(int(header_rows), len(rows)),
     )
 
-    return (
-        height
-        <= max(
-            0.0,
-            available_height,
+    header = rows[:header_count]
+    body = rows[header_count:]
+
+    if not body:
+        return [rows]
+
+    chunks: List[List[List[Any]]] = []
+    current: List[List[Any]] = list(header)
+    current_height = 0.0
+
+    if header:
+        _, current_height = table_dimensions(
+            current,
+            available_width=available_width,
+            col_widths=col_widths,
+            repeat_rows=header_count,
+            padding=padding,
+            **kwargs,
         )
+
+    for row in body:
+        candidate = current + [row]
+
+        _, candidate_height = table_dimensions(
+            candidate,
+            available_width=available_width,
+            col_widths=col_widths,
+            repeat_rows=header_count,
+            padding=padding,
+            **kwargs,
+        )
+
+        if (
+            current
+            and current_height > 0
+            and candidate_height > available_height
+            and len(current) > header_count
+        ):
+            chunks.append(current)
+
+            current = list(header) + [row]
+
+            _, current_height = table_dimensions(
+                current,
+                available_width=available_width,
+                col_widths=col_widths,
+                repeat_rows=header_count,
+                padding=padding,
+                **kwargs,
+            )
+
+            continue
+
+        current.append(row)
+        current_height = candidate_height
+
+    if current:
+        chunks.append(current)
+
+    return chunks
+
+
+def split_table_node(
+    node: Dict[str, Any],
+    *,
+    available_width: float,
+    available_height: float,
+) -> List[Dict[str, Any]]:
+    """
+    Split a TipTap table node into page-sized table nodes.
+
+    Every generated node preserves the original attrs and includes the
+    original header row.
+    """
+    if not isinstance(node, dict):
+        return [node]
+
+    content = node.get("content") or []
+
+    if len(content) <= 1:
+        return [node]
+
+    attrs = dict(node.get("attrs") or {})
+
+    data: List[List[str]] = []
+
+    for row in content:
+        cells = row.get("content") or []
+        data.append(
+            [
+                _cell_text(cell)
+                for cell in cells
+            ]
+        )
+
+    column_widths = (
+        attrs.get("columnWidths")
+        or attrs.get("colWidths")
+        or attrs.get("column_widths")
     )
+
+    header_rows = attrs.get(
+        "headerRows",
+        1,
+    )
+
+    try:
+        header_rows = int(header_rows)
+    except (TypeError, ValueError):
+        header_rows = 1
+
+    chunks = split_table_rows(
+        data,
+        available_width=available_width,
+        available_height=available_height,
+        col_widths=column_widths,
+        header_rows=header_rows,
+    )
+
+    if len(chunks) <= 1:
+        return [node]
+
+    result: List[Dict[str, Any]] = []
+
+    # Convert each split data chunk back to the original TipTap table
+    # structure instead of flattening the document.
+    for chunk in chunks:
+        chunk_content: List[Dict[str, Any]] = []
+
+        for row_index, row_data in enumerate(chunk):
+            original_row_index = None
+
+            # Match against the original content by cell text. Header rows
+            # always come from the beginning of the original table.
+            if row_index < header_rows:
+                original_row_index = row_index
+            else:
+                target = row_data
+                for candidate_index in range(
+                    header_rows,
+                    len(content),
+                ):
+                    candidate_cells = (
+                        content[candidate_index].get("content")
+                        or []
+                    )
+                    candidate_data = [
+                        _cell_text(cell)
+                        for cell in candidate_cells
+                    ]
+
+                    if candidate_data == target:
+                        original_row_index = candidate_index
+                        break
+
+            if original_row_index is None:
+                # Preserve the row in structured form if duplicate rows make
+                # text matching ambiguous.
+                cells = [
+                    {
+                        "type": "tableCell",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": (
+                                    [
+                                        {
+                                            "type": "text",
+                                            "text": value,
+                                        }
+                                    ]
+                                    if value
+                                    else []
+                                ),
+                            }
+                        ],
+                    }
+                    for value in row_data
+                ]
+
+                chunk_content.append(
+                    {
+                        "type": "tableRow",
+                        "content": cells,
+                    }
+                )
+            else:
+                chunk_content.append(
+                    content[original_row_index]
+                )
+
+        split_node = dict(node)
+        split_node["content"] = chunk_content
+
+        result.append(split_node)
+
+    return result
 
 
 __all__ = [
-    "TableConfig",
-    "normalize_table_data",
-    "calculate_column_widths",
     "build_table",
-    "calculate_table_size",
-    "table_fits",
+    "table_dimensions",
+    "split_table_rows",
+    "split_table_node",
 ]
