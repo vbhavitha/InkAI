@@ -2,8 +2,8 @@
 InkAI PDF Layout
 ================
 
-Reusable page-size, orientation, margin, and header configuration
-for the PDF engine.
+Reusable page-size, orientation, margin, header, footer, and page-number
+configuration for the PDF engine.
 
 This module is intentionally independent from assignment-specific
 pagination/rendering logic.
@@ -17,8 +17,30 @@ Supported page sizes:
 UI/API custom dimensions and margins are supplied in millimetres.
 Internally, ReportLab/PDF dimensions are represented in points.
 
-1 inch = 72 points
-1 mm   = 72 / 25.4 points
+Header:
+    - Enabled / disabled
+    - Text
+    - Left / Center / Right
+    - Font size
+    - Bold
+    - Spacing after
+
+Footer:
+    - Enabled / disabled
+    - Text
+    - Left / Center / Right
+    - Font size
+    - Bold
+    - Spacing
+
+Page numbers:
+    - Page N
+    - Page N of M
+    - Bottom Left / Bottom Center / Bottom Right
+    - Default: Bottom Center
+
+This file provides reusable configuration only. Assignment-specific
+pagination remains owned by the existing assignment pagination service.
 """
 
 from __future__ import annotations
@@ -56,14 +78,19 @@ def points_to_mm(value: float) -> float:
 # ============================================================
 
 PAGE_SIZES: dict[str, tuple[float, float]] = {
+    # 210 × 297 mm
     "A4": (
         mm_to_points(210),
         mm_to_points(297),
     ),
+
+    # 8.5 × 11 inches
     "Letter": (
         inches_to_points(8.5),
         inches_to_points(11),
     ),
+
+    # 8.5 × 14 inches
     "Legal": (
         inches_to_points(8.5),
         inches_to_points(14),
@@ -71,8 +98,18 @@ PAGE_SIZES: dict[str, tuple[float, float]] = {
 }
 
 DEFAULT_PAGE_SIZE = "A4"
-SUPPORTED_PAGE_SIZES = ("A4", "Letter", "Legal", "Custom")
-SUPPORTED_ORIENTATIONS = ("portrait", "landscape")
+
+SUPPORTED_PAGE_SIZES = (
+    "A4",
+    "Letter",
+    "Legal",
+    "Custom",
+)
+
+SUPPORTED_ORIENTATIONS = (
+    "portrait",
+    "landscape",
+)
 
 
 # ============================================================
@@ -105,10 +142,14 @@ class CustomPageSize:
 
     def to_page_size(self) -> PageSize:
         if self.width_mm <= 0:
-            raise ValueError("Custom page width must be greater than 0 mm.")
+            raise ValueError(
+                "Custom page width must be greater than 0 mm."
+            )
 
         if self.height_mm <= 0:
-            raise ValueError("Custom page height must be greater than 0 mm.")
+            raise ValueError(
+                "Custom page height must be greater than 0 mm."
+            )
 
         return PageSize(
             name="Custom",
@@ -129,15 +170,28 @@ def get_page_size(
     Missing/empty/unknown page-size values fall back to A4.
     Custom requires both width and height in millimetres.
     """
-    normalized = str(page_size or DEFAULT_PAGE_SIZE).strip()
+    normalized = str(
+        page_size or DEFAULT_PAGE_SIZE
+    ).strip()
 
-    lookup = {key.lower(): key for key in PAGE_SIZES}
-    canonical = lookup.get(normalized.lower(), DEFAULT_PAGE_SIZE)
+    lookup = {
+        key.lower(): key
+        for key in PAGE_SIZES
+    }
+
+    canonical = lookup.get(
+        normalized.lower(),
+        DEFAULT_PAGE_SIZE,
+    )
 
     if canonical == "Custom":
-        if custom_width_mm is None or custom_height_mm is None:
+        if (
+            custom_width_mm is None
+            or custom_height_mm is None
+        ):
             raise ValueError(
-                "Custom page size requires both width and height in millimetres."
+                "Custom page size requires both width and "
+                "height in millimetres."
             )
 
         return CustomPageSize(
@@ -158,13 +212,18 @@ def get_page_size(
 # ORIENTATION
 # ============================================================
 
-def normalize_orientation(orientation: str | None) -> str:
+def normalize_orientation(
+    orientation: str | None,
+) -> str:
     """Normalize and validate portrait/landscape orientation."""
-    normalized = str(orientation or "portrait").strip().lower()
+    normalized = str(
+        orientation or "portrait"
+    ).strip().lower()
 
     if normalized not in SUPPORTED_ORIENTATIONS:
         raise ValueError(
-            "Orientation must be either 'portrait' or 'landscape'."
+            "Orientation must be either "
+            "'portrait' or 'landscape'."
         )
 
     return normalized
@@ -175,14 +234,28 @@ def apply_orientation(
     orientation: str = "portrait",
 ) -> PageSize:
     """Return the supplied page size in the requested orientation."""
-    normalized = normalize_orientation(orientation)
+    normalized = normalize_orientation(
+        orientation
+    )
 
     if normalized == "portrait":
-        width = min(page_size.width, page_size.height)
-        height = max(page_size.width, page_size.height)
+        width = min(
+            page_size.width,
+            page_size.height,
+        )
+        height = max(
+            page_size.width,
+            page_size.height,
+        )
     else:
-        width = max(page_size.width, page_size.height)
-        height = min(page_size.width, page_size.height)
+        width = max(
+            page_size.width,
+            page_size.height,
+        )
+        height = min(
+            page_size.width,
+            page_size.height,
+        )
 
     return PageSize(
         name=page_size.name,
@@ -256,7 +329,13 @@ MARGIN_PRESETS: dict[str, Margins] = {
 }
 
 DEFAULT_MARGIN_PRESET = "normal"
-SUPPORTED_MARGIN_PRESETS = ("normal", "narrow", "wide", "custom")
+
+SUPPORTED_MARGIN_PRESETS = (
+    "normal",
+    "narrow",
+    "wide",
+    "custom",
+)
 
 
 def build_custom_margins(
@@ -309,14 +388,23 @@ def get_margins(
         custom = custom_margins or {}
 
         return build_custom_margins(
-            top_mm=float(custom.get("top", 20)),
-            bottom_mm=float(custom.get("bottom", 20)),
-            left_mm=float(custom.get("left", 20)),
-            right_mm=float(custom.get("right", 20)),
+            top_mm=float(
+                custom.get("top", 20)
+            ),
+            bottom_mm=float(
+                custom.get("bottom", 20)
+            ),
+            left_mm=float(
+                custom.get("left", 20)
+            ),
+            right_mm=float(
+                custom.get("right", 20)
+            ),
         )
 
     raise ValueError(
-        "Margin preset must be one of: normal, narrow, wide, custom."
+        "Margin preset must be one of: "
+        "normal, narrow, wide, custom."
     )
 
 
@@ -336,9 +424,9 @@ class HeaderConfig:
     """
     Reusable PDF header configuration.
 
-    The header text is supplied by the caller. This keeps the PDF
-    engine generic while allowing AssignmentPage to build the
-    header from Name/Subject/etc. metadata.
+    The header text is supplied by the caller. AssignmentPage can
+    construct this text from metadata such as title, Name, Subject,
+    Roll Number, Class, Section, Date, and Teacher.
     """
 
     enabled: bool = False
@@ -365,14 +453,19 @@ def build_header_config(
 
     if normalized_position not in HEADER_POSITIONS:
         raise ValueError(
-            "Header position must be one of: left, center, right."
+            "Header position must be one of: "
+            "left, center, right."
         )
 
     if float(font_size) <= 0:
-        raise ValueError("Header font size must be greater than 0.")
+        raise ValueError(
+            "Header font size must be greater than 0."
+        )
 
     if float(spacing_after) < 0:
-        raise ValueError("Header spacing cannot be negative.")
+        raise ValueError(
+            "Header spacing cannot be negative."
+        )
 
     return HeaderConfig(
         enabled=bool(enabled),
@@ -385,17 +478,212 @@ def build_header_config(
 
 
 # ============================================================
+# FOOTER
+# ============================================================
+
+FOOTER_POSITIONS = {
+    "left",
+    "center",
+    "right",
+}
+
+
+@dataclass(frozen=True)
+class FooterConfig:
+    """
+    Reusable PDF footer configuration.
+
+    Example footer text:
+        InkAI — Assignment
+
+    or:
+        Bhavitha | Computer Networks
+    """
+
+    enabled: bool = False
+    text: str = ""
+    position: str = "center"
+    font_size: float = 9.0
+    bold: bool = False
+    spacing_before: float = 8.0
+
+
+def build_footer_config(
+    *,
+    enabled: bool = False,
+    text: str = "",
+    position: str = "center",
+    font_size: float = 9.0,
+    bold: bool = False,
+    spacing_before: float = 8.0,
+) -> FooterConfig:
+    """Build and validate reusable footer configuration."""
+    normalized_position = str(
+        position or "center"
+    ).strip().lower()
+
+    if normalized_position not in FOOTER_POSITIONS:
+        raise ValueError(
+            "Footer position must be one of: "
+            "left, center, right."
+        )
+
+    if float(font_size) <= 0:
+        raise ValueError(
+            "Footer font size must be greater than 0."
+        )
+
+    if float(spacing_before) < 0:
+        raise ValueError(
+            "Footer spacing cannot be negative."
+        )
+
+    return FooterConfig(
+        enabled=bool(enabled),
+        text=str(text or ""),
+        position=normalized_position,
+        font_size=float(font_size),
+        bold=bool(bold),
+        spacing_before=float(spacing_before),
+    )
+
+
+# ============================================================
+# PAGE NUMBERS
+# ============================================================
+
+PAGE_NUMBER_POSITIONS = {
+    "left",
+    "center",
+    "right",
+}
+
+DEFAULT_PAGE_NUMBER_POSITION = "center"
+
+
+@dataclass(frozen=True)
+class PageNumberConfig:
+    """
+    Reusable page-number configuration.
+
+    Position values refer to the bottom of the page:
+        left
+        center
+        right
+
+    show_total controls whether the renderer displays:
+        Page 1
+
+    or:
+        Page 1 of 5
+    """
+
+    enabled: bool = True
+    position: str = DEFAULT_PAGE_NUMBER_POSITION
+    show_total: bool = False
+    prefix: str = "Page"
+    font_size: float = 9.0
+    bold: bool = False
+    bottom_offset: float = 18.0
+
+
+def build_page_number_config(
+    *,
+    enabled: bool = True,
+    position: str = DEFAULT_PAGE_NUMBER_POSITION,
+    show_total: bool = False,
+    prefix: str = "Page",
+    font_size: float = 9.0,
+    bold: bool = False,
+    bottom_offset: float = 18.0,
+) -> PageNumberConfig:
+    """Build and validate reusable page-number configuration."""
+    normalized_position = str(
+        position or DEFAULT_PAGE_NUMBER_POSITION
+    ).strip().lower()
+
+    if normalized_position not in PAGE_NUMBER_POSITIONS:
+        raise ValueError(
+            "Page number position must be one of: "
+            "left, center, right."
+        )
+
+    if float(font_size) <= 0:
+        raise ValueError(
+            "Page number font size must be greater than 0."
+        )
+
+    if float(bottom_offset) < 0:
+        raise ValueError(
+            "Page number bottom offset cannot be negative."
+        )
+
+    normalized_prefix = str(
+        prefix or "Page"
+    ).strip()
+
+    if not normalized_prefix:
+        normalized_prefix = "Page"
+
+    return PageNumberConfig(
+        enabled=bool(enabled),
+        position=normalized_position,
+        show_total=bool(show_total),
+        prefix=normalized_prefix,
+        font_size=float(font_size),
+        bold=bool(bold),
+        bottom_offset=float(bottom_offset),
+    )
+
+
+def format_page_number(
+    page_number: int,
+    total_pages: int | None = None,
+    *,
+    show_total: bool = False,
+    prefix: str = "Page",
+) -> str:
+    """
+    Format the visible page-number label.
+
+    Examples:
+        Page 1
+        Page 1 of 5
+    """
+    page = max(1, int(page_number))
+    label = str(prefix or "Page").strip() or "Page"
+
+    if show_total and total_pages is not None:
+        total = max(page, int(total_pages))
+        return f"{label} {page} of {total}"
+
+    return f"{label} {page}"
+
+
+# ============================================================
 # COMPLETE LAYOUT CONFIGURATION
 # ============================================================
 
 @dataclass(frozen=True)
 class LayoutConfig:
-    """Complete reusable PDF layout configuration."""
+    """
+    Complete reusable PDF layout configuration.
+
+    Header, footer, and page-number configuration are independent
+    so the renderer can enable/disable each feature separately.
+    """
 
     page_size: PageSize
     margins: Margins
     orientation: str = "portrait"
+
     header: HeaderConfig | None = None
+    footer: FooterConfig | None = None
+    page_numbers: PageNumberConfig | None = None
+
+    # --------------------------------------------------------
+    # Content dimensions
+    # --------------------------------------------------------
 
     @property
     def content_width(self) -> float:
@@ -415,34 +703,102 @@ class LayoutConfig:
             - self.margins.bottom,
         )
 
+    # --------------------------------------------------------
+    # Content coordinates
+    # --------------------------------------------------------
+
     @property
     def content_top(self) -> float:
         """
-        Top Y-coordinate available to content.
+        Top Y-coordinate available to document content.
 
-        If a header is enabled, reserve its height and spacing.
+        Header space is reserved when an enabled header contains text.
         """
-        top = self.page_size.height - self.margins.top
+        top = (
+            self.page_size.height
+            - self.margins.top
+        )
 
-        if self.header and self.header.enabled and self.header.text.strip():
-            top -= self.header.font_size + self.header.spacing_after
+        if (
+            self.header
+            and self.header.enabled
+            and self.header.text.strip()
+        ):
+            top -= (
+                self.header.font_size
+                + self.header.spacing_after
+            )
 
-        return max(self.margins.bottom, top)
+        return max(
+            self.margins.bottom,
+            top,
+        )
 
     @property
     def content_bottom(self) -> float:
-        """Bottom Y-coordinate available to content."""
-        return self.margins.bottom
+        """
+        Bottom Y-coordinate available to document content.
+
+        Footer/page-number space is reserved independently from the
+        assignment pagination algorithm. This is a layout boundary
+        used by downstream renderers.
+        """
+        bottom = self.margins.bottom
+
+        footer_enabled = bool(
+            self.footer
+            and self.footer.enabled
+            and self.footer.text.strip()
+        )
+
+        page_number_enabled = bool(
+            self.page_numbers
+            and self.page_numbers.enabled
+        )
+
+        if footer_enabled or page_number_enabled:
+            footer_space = 0.0
+
+            if footer_enabled:
+                footer_space = max(
+                    footer_space,
+                    self.footer.font_size
+                    + self.footer.spacing_before,
+                )
+
+            if page_number_enabled:
+                footer_space = max(
+                    footer_space,
+                    self.page_numbers.font_size
+                    + self.page_numbers.bottom_offset,
+                )
+
+            bottom += footer_space
+
+        return min(
+            self.page_size.height - self.margins.top,
+            bottom,
+        )
+
+    @property
+    def available_content_height(self) -> float:
+        """Actual usable height between content_top and content_bottom."""
+        return max(
+            0.0,
+            self.content_top
+            - self.content_bottom,
+        )
 
     @property
     def content_left(self) -> float:
-        """Left X-coordinate available to content."""
         return self.margins.left
 
     @property
     def content_right(self) -> float:
-        """Right X-coordinate available to content."""
-        return self.page_size.width - self.margins.right
+        return (
+            self.page_size.width
+            - self.margins.right
+        )
 
 
 # ============================================================
@@ -457,31 +813,73 @@ def build_layout(
     custom_width_mm: float | None = None,
     custom_height_mm: float | None = None,
     custom_margins: dict[str, Any] | None = None,
+
+    # Header
     header_enabled: bool = False,
     header_text: str = "",
     header_position: str = "center",
     header_font_size: float = 11.0,
     header_bold: bool = False,
     header_spacing_after: float = 12.0,
+
+    # Footer
+    footer_enabled: bool = False,
+    footer_text: str = "",
+    footer_position: str = "center",
+    footer_font_size: float = 9.0,
+    footer_bold: bool = False,
+    footer_spacing_before: float = 8.0,
+
+    # Page numbers
+    page_numbers_enabled: bool = True,
+    page_number_position: str = DEFAULT_PAGE_NUMBER_POSITION,
+    page_number_show_total: bool = False,
+    page_number_prefix: str = "Page",
+    page_number_font_size: float = 9.0,
+    page_number_bold: bool = False,
+    page_number_bottom_offset: float = 18.0,
 ) -> LayoutConfig:
     """
     Build a complete reusable PDF layout.
 
-    Parameters match the Phase 8 page settings:
+    Page settings:
         page_size:
             A4, Letter, Legal, Custom
+
         orientation:
             portrait, landscape
+
         margin_preset:
             normal, narrow, wide, custom
+
         custom_width_mm/custom_height_mm:
             used only for Custom page size
+
         custom_margins:
             top/right/bottom/left values in mm
-        header_*:
-            reusable optional header configuration
+
+    Header:
+        header_enabled
+        header_text
+        header_position = left | center | right
+
+    Footer:
+        footer_enabled
+        footer_text
+        footer_position = left | center | right
+
+    Page numbers:
+        page_numbers_enabled
+        page_number_position = left | center | right
+        page_number_show_total
+            False -> "Page 1"
+            True  -> "Page 1 of 5"
+
+    No assignment-specific pagination is performed here.
     """
-    normalized_orientation = normalize_orientation(orientation)
+    normalized_orientation = normalize_orientation(
+        orientation
+    )
 
     resolved_page_size = get_page_size(
         page_size,
@@ -499,15 +897,31 @@ def build_layout(
         custom_margins=custom_margins,
     )
 
-    if resolved_margins.horizontal >= resolved_page_size.width:
+    # --------------------------------------------------------
+    # Validate page dimensions against margins.
+    # --------------------------------------------------------
+
+    if (
+        resolved_margins.horizontal
+        >= resolved_page_size.width
+    ):
         raise ValueError(
-            "Left and right margins are too large for the selected page width."
+            "Left and right margins are too large "
+            "for the selected page width."
         )
 
-    if resolved_margins.vertical >= resolved_page_size.height:
+    if (
+        resolved_margins.vertical
+        >= resolved_page_size.height
+    ):
         raise ValueError(
-            "Top and bottom margins are too large for the selected page height."
+            "Top and bottom margins are too large "
+            "for the selected page height."
         )
+
+    # --------------------------------------------------------
+    # Build reusable display configurations.
+    # --------------------------------------------------------
 
     header = build_header_config(
         enabled=header_enabled,
@@ -518,13 +932,32 @@ def build_layout(
         spacing_after=header_spacing_after,
     )
 
-    # If the header is disabled, keep the config explicit but inert.
-    # This makes downstream rendering simpler and backwards-compatible.
+    footer = build_footer_config(
+        enabled=footer_enabled,
+        text=footer_text,
+        position=footer_position,
+        font_size=footer_font_size,
+        bold=footer_bold,
+        spacing_before=footer_spacing_before,
+    )
+
+    page_numbers = build_page_number_config(
+        enabled=page_numbers_enabled,
+        position=page_number_position,
+        show_total=page_number_show_total,
+        prefix=page_number_prefix,
+        font_size=page_number_font_size,
+        bold=page_number_bold,
+        bottom_offset=page_number_bottom_offset,
+    )
+
     return LayoutConfig(
         page_size=resolved_page_size,
         margins=resolved_margins,
         orientation=normalized_orientation,
         header=header,
+        footer=footer,
+        page_numbers=page_numbers,
     )
 
 
@@ -551,7 +984,10 @@ def get_reportlab_page_size(
         orientation,
     )
 
-    return resolved.width, resolved.height
+    return (
+        resolved.width,
+        resolved.height,
+    )
 
 
 def get_reportlab_margins(
@@ -561,6 +997,7 @@ def get_reportlab_margins(
 ) -> tuple[float, float, float, float]:
     """
     Return ReportLab margins as:
+
         (top, right, bottom, left)
     """
     margins = get_margins(
@@ -581,32 +1018,57 @@ def get_reportlab_margins(
 # ============================================================
 
 __all__ = [
+    # Units
     "POINTS_PER_INCH",
     "MM_PER_INCH",
     "POINTS_PER_MM",
+    "mm_to_points",
+    "inches_to_points",
+    "points_to_mm",
+
+    # Page sizes
     "PAGE_SIZES",
     "DEFAULT_PAGE_SIZE",
     "SUPPORTED_PAGE_SIZES",
-    "SUPPORTED_ORIENTATIONS",
     "PageSize",
     "CustomPageSize",
+    "get_page_size",
+
+    # Orientation
+    "SUPPORTED_ORIENTATIONS",
+    "normalize_orientation",
+    "apply_orientation",
+
+    # Margins
     "Margins",
     "MARGIN_PRESETS",
     "DEFAULT_MARGIN_PRESET",
     "SUPPORTED_MARGIN_PRESETS",
-    "HeaderConfig",
-    "HEADER_POSITIONS",
-    "LayoutConfig",
-    "mm_to_points",
-    "inches_to_points",
-    "points_to_mm",
-    "get_page_size",
-    "normalize_orientation",
-    "apply_orientation",
     "build_custom_margins",
     "get_margins",
+
+    # Header
+    "HeaderConfig",
+    "HEADER_POSITIONS",
     "build_header_config",
+
+    # Footer
+    "FooterConfig",
+    "FOOTER_POSITIONS",
+    "build_footer_config",
+
+    # Page numbers
+    "PageNumberConfig",
+    "PAGE_NUMBER_POSITIONS",
+    "DEFAULT_PAGE_NUMBER_POSITION",
+    "build_page_number_config",
+    "format_page_number",
+
+    # Complete layout
+    "LayoutConfig",
     "build_layout",
+
+    # ReportLab
     "get_reportlab_page_size",
     "get_reportlab_margins",
 ]
