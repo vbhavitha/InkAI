@@ -7,20 +7,24 @@ Consumes pages produced by the existing AssignmentPageLayout.
 Responsibilities:
 - Render headers.
 - Render structured TipTap nodes in order.
-- Use Phase 7 handwriting font configuration when supplied.
+- Use Phase 7 handwriting font configuration.
 - Render footer.
 - Render Page N / Page N of M.
 - Respect left/center/right positioning.
+- Preserve structured document nodes.
 - Keep pagination outside the renderer.
 
-This renderer does NOT create a second pagination algorithm.
+IMPORTANT:
+This renderer does NOT perform pagination.
+
+Pagination is handled by AssignmentPageLayout.
 """
 
 from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
@@ -35,6 +39,10 @@ from .page_layout import (
 )
 
 
+# ============================================================
+# INK COLORS
+# ============================================================
+
 INK_COLORS = {
     "blue": (0.08, 0.22, 0.65),
     "black": (0.05, 0.05, 0.05),
@@ -45,15 +53,24 @@ INK_COLORS = {
 }
 
 
+# ============================================================
+# PDF RENDERER
+# ============================================================
+
 class AssignmentPDFRenderer:
     """
     Render already-paginated assignment pages into a PDF.
+
+    Pagination is NOT performed here.
+
+    The renderer receives the pages produced by
+    AssignmentPageLayout and only draws them.
     """
 
     def __init__(
         self,
-        page_config: PageConfig | None = None,
-        handwriting: dict[str, Any] | None = None,
+        page_config: Optional[PageConfig] = None,
+        handwriting: Optional[Dict[str, Any]] = None,
     ):
         self.page_config = (
             page_config
@@ -64,19 +81,32 @@ class AssignmentPDFRenderer:
             self.page_config
         )
 
-        self.handwriting = handwriting or {}
+        self.handwriting = (
+            handwriting
+            or {}
+        )
 
+        # Make sure font directories exist.
         font_manager.ensure_directories()
 
     # ========================================================
-    # RENDER
+    # RENDER COMPLETE PDF
     # ========================================================
 
     def render(
         self,
-        pages: List[Dict[str, Any]] | None,
-        output_path: str | None = None,
+        pages: Optional[
+            List[Dict[str, Any]]
+        ] = None,
+        output_path: Optional[str] = None,
     ):
+        """
+        Render all already-paginated pages.
+
+        Returns:
+            bytes containing the generated PDF.
+        """
+
         pages = pages or [
             {
                 "pageNumber": 1,
@@ -112,10 +142,14 @@ class AssignmentPDFRenderer:
         pdf.save()
 
         pdf_bytes = buffer.getvalue()
+
         buffer.close()
 
         if output_path:
-            output_file = Path(output_path)
+            output_file = Path(
+                output_path
+            )
+
             output_file.parent.mkdir(
                 parents=True,
                 exist_ok=True,
@@ -137,10 +171,17 @@ class AssignmentPDFRenderer:
         page: Dict[str, Any],
         total_pages: int,
     ):
+        """
+        Render one already-paginated page.
+        """
+
         page_number = int(
             page.get(
                 "pageNumber",
-                page.get("number", 1),
+                page.get(
+                    "number",
+                    1,
+                ),
             )
             or 1
         )
@@ -150,16 +191,16 @@ class AssignmentPDFRenderer:
             [],
         )
 
-        # Header is drawn before content.
+        # Header.
         self.render_header(pdf)
 
-        # Existing pagination already determined the nodes that belong
-        # to this page. Renderer only draws them.
+        # Structured document content.
         self.render_nodes(
             pdf,
             nodes,
         )
 
+        # Footer + page number.
         self.render_footer(
             pdf,
             page_number,
@@ -170,7 +211,14 @@ class AssignmentPDFRenderer:
     # HEADER
     # ========================================================
 
-    def render_header(self, pdf):
+    def render_header(
+        self,
+        pdf,
+    ):
+        """
+        Render optional assignment header.
+        """
+
         if not self.page_config.header_enabled:
             return
 
@@ -187,7 +235,10 @@ class AssignmentPDFRenderer:
         )
 
         font_name = font_manager.resolve(
-            bold=self.page_config.header_bold
+            bold=(
+                self.page_config.header_bold
+            ),
+            handwriting=self.handwriting,
         )
 
         size = float(
@@ -199,8 +250,13 @@ class AssignmentPDFRenderer:
             size,
         )
 
+        self._set_ink_color(pdf)
+
         x = self._aligned_x(
-            position=self.page_config.header_position,
+            position=(
+                self.page_config
+                .header_position
+            ),
             text=text,
             font_name=font_name,
             font_size=size,
@@ -228,6 +284,13 @@ class AssignmentPDFRenderer:
         pdf,
         nodes: List[Dict[str, Any]],
     ):
+        """
+        Render structured TipTap nodes.
+
+        The nodes have already been assigned to this
+        page by AssignmentPageLayout.
+        """
+
         page_width, page_height = (
             self.layout.get_page_size()
         )
@@ -246,17 +309,25 @@ class AssignmentPDFRenderer:
         )
 
         for node in nodes:
+
             y = self._render_node(
                 pdf=pdf,
                 node=node,
                 x=x,
                 y=y,
-                max_width=self.layout.get_usable_width(),
+                max_width=(
+                    self.layout
+                    .get_usable_width()
+                ),
                 bottom_limit=bottom_limit,
             )
 
             if y <= bottom_limit:
                 break
+
+    # ========================================================
+    # NODE DISPATCH
+    # ========================================================
 
     def _render_node(
         self,
@@ -268,11 +339,14 @@ class AssignmentPDFRenderer:
         max_width: float,
         bottom_limit: float,
     ) -> float:
+
         node_type = (
             node.get("type")
             or "paragraph"
         )
 
+        # Manual page breaks have already been
+        # processed by pagination.
         if node_type == "pageBreak":
             return y
 
@@ -305,7 +379,8 @@ class AssignmentPDFRenderer:
                 y,
                 max_width,
                 ordered=(
-                    node_type == "orderedList"
+                    node_type
+                    == "orderedList"
                 ),
             )
 
@@ -334,18 +409,21 @@ class AssignmentPDFRenderer:
             )
 
         # Generic structured container.
-        content = node.get("content") or []
+        content = (
+            node.get("content")
+            or []
+        )
 
-        if content:
-            for child in content:
-                y = self._render_node(
-                    pdf=pdf,
-                    node=child,
-                    x=x,
-                    y=y,
-                    max_width=max_width,
-                    bottom_limit=bottom_limit,
-                )
+        for child in content:
+
+            y = self._render_node(
+                pdf=pdf,
+                node=child,
+                x=x,
+                y=y,
+                max_width=max_width,
+                bottom_limit=bottom_limit,
+            )
 
         return y
 
@@ -361,10 +439,16 @@ class AssignmentPDFRenderer:
         y,
         max_width,
     ):
-        attrs = node.get("attrs") or {}
+        attrs = (
+            node.get("attrs")
+            or {}
+        )
 
         level = int(
-            attrs.get("level", 2)
+            attrs.get(
+                "level",
+                2,
+            )
             or 2
         )
 
@@ -375,13 +459,23 @@ class AssignmentPDFRenderer:
             4: 13,
             5: 12,
             6: 11,
-        }.get(level, 16)
+        }.get(
+            level,
+            16,
+        )
 
-        text = self.extract_text(node)
+        text = self.extract_text(
+            node
+        )
 
         if not text:
-            return y - self.page_config.line_height
+            return (
+                y
+                - self.page_config.line_height
+            )
 
+        # IMPORTANT:
+        # Handwriting configuration is passed here.
         font_name = font_manager.resolve(
             bold=True,
             handwriting=self.handwriting,
@@ -392,6 +486,8 @@ class AssignmentPDFRenderer:
             size,
         )
 
+        self._set_ink_color(pdf)
+
         lines = self.wrap_text(
             text,
             max_width,
@@ -400,13 +496,17 @@ class AssignmentPDFRenderer:
         )
 
         for line in lines:
+
             pdf.drawString(
                 x,
                 y - size,
                 line,
             )
 
-            y -= size + 5
+            y -= (
+                size
+                + 5
+            )
 
         return y - 8
 
@@ -422,47 +522,59 @@ class AssignmentPDFRenderer:
         y,
         max_width,
     ):
-        text = self.extract_text(node)
+        text = self.extract_text(
+            node
+        )
 
         if not text:
-            return y - self.page_config.line_height
-
-        font_size = float(
-            self.handwriting.get(
-                "fontSize",
-                11,
+            return (
+                y
+                - self.page_config.line_height
             )
-        )
 
-        # Phase 7 handwriting font is used when available.
-        font_name = font_manager.resolve(
-            handwriting=self.handwriting,
-        )
+        # ----------------------------------------------------
+        # Font
+        # ----------------------------------------------------
 
-        # Normal PDF body text should remain readable when no
-        # handwriting configuration is supplied.
-        if not self.handwriting:
+        if self.handwriting:
+
+            font_size = float(
+                self.handwriting.get(
+                    "fontSize",
+                    11,
+                )
+            )
+
+            font_name = (
+                font_manager.resolve(
+                    handwriting=(
+                        self.handwriting
+                    )
+                )
+            )
+
+        else:
+
             font_size = 11
-            font_name = "Helvetica"
 
-        ink = str(
-            self.handwriting.get(
-                "ink",
-                "black",
+            font_name = (
+                "Helvetica"
             )
-        ).lower()
 
-        rgb = INK_COLORS.get(
-            ink,
-            INK_COLORS["black"],
-        )
+        # ----------------------------------------------------
+        # Ink
+        # ----------------------------------------------------
 
-        pdf.setFillColorRGB(*rgb)
+        self._set_ink_color(pdf)
 
         pdf.setFont(
             font_name,
             font_size,
         )
+
+        # ----------------------------------------------------
+        # Wrapping
+        # ----------------------------------------------------
 
         lines = self.wrap_text(
             text,
@@ -470,6 +582,10 @@ class AssignmentPDFRenderer:
             font_name,
             font_size,
         )
+
+        # ----------------------------------------------------
+        # Line spacing
+        # ----------------------------------------------------
 
         line_spacing = float(
             self.handwriting.get(
@@ -480,10 +596,12 @@ class AssignmentPDFRenderer:
 
         line_height = max(
             self.page_config.line_height,
-            font_size * line_spacing,
+            font_size
+            * line_spacing,
         )
 
         for line in lines:
+
             pdf.drawString(
                 x,
                 y - font_size,
@@ -507,11 +625,49 @@ class AssignmentPDFRenderer:
         max_width,
         ordered=False,
     ):
-        items = node.get("content") or []
+        items = (
+            node.get("content")
+            or []
+        )
 
-        for index, item in enumerate(items, start=1):
-            item_text = self.extract_text(
-                item
+        if self.handwriting:
+
+            font_size = float(
+                self.handwriting.get(
+                    "fontSize",
+                    11,
+                )
+            )
+
+            font_name = (
+                font_manager.resolve(
+                    handwriting=(
+                        self.handwriting
+                    )
+                )
+            )
+
+        else:
+
+            font_size = 11
+            font_name = "Helvetica"
+
+        pdf.setFont(
+            font_name,
+            font_size,
+        )
+
+        self._set_ink_color(pdf)
+
+        for index, item in enumerate(
+            items,
+            start=1,
+        ):
+
+            item_text = (
+                self.extract_text(
+                    item
+                )
             )
 
             if not item_text:
@@ -523,26 +679,6 @@ class AssignmentPDFRenderer:
                 else "•"
             )
 
-            font_name = font_manager.resolve(
-                handwriting=self.handwriting
-            )
-
-            font_size = float(
-                self.handwriting.get(
-                    "fontSize",
-                    11,
-                )
-            )
-
-            if not self.handwriting:
-                font_name = "Helvetica"
-                font_size = 11
-
-            pdf.setFont(
-                font_name,
-                font_size,
-            )
-
             marker_width = stringWidth(
                 marker + " ",
                 font_name,
@@ -551,16 +687,20 @@ class AssignmentPDFRenderer:
 
             lines = self.wrap_text(
                 item_text,
-                max_width - marker_width,
+                max_width
+                - marker_width,
                 font_name,
                 font_size,
             )
 
-            for line_index, line in enumerate(lines):
+            for line_index, line in enumerate(
+                lines
+            ):
+
                 prefix = (
                     marker + " "
                     if line_index == 0
-                    else " " * 4
+                    else "    "
                 )
 
                 pdf.drawString(
@@ -590,42 +730,61 @@ class AssignmentPDFRenderer:
         y,
         max_width,
     ):
-        rows = node.get("content") or []
+        rows = (
+            node.get("content")
+            or []
+        )
 
         if not rows:
             return y
 
-        font_name = font_manager.resolve(
-            handwriting=self.handwriting
-        )
+        if self.handwriting:
 
-        font_size = float(
-            self.handwriting.get(
-                "fontSize",
-                10,
+            font_size = float(
+                self.handwriting.get(
+                    "fontSize",
+                    10,
+                )
             )
-        )
 
-        if not self.handwriting:
-            font_name = "Helvetica"
+            font_name = (
+                font_manager.resolve(
+                    handwriting=(
+                        self.handwriting
+                    )
+                )
+            )
+
+        else:
+
             font_size = 10
+            font_name = "Helvetica"
 
         pdf.setFont(
             font_name,
             font_size,
         )
 
+        self._set_ink_color(pdf)
+
+        # Determine number of columns.
         column_count = 1
 
         for row in rows:
-            cells = row.get("content") or []
+
+            cells = (
+                row.get("content")
+                or []
+            )
+
             column_count = max(
                 column_count,
                 len(cells),
             )
 
         cell_width = (
-            max_width / column_count
+            max_width
+            / column_count
         )
 
         row_height = max(
@@ -634,28 +793,37 @@ class AssignmentPDFRenderer:
         )
 
         for row in rows:
-            cells = row.get("content") or []
+
+            cells = (
+                row.get("content")
+                or []
+            )
 
             for column in range(
                 column_count
             ):
+
                 cell = (
                     cells[column]
                     if column < len(cells)
                     else {}
                 )
 
-                text = self.extract_text(
-                    cell
+                text = (
+                    self.extract_text(
+                        cell
+                    )
                 )
 
                 cell_x = (
                     x
-                    + column * cell_width
+                    + column
+                    * cell_width
                 )
 
                 cell_y = (
-                    y - row_height
+                    y
+                    - row_height
                 )
 
                 pdf.rect(
@@ -666,11 +834,24 @@ class AssignmentPDFRenderer:
                 )
 
                 if text:
-                    pdf.drawString(
-                        cell_x + 5,
-                        cell_y + 6,
-                        text[:200],
+
+                    lines = self.wrap_text(
+                        text,
+                        max(
+                            cell_width - 10,
+                            10,
+                        ),
+                        font_name,
+                        font_size,
                     )
+
+                    if lines:
+
+                        pdf.drawString(
+                            cell_x + 5,
+                            cell_y + 6,
+                            lines[0][:200],
+                        )
 
             y -= row_height
 
@@ -688,7 +869,10 @@ class AssignmentPDFRenderer:
         y,
         max_width,
     ):
-        attrs = node.get("attrs") or {}
+        attrs = (
+            node.get("attrs")
+            or {}
+        )
 
         src = (
             attrs.get("src")
@@ -697,10 +881,16 @@ class AssignmentPDFRenderer:
         )
 
         if not src:
-            return y - self.page_config.line_height
+            return (
+                y
+                - self.page_config.line_height
+            )
 
         try:
-            image = ImageReader(src)
+
+            image = ImageReader(
+                src
+            )
 
             width = float(
                 attrs.get(
@@ -717,8 +907,10 @@ class AssignmentPDFRenderer:
             )
 
             if width > max_width:
+
                 ratio = (
-                    max_width / width
+                    max_width
+                    / width
                 )
 
                 width *= ratio
@@ -734,19 +926,27 @@ class AssignmentPDFRenderer:
                 mask="auto",
             )
 
-            return y - height - 10
+            return (
+                y
+                - height
+                - 10
+            )
 
         except Exception:
-            return y - self.page_config.line_height
+            return (
+                y
+                - self.page_config.line_height
+            )
 
     # ========================================================
-    # TEXT
+    # TEXT EXTRACTION
     # ========================================================
 
     def extract_text(
         self,
         node: Dict[str, Any],
     ) -> str:
+
         if not node:
             return ""
 
@@ -755,6 +955,7 @@ class AssignmentPDFRenderer:
         )
 
         if node_type == "text":
+
             return str(
                 node.get(
                     "text",
@@ -766,12 +967,14 @@ class AssignmentPDFRenderer:
             node.get("text"),
             str,
         ):
+
             return node["text"]
 
         if isinstance(
             node.get("content"),
             str,
         ):
+
             return node["content"]
 
         parts = []
@@ -780,8 +983,11 @@ class AssignmentPDFRenderer:
             node.get("content")
             or []
         ):
-            child_text = self.extract_text(
-                child
+
+            child_text = (
+                self.extract_text(
+                    child
+                )
             )
 
             if child_text:
@@ -789,21 +995,25 @@ class AssignmentPDFRenderer:
                     child_text
                 )
 
-        separator = (
-            "\n"
-            if node_type in (
-                "paragraph",
-                "heading",
-                "listItem",
-                "tableRow",
-            )
-            else " "
-        )
+        if node_type in (
+            "paragraph",
+            "heading",
+            "listItem",
+            "tableRow",
+        ):
 
-        return separator.join(parts).strip()
+            separator = "\n"
+
+        else:
+
+            separator = " "
+
+        return separator.join(
+            parts
+        ).strip()
 
     # ========================================================
-    # WRAPPING
+    # TEXT WRAPPING
     # ========================================================
 
     def wrap_text(
@@ -813,6 +1023,7 @@ class AssignmentPDFRenderer:
         font_name: str = "Helvetica",
         font_size: float = 11,
     ) -> List[str]:
+
         if not text:
             return []
 
@@ -821,15 +1032,19 @@ class AssignmentPDFRenderer:
         for raw_line in str(
             text
         ).splitlines() or [""]:
+
             words = raw_line.split()
 
             if not words:
+
                 result.append("")
+
                 continue
 
             current = ""
 
             for word in words:
+
                 candidate = (
                     word
                     if not current
@@ -844,18 +1059,25 @@ class AssignmentPDFRenderer:
                     )
                     <= max_width
                 ):
+
                     current = candidate
+
                     continue
 
                 if current:
+
                     result.append(
                         current
                     )
 
-                # Break an individual oversized word.
+                # ------------------------------------------------
+                # Break oversized word.
+                # ------------------------------------------------
+
                 current = ""
 
                 for character in word:
+
                     candidate_char = (
                         current
                         + character
@@ -869,9 +1091,15 @@ class AssignmentPDFRenderer:
                         )
                         <= max_width
                     ):
-                        current = candidate_char
+
+                        current = (
+                            candidate_char
+                        )
+
                     else:
+
                         if current:
+
                             result.append(
                                 current
                             )
@@ -879,6 +1107,7 @@ class AssignmentPDFRenderer:
                         current = character
 
             if current:
+
                 result.append(
                     current
                 )
@@ -886,7 +1115,7 @@ class AssignmentPDFRenderer:
         return result or [""]
 
     # ========================================================
-    # FOOTER + PAGE NUMBER
+    # FOOTER
     # ========================================================
 
     def render_footer(
@@ -899,20 +1128,34 @@ class AssignmentPDFRenderer:
             self.layout.get_page_size()
         )
 
-        # Footer.
+        # ----------------------------------------------------
+        # Footer
+        # ----------------------------------------------------
+
         if self.page_config.show_footer:
+
             footer_text = str(
                 self.page_config.footer_text
                 or ""
             ).strip()
 
             if footer_text:
-                font_name = font_manager.resolve(
-                    bold=self.page_config.footer_bold
+
+                font_name = (
+                    font_manager.resolve(
+                        bold=(
+                            self.page_config
+                            .footer_bold
+                        ),
+                        handwriting=(
+                            self.handwriting
+                        ),
+                    )
                 )
 
                 size = float(
-                    self.page_config.footer_font_size
+                    self.page_config
+                    .footer_font_size
                 )
 
                 pdf.setFont(
@@ -920,8 +1163,15 @@ class AssignmentPDFRenderer:
                     size,
                 )
 
+                self._set_ink_color(
+                    pdf
+                )
+
                 x = self._aligned_x(
-                    position=self.page_config.footer_position,
+                    position=(
+                        self.page_config
+                        .footer_position
+                    ),
                     text=footer_text,
                     font_name=font_name,
                     font_size=size,
@@ -939,32 +1189,51 @@ class AssignmentPDFRenderer:
                     footer_text,
                 )
 
-        # Page number.
+        # ----------------------------------------------------
+        # Page number
+        # ----------------------------------------------------
+
         if self.page_config.show_page_number:
-            page_text = format_page_number(
-                page_number,
-                total_pages,
-                show_total=(
-                    self.page_config
-                    .page_number_show_total
-                ),
-                prefix=(
-                    self.page_config
-                    .page_number_prefix
-                ),
+
+            page_text = (
+                format_page_number(
+                    page_number,
+                    total_pages,
+                    show_total=(
+                        self.page_config
+                        .page_number_show_total
+                    ),
+                    prefix=(
+                        self.page_config
+                        .page_number_prefix
+                    ),
+                )
             )
 
-            font_name = font_manager.resolve(
-                bold=self.page_config.page_number_bold
+            font_name = (
+                font_manager.resolve(
+                    bold=(
+                        self.page_config
+                        .page_number_bold
+                    ),
+                    handwriting=(
+                        self.handwriting
+                    ),
+                )
             )
 
             size = float(
-                self.page_config.page_number_font_size
+                self.page_config
+                .page_number_font_size
             )
 
             pdf.setFont(
                 font_name,
                 size,
+            )
+
+            self._set_ink_color(
+                pdf
             )
 
             y = max(
@@ -980,6 +1249,7 @@ class AssignmentPDFRenderer:
             ).lower()
 
             if position == "left":
+
                 pdf.drawString(
                     self.page_config.left,
                     y,
@@ -987,6 +1257,7 @@ class AssignmentPDFRenderer:
                 )
 
             elif position == "right":
+
                 pdf.drawRightString(
                     page_width
                     - self.page_config.right,
@@ -995,6 +1266,7 @@ class AssignmentPDFRenderer:
                 )
 
             else:
+
                 pdf.drawCentredString(
                     page_width / 2,
                     y,
@@ -1014,14 +1286,18 @@ class AssignmentPDFRenderer:
         font_size: float,
         page_width: float,
     ) -> float:
+
         normalized = str(
-            position or "center"
+            position
+            or "center"
         ).lower()
 
         if normalized == "left":
+
             return self.page_config.left
 
         if normalized == "right":
+
             return (
                 page_width
                 - self.page_config.right
@@ -1040,3 +1316,36 @@ class AssignmentPDFRenderer:
                 font_size,
             )
         ) / 2
+
+    # ========================================================
+    # INK COLOR
+    # ========================================================
+
+    def _set_ink_color(
+        self,
+        pdf,
+    ):
+        """
+        Apply selected handwriting ink color.
+        """
+
+        ink = str(
+            self.handwriting.get(
+                "ink",
+                "black",
+            )
+        ).lower()
+
+        rgb = INK_COLORS.get(
+            ink,
+            INK_COLORS["black"],
+        )
+
+        pdf.setFillColorRGB(
+            *rgb
+        )
+
+
+__all__ = [
+    "AssignmentPDFRenderer",
+]
