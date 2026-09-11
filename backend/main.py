@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.models.assignment import Assignment
+from app.api.pdf import router as pdf_router
 
 
 # =========================================================
@@ -136,6 +137,10 @@ app.include_router(assignments_router)
 
 app.include_router(
     handwriting_documents_router
+)
+
+app.include_router(
+    pdf_router
 )
 
 
