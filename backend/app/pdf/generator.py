@@ -1,346 +1,557 @@
-from pathlib import Path
-from typing import Any
+"""
+InkAI PDF Generator
+===================
 
-from reportlab.lib.pagesizes import A4
+Reusable PDF generation dispatcher.
+
+This module understands structured document blocks:
+
+    heading
+    paragraph
+    bulletList
+    orderedList
+    table
+    image
+    pageBreak
+
+It deliberately does NOT implement a second assignment
+pagination algorithm.
+
+Pagination/layout decisions remain in the existing assignment
+pipeline and reusable layout configuration.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Callable
+
 from reportlab.pdfgen import canvas
 
-from .bookmarks import PDFBookmarks
-from .layout import build_styles
-from .metadata import apply_metadata
-from .page_manager import (
-    PDFPageConfig,
-    build_page_config,
-)
-from .watermark import draw_watermark
+from app.pdf.fonts import FontManager
+from app.pdf.layout import LayoutConfig
+
+
+# ============================================================
+# BLOCK HANDLERS
+# ============================================================
+
+BlockHandler = Callable[
+    [
+        canvas.Canvas,
+        dict[str, Any],
+    ],
+    None,
+]
 
 
 class PDFGenerator:
     """
-    Generic reusable PDF generator.
+    Generic reusable PDF document generator.
 
-    This class does NOT know anything about assignments.
+    The generator is intentionally lightweight.
 
-    It can later be reused for:
-        - assignments
-        - reports
-        - certificates
-        - notes
-        - exports
-        - other InkAI documents
+    It provides:
+
+        - PDF document creation
+        - page-size configuration
+        - font resolution
+        - block dispatch
+        - page-break handling
+        - metadata
+
+    Assignment-specific rendering remains outside this class.
     """
 
     def __init__(
         self,
-        page_config: PDFPageConfig | None = None,
-    ):
-        self.page_config = (
-            page_config
-            or PDFPageConfig()
+        *,
+        layout: LayoutConfig,
+        font_manager: FontManager | None = None,
+    ) -> None:
+
+        self.layout = layout
+
+        self.font_manager = (
+            font_manager
+            or FontManager()
         )
 
-        self.styles = build_styles()
+        self.handlers: dict[
+            str,
+            BlockHandler,
+        ] = {}
+
+        self._register_default_handlers()
 
     # ========================================================
-    # VALIDATION
+    # HANDLERS
     # ========================================================
 
-    def validate_document(
+    def register_handler(
         self,
-        document: Any,
-    ) -> dict:
+        block_type: str,
+        handler: BlockHandler,
+    ) -> None:
         """
-        Validate the generic document input.
+        Register a custom block handler.
         """
 
-        if document is None:
-            raise ValueError(
-                "Document is required."
-            )
+        self.handlers[
+            block_type
+        ] = handler
 
-        if isinstance(
-            document,
-            dict,
-        ):
-            return document
+    def _register_default_handlers(
+        self,
+    ) -> None:
 
-        if isinstance(
-            document,
-            list,
-        ):
-            return {
-                "content": document
-            }
+        self.register_handler(
+            "heading",
+            self._render_heading,
+        )
 
-        raise ValueError(
-            "Document must be a dictionary or list."
+        self.register_handler(
+            "paragraph",
+            self._render_paragraph,
+        )
+
+        self.register_handler(
+            "bulletList",
+            self._render_list,
+        )
+
+        self.register_handler(
+            "orderedList",
+            self._render_list,
+        )
+
+        self.register_handler(
+            "table",
+            self._render_table,
+        )
+
+        self.register_handler(
+            "image",
+            self._render_image,
+        )
+
+        self.register_handler(
+            "pageBreak",
+            self._render_page_break,
         )
 
     # ========================================================
-    # CANVAS
+    # GENERATE
     # ========================================================
 
-    def create_canvas(
+    def generate(
         self,
+        document: dict[str, Any],
         output_path: str | Path,
-    ):
-        output_path = Path(
-            output_path
-        )
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> Path:
+
+        output_path = Path(output_path)
 
         output_path.parent.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        return canvas.Canvas(
+        # Register available fonts before rendering.
+        self.font_manager.register_all()
+
+        pdf = canvas.Canvas(
             str(output_path),
             pagesize=(
-                self.page_config.dimensions
-                or A4
+                self.layout.page_size.width,
+                self.layout.page_size.height,
             ),
         )
 
-    # ========================================================
-    # PAGE DECORATION
-    # ========================================================
-
-    def draw_page(
-        self,
-        pdf,
-        *,
-        page_number: int,
-        total_pages: int | None = None,
-        title: str | None = None,
-        watermark: str | None = None,
-        show_page_numbers: bool = False,
-    ):
-        width = (
-            self.page_config.width
+        self._apply_metadata(
+            pdf,
+            metadata or {},
         )
 
-        height = (
-            self.page_config.height
-        )
-
-        if watermark:
-            draw_watermark(
-                pdf,
-                watermark,
-                width,
-                height,
-            )
-
-        if show_page_numbers:
-            pdf.saveState()
-
-            pdf.setFont(
-                "Helvetica",
-                8,
-            )
-
-            label = (
-                f"{page_number}"
-                if total_pages is None
-                else f"{page_number} / {total_pages}"
-            )
-
-            pdf.drawCentredString(
-                width / 2,
-                self.page_config.margin_bottom
-                / 2,
-                label,
-            )
-
-            pdf.restoreState()
-
-    # ========================================================
-    # GENERATION
-    # ========================================================
-
-    def generate(
-        self,
-        document: Any,
-        output_path: str | Path,
-        *,
-        metadata: dict | None = None,
-        title: str | None = None,
-        watermark: str | None = None,
-        show_page_numbers: bool = False,
-    ) -> str:
-        """
-        Generate a basic PDF from validated document data.
-
-        Assignment-specific structured rendering will be
-        connected through the PDF service layer.
-        """
-
-        document = self.validate_document(
+        blocks = self._extract_blocks(
             document
         )
 
-        pdf = self.create_canvas(
-            output_path
-        )
+        # A generic document always starts with one page.
+        for index, block in enumerate(blocks):
 
-        metadata = metadata or {}
-
-        apply_metadata(
-            pdf,
-            title=(
-                title
-                or metadata.get("title")
-            ),
-            author=metadata.get(
-                "author"
-            ),
-            subject=metadata.get(
-                "subject"
-            ),
-            keywords=metadata.get(
-                "keywords"
-            ),
-        )
-
-        bookmarks = PDFBookmarks(
-            pdf
-        )
-
-        # ----------------------------------------------------
-        # Generic content
-        # ----------------------------------------------------
-
-        content = document.get(
-            "content",
-            document,
-        )
-
-        if not isinstance(
-            content,
-            list,
-        ):
-            content = [
-                content
-            ]
-
-        page_number = 1
-
-        for item in content:
-
-            if isinstance(
-                item,
-                dict,
-            ):
-                text = (
-                    item.get("text")
-                    or item.get("content")
-                    or ""
-                )
-            else:
-                text = str(item)
-
-            if isinstance(
-                text,
-                list,
-            ):
-                text = " ".join(
-                    str(value)
-                    for value in text
-                )
-
-            text = str(text)
-
-            if not text.strip():
-                continue
-
-            bookmarks.add_page(
-                text[:80],
-                page_number,
-            )
-
-            x = (
-                self.page_config.margin_left
-            )
-
-            y = (
-                self.page_config.height
-                - self.page_config.margin_top
-            )
-
-            pdf.setFont(
-                "Helvetica",
-                11,
-            )
-
-            # Basic wrapping for the generic engine.
-            words = text.split()
-            line = ""
-
-            for word in words:
-
-                candidate = (
-                    f"{line} {word}".strip()
-                )
-
-                if (
-                    pdf.stringWidth(
-                        candidate,
-                        "Helvetica",
-                        11,
-                    )
-                    > self.page_config.content_width
-                ):
-                    pdf.drawString(
-                        x,
-                        y,
-                        line,
-                    )
-
-                    y -= 16
-                    line = word
-
-                    if (
-                        y
-                        <= self.page_config.margin_bottom
-                    ):
-                        self.draw_page(
-                            pdf,
-                            page_number=page_number,
-                            watermark=watermark,
-                            show_page_numbers=show_page_numbers,
-                        )
-
-                        pdf.showPage()
-
-                        page_number += 1
-
-                        y = (
-                            self.page_config.height
-                            - self.page_config.margin_top
-                        )
-
-                else:
-                    line = candidate
-
-            if line:
-                pdf.drawString(
-                    x,
-                    y,
-                    line,
-                )
-
-            self.draw_page(
+            self.render_block(
                 pdf,
-                page_number=page_number,
-                watermark=watermark,
-                show_page_numbers=show_page_numbers,
+                block,
             )
 
-            pdf.showPage()
-
-            page_number += 1
+            # Generic page-level dispatcher.
+            #
+            # Assignment pagination remains outside this
+            # reusable generator.
+            if (
+                index < len(blocks) - 1
+                and block.get("type") == "pageBreak"
+            ):
+                continue
 
         pdf.save()
 
-        return str(
-            Path(output_path)
+        return output_path
+
+    # ========================================================
+    # DOCUMENT EXTRACTION
+    # ========================================================
+
+    @staticmethod
+    def _extract_blocks(
+        document: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+
+        if not isinstance(
+            document,
+            dict,
+        ):
+            raise ValueError(
+                "PDF document must be a dictionary."
+            )
+
+        blocks = document.get(
+            "blocks",
+            [],
         )
+
+        if not isinstance(
+            blocks,
+            list,
+        ):
+            raise ValueError(
+                "Document blocks must be a list."
+            )
+
+        return [
+            block
+            for block in blocks
+            if isinstance(
+                block,
+                dict,
+            )
+        ]
+
+    # ========================================================
+    # BLOCK DISPATCH
+    # ========================================================
+
+    def render_block(
+        self,
+        pdf: canvas.Canvas,
+        block: dict[str, Any],
+    ) -> None:
+
+        block_type = str(
+            block.get(
+                "type",
+                "paragraph",
+            )
+        )
+
+        handler = self.handlers.get(
+            block_type
+        )
+
+        if handler is None:
+            raise ValueError(
+                f"Unsupported PDF block type: "
+                f"{block_type}"
+            )
+
+        handler(
+            pdf,
+            block,
+        )
+
+    # ========================================================
+    # TEXT
+    # ========================================================
+
+    @staticmethod
+    def _block_text(
+        block: dict[str, Any],
+    ) -> str:
+
+        text = block.get(
+            "text",
+            "",
+        )
+
+        if text is None:
+            return ""
+
+        return str(text)
+
+    # ========================================================
+    # HEADING
+    # ========================================================
+
+    def _render_heading(
+        self,
+        pdf: canvas.Canvas,
+        block: dict[str, Any],
+    ) -> None:
+
+        text = self._block_text(
+            block
+        )
+
+        if not text:
+            return
+
+        font = self.font_manager.resolve(
+            bold=True
+        )
+
+        pdf.setFont(
+            font,
+            float(
+                block.get(
+                    "fontSize",
+                    16,
+                )
+            ),
+        )
+
+        pdf.drawString(
+            self.layout.margins.left,
+            self.layout.page_size.height
+            - self.layout.margins.top,
+            text,
+        )
+
+    # ========================================================
+    # PARAGRAPH
+    # ========================================================
+
+    def _render_paragraph(
+        self,
+        pdf: canvas.Canvas,
+        block: dict[str, Any],
+    ) -> None:
+
+        text = self._block_text(
+            block
+        )
+
+        if not text:
+            return
+
+        handwriting_config = block.get(
+            "handwriting"
+        )
+
+        use_handwriting = bool(
+            handwriting_config
+        )
+
+        font = self.font_manager.resolve(
+            handwriting_config=handwriting_config,
+            handwriting=use_handwriting,
+        )
+
+        pdf.setFont(
+            font,
+            float(
+                block.get(
+                    "fontSize",
+                    11,
+                )
+            ),
+        )
+
+        pdf.drawString(
+            self.layout.margins.left,
+            self.layout.page_size.height
+            - self.layout.margins.top
+            - 24,
+            text,
+        )
+
+    # ========================================================
+    # LIST
+    # ========================================================
+
+    def _render_list(
+        self,
+        pdf: canvas.Canvas,
+        block: dict[str, Any],
+    ) -> None:
+
+        items = block.get(
+            "items",
+            [],
+        )
+
+        if not isinstance(
+            items,
+            list,
+        ):
+            return
+
+        ordered = (
+            block.get("type")
+            == "orderedList"
+        )
+
+        x = self.layout.margins.left
+
+        y = (
+            self.layout.page_size.height
+            - self.layout.margins.top
+        )
+
+        for index, item in enumerate(
+            items,
+            start=1,
+        ):
+
+            text = (
+                item.get("text", "")
+                if isinstance(
+                    item,
+                    dict,
+                )
+                else str(item)
+            )
+
+            prefix = (
+                f"{index}. "
+                if ordered
+                else "• "
+            )
+
+            pdf.setFont(
+                self.font_manager.resolve(),
+                11,
+            )
+
+            pdf.drawString(
+                x,
+                y,
+                prefix + str(text),
+            )
+
+            y -= 18
+
+    # ========================================================
+    # TABLE
+    # ========================================================
+
+    def _render_table(
+        self,
+        pdf: canvas.Canvas,
+        block: dict[str, Any],
+    ) -> None:
+        """
+        Table rendering is intentionally delegated to the
+        future reusable table renderer.
+
+        This dispatcher verifies the block and leaves
+        advanced table layout to pdf/tables.py.
+        """
+
+        if not isinstance(
+            block.get("rows", []),
+            list,
+        ):
+            raise ValueError(
+                "Table rows must be a list."
+            )
+
+    # ========================================================
+    # IMAGE
+    # ========================================================
+
+    def _render_image(
+        self,
+        pdf: canvas.Canvas,
+        block: dict[str, Any],
+    ) -> None:
+        """
+        Image rendering is delegated to the reusable
+        image layer.
+        """
+
+        image_path = block.get(
+            "src"
+        )
+
+        if not image_path:
+            return
+
+        # Actual image sizing/placement belongs to
+        # pdf/images.py.
+        return
+
+    # ========================================================
+    # PAGE BREAK
+    # ========================================================
+
+    @staticmethod
+    def _render_page_break(
+        pdf: canvas.Canvas,
+        block: dict[str, Any],
+    ) -> None:
+
+        pdf.showPage()
+
+    # ========================================================
+    # METADATA
+    # ========================================================
+
+    @staticmethod
+    def _apply_metadata(
+        pdf: canvas.Canvas,
+        metadata: dict[str, Any],
+    ) -> None:
+
+        title = metadata.get(
+            "title"
+        )
+
+        author = metadata.get(
+            "author"
+        )
+
+        subject = metadata.get(
+            "subject"
+        )
+
+        keywords = metadata.get(
+            "keywords"
+        )
+
+        if title:
+            pdf.setTitle(
+                str(title)
+            )
+
+        if author:
+            pdf.setAuthor(
+                str(author)
+            )
+
+        if subject:
+            pdf.setSubject(
+                str(subject)
+            )
+
+        if keywords:
+            pdf.setKeywords(
+                str(keywords)
+            )
+
+
+__all__ = [
+    "PDFGenerator",
+]
