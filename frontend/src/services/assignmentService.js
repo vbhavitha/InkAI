@@ -171,6 +171,82 @@ export async function rewriteNotes(
 
 /*
  * ============================================================
+ * AI TOOLS — SUMMARIZATION
+ * ============================================================
+ */
+
+export async function summarizeNotes(
+  text,
+  length = "short"
+) {
+  if (!text || !text.trim()) {
+    throw new Error("Text is required.");
+  }
+
+  const allowedLengths = [
+    "one_sentence",
+    "short",
+    "medium",
+    "detailed",
+    "exam_revision",
+  ];
+
+  const normalizedLength =
+    allowedLengths.includes(length)
+      ? length
+      : "short";
+
+  const response = await fetch(
+    buildUrl("/api/ai/summarize"),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        text: text.trim(),
+        length: normalizedLength,
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
+
+/*
+ * ============================================================
+ * AI TOOLS — FLASHCARDS
+ * ============================================================
+ */
+
+export async function generateFlashcards(text) {
+  if (!text || !text.trim()) {
+    throw new Error("Text is required.");
+  }
+
+  const response = await fetch(
+    buildUrl("/api/ai/flashcards"),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        text: text.trim(),
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
+/*
+ * ============================================================
  * PHASE 6 DOCUMENT NORMALIZATION
  * ============================================================
  *
@@ -1092,6 +1168,10 @@ const assignmentService = {
   correctGrammar,
 
   rewriteNotes,
+
+  summarizeNotes,
+  
+  generateFlashcards,
 };
 
 export default assignmentService;

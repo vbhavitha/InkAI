@@ -12,6 +12,10 @@ from app.ai.schemas import (
     GrammarResponse,
     RewriteRequest,
     RewriteResponse,
+    SummarizeRequest,
+    SummarizeResponse,
+    FlashcardsRequest,
+    FlashcardsResponse,
 )
 
 
@@ -120,3 +124,43 @@ def rewrite_notes(
             status_code=500,
             detail="Note rewriting failed.",
         ) from exc
+
+@router.post(
+    "/summarize",
+    response_model=SummarizeResponse,
+)
+def summarize_notes(
+    request: SummarizeRequest,
+):
+    """
+    Summarize notes and return structured key points.
+    """
+
+    result = ai_service.summarize_notes(
+        text=request.text,
+        length=request.length.value,
+    )
+
+    return SummarizeResponse(
+        summary=result["summary"],
+        key_points=result["key_points"],
+    )
+
+@router.post(
+    "/flashcards",
+    response_model=FlashcardsResponse,
+)
+def generate_flashcards(
+    request: FlashcardsRequest,
+):
+    """
+    Generate structured flashcards from notes.
+    """
+
+    result = ai_service.generate_flashcards(
+        text=request.text,
+    )
+
+    return FlashcardsResponse(
+        flashcards=result["flashcards"],
+    )

@@ -13,6 +13,13 @@ from app.ai.prompts import (
     rewrite_prompt,
 )
 
+from .prompts import (
+    grammar_prompt,
+    rewrite_prompt,
+    summarize_prompt,
+    flashcards_prompt,
+)
+
 
 class AIService:
     """Application-level AI service."""
@@ -70,6 +77,72 @@ class AIService:
         response = self.provider.generate(prompt)
 
         return parse_ai_response(response)
+
+    def summarize_notes(
+        self,
+        text: str,
+        length: str = "short",
+    ):
+        """
+        Generate a structured summary from notes.
+        """
+
+        if not text or not text.strip():
+            raise ValueError("Text is required.")
+
+        prompt = summarize_prompt(
+            text=text.strip(),
+            length=length,
+        )
+
+        raw_response = self.generate(
+            prompt
+        )
+
+        parsed_response = self.parse_ai_response(
+            raw_response
+        )
+
+        return {
+            "summary": parsed_response.get(
+                "summary",
+                "",
+            ),
+            "key_points": parsed_response.get(
+                "key_points",
+                [],
+            ),
+        }
+
+    def generate_flashcards(
+        self,
+        text: str,
+    ):
+        """
+        Generate structured flashcards from notes.
+        """
+
+        if not text or not text.strip():
+            raise ValueError("Text is required.")
+
+        prompt = flashcards_prompt(
+            text=text.strip()
+        )
+
+        raw_response = self.generate(
+            prompt
+        )
+
+        parsed_response = self.parse_ai_response(
+            raw_response
+        )
+
+        return {
+            "flashcards": parsed_response.get(
+                "flashcards",
+                [],
+            ),
+        }
 
 
 ai_service = AIService()

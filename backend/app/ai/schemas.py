@@ -6,6 +6,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from enum import Enum
+from pydantic import BaseModel, Field
+
 
 RewriteStyle = Literal[
     "simple",
@@ -73,3 +76,47 @@ class RewriteResponse(BaseModel):
     """Rewrite response."""
 
     result: str
+
+class SummaryLength(str, Enum):
+    ONE_SENTENCE = "one_sentence"
+    SHORT = "short"
+    MEDIUM = "medium"
+    DETAILED = "detailed"
+    EXAM_REVISION = "exam_revision"
+
+
+class SummarizeRequest(BaseModel):
+    text: str = Field(
+        ...,
+        min_length=1,
+        description="Text to summarize",
+    )
+
+    length: SummaryLength = Field(
+        default=SummaryLength.SHORT,
+        description="Summary length/mode",
+    )
+
+
+class SummarizeResponse(BaseModel):
+    summary: str
+
+    key_points: list[str]
+
+
+class FlashcardsRequest(BaseModel):
+    text: str = Field(
+        ...,
+        min_length=1,
+        description="Notes used to generate flashcards",
+    )
+
+
+class Flashcard(BaseModel):
+    question: str
+
+    answer: str
+
+
+class FlashcardsResponse(BaseModel):
+    flashcards: list[Flashcard]
