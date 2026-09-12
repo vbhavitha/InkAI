@@ -42,6 +42,7 @@ from app.models.document_version import DocumentVersion
 from app.models.handwriting_document import HandwritingDocument
 from app.models.assignment import Assignment
 from app.models.pdf_document import PdfDocument
+from app.api.ai import router as ai_router
 
 
 # =========================================================
@@ -142,6 +143,11 @@ app.include_router(
 
 app.include_router(
     pdf_router
+)
+
+app.include_router(
+    ai_router,
+    prefix="/api",
 )
 
 
