@@ -1111,6 +1111,60 @@ function AssignmentPage() {
   };
 
   /* ==========================================================
+     STEP 29 — PDF QUALITY RESULT
+  ========================================================== */
+
+  const pdfQuality =
+    generationResult?.quality ||
+    generationResult?.validation ||
+    {};
+
+  const pdfQualityItems = [
+    {
+      label: `${Number(
+        pdfQuality.pages_generated ??
+          generationResult?.pages ??
+          0
+      )} pages generated`,
+      valid:
+        Number(
+          pdfQuality.pages_generated ??
+            generationResult?.pages ??
+            0
+        ) > 0,
+    },
+    {
+      label: "No content overflow",
+      valid:
+        pdfQuality.no_content_overflow === true,
+    },
+    {
+      label: "Images embedded",
+      valid:
+        pdfQuality.images_embedded === true,
+    },
+    {
+      label: "Fonts embedded",
+      valid:
+        pdfQuality.fonts_embedded === true,
+    },
+    {
+      label: "Bookmarks created",
+      valid:
+        pdfQuality.bookmarks_created === true,
+    },
+    {
+      label: "Metadata added",
+      valid:
+        pdfQuality.metadata_added === true,
+    },
+  ];
+
+  const pdfQualityReady =
+    pdfQuality.ready_to_download === true ||
+    pdfQuality.quality_ready === true;
+
+  /* ==========================================================
      STEP 12.2 / 12.8 — GENERATE HANDWRITING
   ========================================================== */
 
@@ -1363,8 +1417,13 @@ function AssignmentPage() {
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
-                  <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Paper</p>
-                  <p className="text-lg font-semibold text-white capitalize">
+                  <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">
+                    Paper
+                  </p>
+                  <p className="text-lg font-semibold text-white">
+                    {assignment.paperSize || "A4"}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500 capitalize">
                     {assignment.paperStyle?.replaceAll("_", " ") || "Ruled"}
                   </p>
                 </div>
@@ -1373,6 +1432,71 @@ function AssignmentPage() {
                   <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Ink</p>
                   <p className="text-lg font-semibold text-white capitalize">
                     {handwriting.ink || "Blue"} Ink
+                  </p>
+                </div>
+              </div>
+
+              {/* =================================================
+                  STEP 29 — PDF QUALITY
+              ================================================== */}
+
+              <div className="mb-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/5 p-5">
+                <div className="mb-4">
+                  <h2 className="text-base font-semibold text-white">
+                    PDF Quality
+                  </h2>
+
+                  <p className="mt-1 text-xs text-gray-500">
+                    Final PDF validation completed before download.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  {pdfQualityItems.map((check) => (
+                    <div
+                      key={check.label}
+                      className="flex items-center gap-3"
+                    >
+                      <span
+                        className={
+                          check.valid
+                            ? "flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400"
+                            : "flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-800 text-slate-600"
+                        }
+                      >
+                        {check.valid ? "✓" : "○"}
+                      </span>
+
+                      <span
+                        className={
+                          check.valid
+                            ? "text-sm text-gray-300"
+                            : "text-sm text-gray-500"
+                        }
+                      >
+                        {check.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div
+                  className={
+                    pdfQualityReady
+                      ? "mt-5 rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-4 py-3"
+                      : "mt-5 rounded-xl border border-amber-400/20 bg-amber-400/5 px-4 py-3"
+                  }
+                >
+                  <p
+                    className={
+                      pdfQualityReady
+                        ? "text-sm font-semibold text-emerald-400"
+                        : "text-sm font-semibold text-amber-400"
+                    }
+                  >
+                    {pdfQualityReady
+                      ? "Ready to download"
+                      : "PDF quality checks incomplete"}
                   </p>
                 </div>
               </div>

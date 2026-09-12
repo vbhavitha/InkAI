@@ -40,10 +40,6 @@ from app.pdf.images import (
     load_image,
 )
 from app.pdf.tables import build_table
-from app.pdf.watermark import WatermarkRenderer
-from app.pdf.bookmarks import PDFBookmarkManager
-from app.pdf.metadata import PDFMetadata
-
 from app.pdf.fonts import font_manager
 from app.pdf.layout import format_page_number
 from app.pdf.bookmarks import PDFBookmarkManager

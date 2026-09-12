@@ -1630,11 +1630,59 @@ def generate_assignment(
         return {
             "assignment_id": assignment_record.id,
             "pdf_id": pdf_document.id,
-            "status": "completed",
+            "status": "generated",
             "pages": len(pages),
             "filename": pdf_document.filename,
             "file_path": pdf_document.file_path,
+
             "validation": validation_result,
+
+            "quality": {
+                "pages_generated": len(pages),
+
+                "no_content_overflow": (
+                    validation_result.get(
+                        "no_content_overflow",
+                        False,
+                    )
+                ),
+
+                "images_embedded": (
+                    validation_result.get(
+                        "images_embedded",
+                        True,
+                    )
+                ),
+
+                "fonts_embedded": (
+                    validation_result.get(
+                        "fonts_embedded",
+                        False,
+                    )
+                ),
+
+                "bookmarks_created": (
+                    validation_result.get(
+                        "bookmarks_created",
+                        False,
+                    )
+                ),
+
+                "metadata_added": (
+                    validation_result.get(
+                        "metadata_added",
+                        False,
+                    )
+                ),
+
+                "ready_to_download": (
+                    validation_result.get(
+                        "quality_ready",
+                        False,
+                    )
+                ),
+            },
+
             "download_url": (
                 f"/api/assignments/"
                 f"{assignment_record.id}/download"
