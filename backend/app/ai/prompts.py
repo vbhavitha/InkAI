@@ -456,3 +456,192 @@ EXPECTED FORMAT:
 NOTES:
 {text}
 """.strip()
+
+def explain_topic_prompt(
+    text: str,
+    level: str = "beginner",
+) -> str:
+    level_instructions = {
+        "beginner": (
+            "Explain using simple language for someone with little "
+            "prior knowledge."
+        ),
+        "school_student": (
+            "Explain at a school-student level using simple terminology "
+            "and relatable examples."
+        ),
+        "college_student": (
+            "Explain at a college-student level with appropriate "
+            "technical terminology."
+        ),
+        "exam_preparation": (
+            "Explain for exam preparation. Focus on definitions, "
+            "important concepts, keywords, processes, and facts."
+        ),
+        "technical": (
+            "Provide a technically detailed explanation including "
+            "important technical terminology and how the concept works."
+        ),
+        "with_example": (
+            "Explain clearly and provide a practical example."
+        ),
+        "like_im_five": (
+            "Explain as if teaching a five-year-old using extremely "
+            "simple language and familiar analogies."
+        ),
+    }
+
+    instruction = level_instructions.get(
+        level,
+        level_instructions["beginner"],
+    )
+
+    return f"""
+You are InkAI, an expert educational AI assistant.
+
+TOPIC:
+{text}
+
+LEVEL:
+{level}
+
+INSTRUCTIONS:
+{instruction}
+
+Return ONLY valid JSON.
+
+Do not use Markdown code fences.
+
+Return exactly:
+
+{{
+    "title": "Topic title",
+    "explanation": "Clear explanation.",
+    "key_points": [
+        "Important point 1",
+        "Important point 2",
+        "Important point 3"
+    ],
+    "example": "",
+    "analogy": ""
+}}
+
+Rules:
+- Do not invent facts.
+- Do not add unrelated information.
+- Preserve technical accuracy.
+- example should contain a practical example when useful.
+- analogy should contain an analogy when useful.
+""".strip()
+
+def translate_prompt(
+    text: str,
+    target_language: str,
+) -> str:
+    return f"""
+You are InkAI's professional translation assistant.
+
+Translate the following text into:
+
+TARGET LANGUAGE:
+{target_language}
+
+TEXT:
+{text}
+
+IMPORTANT RULES:
+1. Preserve the original meaning.
+2. Do not summarize.
+3. Do not add information.
+4. Do not remove information.
+5. Preserve names, numbers, formulas, abbreviations,
+   and technical terms where appropriate.
+6. Produce natural translation.
+7. Return ONLY valid JSON.
+8. Do not use Markdown code fences.
+
+Return exactly:
+
+{{
+    "source_language": "Detected source language",
+    "target_language": "{target_language}",
+    "translated_text": "Translated text"
+}}
+""".strip()
+
+def presentation_planner_prompt(
+    text: str,
+    title: str = "",
+) -> str:
+    return f"""
+You are InkAI's presentation planning assistant.
+
+Convert the following notes into a structured educational
+PowerPoint presentation.
+
+TITLE:
+{title}
+
+NOTES:
+{text}
+
+IMPORTANT RULES:
+1. Use ONLY information contained in the notes.
+2. Do not invent facts.
+3. Organize the material logically.
+4. Create a clear title.
+5. Create between 3 and 15 slides depending on content length.
+6. Each slide must have a concise title.
+7. Each slide should contain 2-6 concise content points.
+8. Avoid putting paragraphs into slides.
+9. Keep slides suitable for classroom or academic presentations.
+10. Return ONLY valid JSON.
+11. Do not use Markdown code fences.
+
+EXPECTED FORMAT:
+
+{{
+    "title": "Machine Learning",
+    "slides": [
+        {{
+            "title": "Introduction",
+            "content": [
+                "Definition of Machine Learning",
+                "Relationship with Artificial Intelligence"
+            ]
+        }},
+        {{
+            "title": "Types of Machine Learning",
+            "content": [
+                "Supervised Learning",
+                "Unsupervised Learning",
+                "Reinforcement Learning"
+            ]
+        }}
+    ]
+}}
+""".strip()
+
+def markdown_prompt(
+    text: str,
+) -> str:
+    return f"""
+You are InkAI's Markdown formatting assistant.
+
+Convert the following notes into clean Markdown.
+
+IMPORTANT RULES:
+1. Preserve the original meaning.
+2. Do not add information.
+3. Do not summarize.
+4. Organize headings logically.
+5. Use Markdown headings.
+6. Use numbered lists where appropriate.
+7. Use bullet lists where appropriate.
+8. Preserve code, formulas, terminology, and important formatting.
+9. Return ONLY the Markdown content.
+10. Do not wrap the result in ```markdown.
+
+NOTES:
+{text}
+""".strip()

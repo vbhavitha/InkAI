@@ -1254,6 +1254,249 @@ export async function deleteAssignment(
 
 /*
  * ============================================================
+ * AI TOOLS — EXPLAIN TOPIC
+ * ============================================================
+ */
+
+export async function explainTopic(
+  text,
+  level = "beginner"
+) {
+  if (!text || !text.trim()) {
+    throw new Error("Topic is required.");
+  }
+
+  const allowedLevels = [
+    "beginner",
+    "school_student",
+    "college_student",
+    "exam_preparation",
+    "technical",
+    "with_example",
+    "like_im_five",
+  ];
+
+  const normalizedLevel =
+    allowedLevels.includes(level)
+      ? level
+      : "beginner";
+
+  const response = await fetch(
+    buildUrl("/api/ai/explain"),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        text: text.trim(),
+        level: normalizedLevel,
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
+/*
+ * ============================================================
+ * AI TOOLS — TRANSLATION
+ * ============================================================
+ */
+
+export async function translateText(
+  text,
+  targetLanguage
+) {
+  if (!text || !text.trim()) {
+    throw new Error("Text is required.");
+  }
+
+  if (
+    !targetLanguage ||
+    !targetLanguage.trim()
+  ) {
+    throw new Error(
+      "Target language is required."
+    );
+  }
+
+  const response = await fetch(
+    buildUrl("/api/ai/translate"),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        text: text.trim(),
+        target_language:
+          targetLanguage.trim(),
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
+/*
+ * ============================================================
+ * AI TOOLS — NOTES TO POWERPOINT
+ * ============================================================
+ */
+
+export async function generatePresentation(
+  text,
+  title = ""
+) {
+  if (!text || !text.trim()) {
+    throw new Error("Notes are required.");
+  }
+
+  const response = await fetch(
+    buildUrl("/api/ai/presentation"),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        text: text.trim(),
+        title: title.trim(),
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    return handleResponse(response);
+  }
+
+  const blob = await response.blob();
+
+  const contentDisposition =
+    response.headers.get(
+      "content-disposition"
+    );
+
+  let filename =
+    "InkAI-Presentation.pptx";
+
+  if (contentDisposition) {
+    const match =
+      contentDisposition.match(
+        /filename="?([^"]+)"?/i
+      );
+
+    if (match?.[1]) {
+      filename = match[1];
+    }
+  }
+
+  const url =
+    window.URL.createObjectURL(blob);
+
+  const link =
+    document.createElement("a");
+
+  link.href = url;
+
+  link.download = filename;
+
+  document.body.appendChild(link);
+
+  link.click();
+
+  link.remove();
+
+  window.URL.revokeObjectURL(url);
+
+  return {
+    success: true,
+    filename,
+  };
+}
+
+/*
+ * ============================================================
+ * AI TOOLS — NOTES TO MARKDOWN
+ * ============================================================
+ */
+
+export async function convertToMarkdown(
+  text
+) {
+  if (!text || !text.trim()) {
+    throw new Error("Text is required.");
+  }
+
+  const response = await fetch(
+    buildUrl("/api/ai/markdown"),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        text: text.trim(),
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
+/*
+ * ============================================================
+ * MARKDOWN DOWNLOAD
+ * ============================================================
+ */
+
+export function downloadMarkdown(
+  markdown,
+  filename = "InkAI-Notes.md"
+) {
+  if (!markdown) {
+    throw new Error(
+      "Markdown content is empty."
+    );
+  }
+
+  const blob = new Blob(
+    [markdown],
+    {
+      type: "text/markdown;charset=utf-8",
+    }
+  );
+
+  const url =
+    window.URL.createObjectURL(blob);
+
+  const link =
+    document.createElement("a");
+
+  link.href = url;
+
+  link.download = filename;
+
+  document.body.appendChild(link);
+
+  link.click();
+
+  link.remove();
+
+  window.URL.revokeObjectURL(url);
+}
+
+/*
+ * ============================================================
  * DEFAULT EXPORT
  * ============================================================
  */
@@ -1292,8 +1535,18 @@ const assignmentService = {
   generateFlashcards,
 
   generateMCQs,
-  
+
   generateQuestions,
+
+  explainTopic,
+
+  translateText,
+
+  generatePresentation,
+
+  convertToMarkdown,
+
+  downloadMarkdown,
 };
 
 export default assignmentService;

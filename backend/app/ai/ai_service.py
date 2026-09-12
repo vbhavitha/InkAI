@@ -20,6 +20,10 @@ from .prompts import (
     flashcards_prompt,
     mcq_prompt,
     question_generator_prompt,
+    explain_topic_prompt,
+    translate_prompt,
+    presentation_planner_prompt,
+    markdown_prompt,
 )
 
 
@@ -214,6 +218,134 @@ class AIService:
 
         return {
             "questions": questions,
+        }
+
+    def explain_topic(
+        self,
+        text: str,
+        level: str = "beginner",
+    ):
+        if not text or not text.strip():
+            raise ValueError("Topic is required.")
+
+        prompt = explain_topic_prompt(
+            text=text.strip(),
+            level=level,
+        )
+
+        raw_response = self.generate(prompt)
+
+        parsed_response = self.parse_ai_response(
+            raw_response
+        )
+
+        return {
+            "title": parsed_response.get(
+                "title",
+                text.strip(),
+            ),
+            "explanation": parsed_response.get(
+                "explanation",
+                "",
+            ),
+            "key_points": parsed_response.get(
+                "key_points",
+                [],
+            ),
+            "example": parsed_response.get(
+                "example",
+                "",
+            ),
+            "analogy": parsed_response.get(
+                "analogy",
+                "",
+            ),
+        }
+
+    def translate_text(
+        self,
+        text: str,
+        target_language: str,
+    ):
+        if not text or not text.strip():
+            raise ValueError("Text is required.")
+
+        if not target_language or not target_language.strip():
+            raise ValueError(
+                "Target language is required."
+            )
+
+        prompt = translate_prompt(
+            text=text.strip(),
+            target_language=target_language.strip(),
+        )
+
+        raw_response = self.generate(prompt)
+
+        parsed_response = self.parse_ai_response(
+            raw_response
+        )
+
+        return {
+            "source_language": parsed_response.get(
+                "source_language",
+                "Unknown",
+            ),
+            "target_language": parsed_response.get(
+                "target_language",
+                target_language.strip(),
+            ),
+            "translated_text": parsed_response.get(
+                "translated_text",
+                "",
+            ),
+        }
+
+    def create_presentation_plan(
+        self,
+        text: str,
+        title: str = "",
+    ):
+        if not text or not text.strip():
+            raise ValueError("Notes are required.")
+
+        prompt = presentation_planner_prompt(
+            text=text.strip(),
+            title=title.strip(),
+        )
+
+        raw_response = self.generate(prompt)
+
+        parsed_response = self.parse_ai_response(
+            raw_response
+        )
+
+        return {
+            "title": parsed_response.get(
+                "title",
+                title.strip() or "InkAI Presentation",
+            ),
+            "slides": parsed_response.get(
+                "slides",
+                [],
+            ),
+        }
+
+    def convert_to_markdown(
+        self,
+        text: str,
+    ):
+        if not text or not text.strip():
+            raise ValueError("Text is required.")
+
+        prompt = markdown_prompt(
+            text=text.strip()
+        )
+
+        raw_response = self.generate(prompt)
+
+        return {
+            "markdown": raw_response.strip()
         }
 
 

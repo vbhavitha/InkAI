@@ -214,3 +214,85 @@ class GeneratedQuestion(BaseModel):
 
 class QuestionGeneratorResponse(BaseModel):
     questions: list[GeneratedQuestion]
+
+class ExplanationLevel(str, Enum):
+    BEGINNER = "beginner"
+    SCHOOL_STUDENT = "school_student"
+    COLLEGE_STUDENT = "college_student"
+    EXAM_PREPARATION = "exam_preparation"
+    TECHNICAL = "technical"
+    WITH_EXAMPLE = "with_example"
+    LIKE_IM_FIVE = "like_im_five"
+
+
+class ExplainTopicRequest(BaseModel):
+    text: str = Field(
+        ...,
+        min_length=1,
+    )
+
+    level: ExplanationLevel = (
+        ExplanationLevel.BEGINNER
+    )
+
+
+class ExplainTopicResponse(BaseModel):
+    title: str
+
+    explanation: str
+
+    key_points: list[str]
+
+    example: str = ""
+
+    analogy: str = ""
+
+class TranslationRequest(BaseModel):
+    text: str = Field(
+        ...,
+        min_length=1,
+    )
+
+    target_language: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+    )
+
+
+class TranslationResponse(BaseModel):
+    source_language: str
+
+    target_language: str
+
+    translated_text: str
+
+class PresentationSlide(BaseModel):
+    title: str
+
+    content: list[str]
+
+
+class PresentationRequest(BaseModel):
+    text: str = Field(
+        ...,
+        min_length=1,
+    )
+
+    title: str = ""
+
+
+class PresentationPlanResponse(BaseModel):
+    title: str
+
+    slides: list[PresentationSlide]
+
+class MarkdownRequest(BaseModel):
+    text: str = Field(
+        ...,
+        min_length=1,
+    )
+
+
+class MarkdownResponse(BaseModel):
+    markdown: str
