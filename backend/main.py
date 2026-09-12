@@ -6,7 +6,6 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.models.assignment import Assignment
 from app.api.pdf import router as pdf_router
 
 
@@ -41,6 +40,8 @@ from app.models.ocr_result import OCRResultModel
 from app.models.document import Document
 from app.models.document_version import DocumentVersion
 from app.models.handwriting_document import HandwritingDocument
+from app.models.assignment import Assignment
+from app.models.pdf_document import PdfDocument
 
 
 # =========================================================

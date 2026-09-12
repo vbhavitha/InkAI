@@ -6,16 +6,36 @@ from uuid import uuid4
 import re
 import json
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Depends,
+)
 from pydantic import BaseModel, Field
 
-from app.assignments.assignment_service import AssignmentService
+from app.assignments.assignment_service import (
+    AssignmentService,
+)
 from app.assignments.page_layout import PageConfig
-from app.assignments.pdf_renderer import AssignmentPDFRenderer
+from app.assignments.pdf_renderer import (
+    AssignmentPDFRenderer,
+)
+
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+
 from app.database.database import get_db
+
 from app.models.assignment import Assignment
+from app.models.pdf_document import PdfDocument
+
+from app.services.pdf_storage_service import (
+    PDFStorageService,
+)
+from app.services.pdf_validation_service import (
+    PDFValidationError,
+    PDFValidationService,
+)
 
 
 # ============================================================
@@ -26,6 +46,13 @@ router = APIRouter(
     prefix="/api/assignments",
     tags=["Assignments"],
 )
+
+# =========================================================
+# PDF STORAGE / VALIDATION
+# =========================================================
+
+pdf_storage_service = PDFStorageService()
+pdf_validation_service = PDFValidationService()
 
 # ============================================================
 # STEP 31 — DRAFT STORAGE
@@ -774,6 +801,153 @@ def build_page_config(
     )
 
 
+# =========================================================
+# PDF PAGE SIZE
+# =========================================================
+
+def get_expected_pdf_page_size(
+    page_config: PageConfig,
+) -> tuple[float, float]:
+    """
+    Return the expected PDF page dimensions in points.
+
+    Uses the existing PageConfig so PDF validation remains
+    consistent with the authoritative assignment layout.
+    """
+
+    # PageConfig already owns the page geometry.
+    # Different versions of the project may expose geometry
+    # through slightly different attributes, so prefer the
+    # existing page-size helper when available.
+
+    if hasattr(
+        page_config,
+        "get_page_size",
+    ):
+        size = page_config.get_page_size()
+
+        if size:
+            return (
+                float(size[0]),
+                float(size[1]),
+            )
+
+    # -----------------------------------------------------
+    # Standard PDF page sizes in points
+    # -----------------------------------------------------
+
+    standard_sizes = {
+        "A4": (
+            595.2756,
+            841.8898,
+        ),
+        "A5": (
+            419.5276,
+            595.2756,
+        ),
+        "LETTER": (
+            612.0,
+            792.0,
+        ),
+        "LEGAL": (
+            612.0,
+            1008.0,
+        ),
+    }
+
+    paper_size = str(
+        getattr(
+            page_config,
+            "paper_size",
+            "A4",
+        )
+        or "A4"
+    ).upper()
+
+    if paper_size in standard_sizes:
+        width, height = standard_sizes[
+            paper_size
+        ]
+
+        orientation = str(
+            getattr(
+                page_config,
+                "orientation",
+                "portrait",
+            )
+            or "portrait"
+        ).lower()
+
+        if orientation == "landscape":
+            return (
+                height,
+                width,
+            )
+
+        return (
+            width,
+            height,
+        )
+
+    # -----------------------------------------------------
+    # Custom dimensions
+    # -----------------------------------------------------
+
+    custom_width = getattr(
+        page_config,
+        "custom_width_mm",
+        None,
+    )
+
+    custom_height = getattr(
+        page_config,
+        "custom_height_mm",
+        None,
+    )
+
+    if (
+        custom_width
+        and custom_height
+    ):
+        width_points = (
+            float(custom_width)
+            * 72.0
+            / 25.4
+        )
+
+        height_points = (
+            float(custom_height)
+            * 72.0
+            / 25.4
+        )
+
+        orientation = str(
+            getattr(
+                page_config,
+                "orientation",
+                "portrait",
+            )
+            or "portrait"
+        ).lower()
+
+        if orientation == "landscape":
+            return (
+                height_points,
+                width_points,
+            )
+
+        return (
+            width_points,
+            height_points,
+        )
+
+    # Safe default
+    return (
+        595.2756,
+        841.8898,
+    )
+
+
 # ============================================================
 # STEP 13 + STEP 14 + STEP 15 + STEP 16
 # ============================================================
@@ -1166,22 +1340,27 @@ def generate_assignment(
         # 5. Create high-resolution PDF
         # ---------------------------------------------------------
 
-        output_directory = Path(
-            "generated"
-        ) / "assignments"
+        # Render into a temporary/generated location first.
+        # The file is NOT considered final until validation passes.
 
-        output_directory.mkdir(
+        temporary_directory = (
+            Path("generated")
+            / "assignments"
+            / "temporary"
+        )
+
+        temporary_directory.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        assignment_id = str(
+        temporary_pdf_id = str(
             uuid4()
         )
 
-        output_path = (
-            output_directory
-            / f"{assignment_id}.pdf"
+        temporary_pdf_path = (
+            temporary_directory
+            / f"{temporary_pdf_id}.pdf"
         )
 
         renderer = AssignmentPDFRenderer(
@@ -1193,9 +1372,95 @@ def generate_assignment(
         renderer.render(
             pages=pages,
             output_path=str(
-                output_path
+                temporary_pdf_path
             ),
         )
+
+        # ---------------------------------------------------------
+        # 5A. Validate generated PDF
+        # ---------------------------------------------------------
+
+        try:
+            expected_page_size = (
+                get_expected_pdf_page_size(
+                    page_config
+                )
+            )
+
+            validation_result = (
+                pdf_validation_service.validate(
+                    pdf_path=temporary_pdf_path,
+                    expected_page_count=len(
+                        pages
+                    ),
+                    expected_page_size=(
+                        expected_page_size
+                    ),
+                )
+            )
+
+        except PDFValidationError as error:
+
+            # Delete invalid generated PDF.
+            if temporary_pdf_path.exists():
+                temporary_pdf_path.unlink()
+
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Generated PDF failed validation: "
+                    f"{error}"
+                ),
+            )
+
+        # ---------------------------------------------------------
+        # 5B. Build permanent filename
+        # ---------------------------------------------------------
+
+        pdf_filename = build_assignment_filename(
+            title=request.assignment.get(
+                "title",
+                request.assignment.get(
+                    "assignmentTitle",
+                    "Untitled Assignment",
+                ),
+            ),
+            student_name=request.assignment.get(
+                "studentName",
+                "",
+            ),
+            db=db,
+        )
+
+        # ---------------------------------------------------------
+        # 5C. Move validated PDF into final storage
+        # ---------------------------------------------------------
+
+        try:
+
+            final_pdf_path = (
+                pdf_storage_service.save_final_pdf(
+                    source_path=temporary_pdf_path,
+                    filename=pdf_filename,
+                )
+            )
+
+        except Exception as error:
+
+            if temporary_pdf_path.exists():
+                temporary_pdf_path.unlink()
+
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Failed to store generated PDF: "
+                    f"{error}"
+                ),
+            )
+
+        # Remove temporary PDF after successful storage.
+        if temporary_pdf_path.exists():
+            temporary_pdf_path.unlink()
 
         # =========================================================
         # SAVE / UPDATE ASSIGNMENT RECORD
@@ -1319,13 +1584,43 @@ def generate_assignment(
         )
 
         assignment_record.pdf_path = str(
-            output_path
+            final_pdf_path
         )
+
+        # ---------------------------------------------------------
+        # CREATE PDF DOCUMENT RECORD
+        # ---------------------------------------------------------
+
+        pdf_document = PdfDocument(
+            user_id=TEMP_USER_ID,
+            document_id=int(
+                request.document_id
+            ),
+            assignment_id=assignment_record.id,
+            filename=pdf_filename,
+            file_path=str(
+                final_pdf_path
+            ),
+            page_size=str(
+                assignment.get(
+                    "paperSize",
+                    "A4",
+                )
+                or "A4"
+            ),
+            page_count=len(pages),
+        )
+
+        db.add(pdf_document)
 
         db.commit()
 
         db.refresh(
             assignment_record
+        )
+
+        db.refresh(
+            pdf_document
         )
 
         # ---------------------------------------------------------
@@ -1334,8 +1629,12 @@ def generate_assignment(
 
         return {
             "assignment_id": assignment_record.id,
+            "pdf_id": pdf_document.id,
             "status": "completed",
             "pages": len(pages),
+            "filename": pdf_document.filename,
+            "file_path": pdf_document.file_path,
+            "validation": validation_result,
             "download_url": (
                 f"/api/assignments/"
                 f"{assignment_record.id}/download"
@@ -1410,6 +1709,21 @@ def download_assignment(
     assignment_id: int,
     db: Session = Depends(get_db),
 ):
+    """
+    Download the latest generated PDF for an assignment.
+
+    Step 27:
+        Prefer the new PdfDocument storage record.
+
+    Backward compatibility:
+        If no PdfDocument record exists, fall back to
+        Assignment.pdf_path used by older assignments.
+    """
+
+    # -----------------------------------------------------
+    # 1. Find assignment
+    # -----------------------------------------------------
+
     assignment = (
         db.query(Assignment)
         .filter(
@@ -1425,25 +1739,89 @@ def download_assignment(
             detail="Assignment not found.",
         )
 
-    if not assignment.pdf_path:
-        raise HTTPException(
-            status_code=404,
-            detail="PDF path is not available.",
+    # -----------------------------------------------------
+    # 2. Find latest PdfDocument
+    # -----------------------------------------------------
+
+    pdf_document = (
+        db.query(PdfDocument)
+        .filter(
+            PdfDocument.assignment_id
+            == assignment.id,
+            PdfDocument.user_id
+            == TEMP_USER_ID,
+        )
+        .order_by(
+            PdfDocument.created_at.desc()
+        )
+        .first()
+    )
+
+    pdf_path = None
+
+    # -----------------------------------------------------
+    # 3. Prefer PdfDocument path
+    # -----------------------------------------------------
+
+    if pdf_document:
+        pdf_path = Path(
+            pdf_document.file_path
         )
 
-    pdf_path = Path(assignment.pdf_path)
+    # -----------------------------------------------------
+    # 4. Backward compatibility
+    # -----------------------------------------------------
 
-    if not pdf_path.exists():
+    if (
+        pdf_path is None
+        or not pdf_path.exists()
+    ):
+        if assignment.pdf_path:
+
+            legacy_path = Path(
+                assignment.pdf_path
+            )
+
+            if legacy_path.exists():
+                pdf_path = legacy_path
+
+    # -----------------------------------------------------
+    # 5. Verify PDF exists
+    # -----------------------------------------------------
+
+    if (
+        pdf_path is None
+        or not pdf_path.exists()
+    ):
         raise HTTPException(
             status_code=404,
             detail="PDF file not found.",
         )
 
-    download_filename = build_assignment_filename(
-        title=assignment.title,
-        student_name=assignment.student_name,
-        db=db,
+    if not pdf_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="PDF path is not a valid file.",
+        )
+
+    # -----------------------------------------------------
+    # 6. Build human-readable filename
+    # -----------------------------------------------------
+
+    download_filename = (
+        pdf_document.filename
+        if pdf_document
+        and pdf_document.filename
+        else build_assignment_filename(
+            title=assignment.title,
+            student_name=assignment.student_name,
+            db=db,
+        )
     )
+
+    # -----------------------------------------------------
+    # 7. Return PDF
+    # -----------------------------------------------------
 
     return FileResponse(
         path=str(pdf_path),
@@ -1460,45 +1838,165 @@ def delete_assignment(
     assignment_id: int,
     db: Session = Depends(get_db),
 ):
-    assignment = (
-        db.query(Assignment)
-        .filter(
-            Assignment.id == assignment_id,
-            Assignment.user_id == TEMP_USER_ID,
-        )
-        .first()
-    )
+    """
+    Delete an assignment and all associated PDF files.
 
-    if not assignment:
+    Removes:
+
+        1. Stored PDF files
+        2. PdfDocument database records
+        3. Draft JSON
+        4. Assignment database record
+    """
+
+    try:
+
+        # -------------------------------------------------
+        # 1. Find assignment
+        # -------------------------------------------------
+
+        assignment = (
+            db.query(Assignment)
+            .filter(
+                Assignment.id == assignment_id,
+                Assignment.user_id == TEMP_USER_ID,
+            )
+            .first()
+        )
+
+        if not assignment:
+            raise HTTPException(
+                status_code=404,
+                detail="Assignment not found.",
+            )
+
+        # -------------------------------------------------
+        # 2. Find associated PDF records
+        # -------------------------------------------------
+
+        pdf_documents = (
+            db.query(PdfDocument)
+            .filter(
+                PdfDocument.assignment_id
+                == assignment.id,
+                PdfDocument.user_id
+                == TEMP_USER_ID,
+            )
+            .all()
+        )
+
+        # -------------------------------------------------
+        # 3. Track deleted files
+        # -------------------------------------------------
+
+        deleted_paths = set()
+
+        # -------------------------------------------------
+        # 4. Delete PdfDocument files
+        # -------------------------------------------------
+
+        for pdf_document in pdf_documents:
+
+            if not pdf_document.file_path:
+                continue
+
+            pdf_path = Path(
+                pdf_document.file_path
+            )
+
+            resolved_path = str(
+                pdf_path.resolve()
+            )
+
+            # Avoid deleting the same file twice.
+            if resolved_path in deleted_paths:
+                continue
+
+            if pdf_path.exists():
+                pdf_storage_service.delete_pdf(
+                    pdf_path
+                )
+
+            deleted_paths.add(
+                resolved_path
+            )
+
+        # -------------------------------------------------
+        # 5. Delete legacy Assignment.pdf_path
+        # -------------------------------------------------
+
+        if assignment.pdf_path:
+
+            legacy_pdf_path = Path(
+                assignment.pdf_path
+            )
+
+            resolved_legacy_path = str(
+                legacy_pdf_path.resolve()
+            )
+
+            if (
+                resolved_legacy_path
+                not in deleted_paths
+            ):
+
+                if legacy_pdf_path.exists():
+                    pdf_storage_service.delete_pdf(
+                        legacy_pdf_path
+                    )
+
+        # -------------------------------------------------
+        # 6. Delete PdfDocument records
+        # -------------------------------------------------
+
+        for pdf_document in pdf_documents:
+            db.delete(pdf_document)
+
+        # -------------------------------------------------
+        # 7. Delete draft JSON
+        # -------------------------------------------------
+
+        draft_path = (
+            DRAFTS_DIRECTORY
+            / f"{assignment.id}.json"
+        )
+
+        if draft_path.exists():
+            draft_path.unlink()
+
+        # -------------------------------------------------
+        # 8. Delete assignment
+        # -------------------------------------------------
+
+        db.delete(assignment)
+
+        db.commit()
+
+        # -------------------------------------------------
+        # 9. Return success
+        # -------------------------------------------------
+
+        return {
+            "message": (
+                "Assignment and associated PDF "
+                "documents deleted successfully."
+            )
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+
+        db.rollback()
+
         raise HTTPException(
-            status_code=404,
-            detail="Assignment not found.",
+            status_code=500,
+            detail=(
+                "Failed to delete assignment: "
+                f"{error}"
+            ),
         )
-
-    # Delete PDF file
-    if assignment.pdf_path:
-        pdf_path = Path(assignment.pdf_path)
-
-        if pdf_path.exists():
-            pdf_path.unlink()
-
-    # Delete draft JSON file
-    draft_path = (
-        DRAFTS_DIRECTORY
-        / f"{assignment.id}.json"
-    )
-
-    if draft_path.exists():
-        draft_path.unlink()
-
-    # Delete database record
-    db.delete(assignment)
-    db.commit()
-
-    return {
-        "message": "Assignment deleted successfully."
-    }
-
 # =========================================================
 # STEP 25 — REGENERATE ASSIGNMENT
 # =========================================================
@@ -1510,17 +2008,38 @@ def regenerate_assignment(
     db: Session = Depends(get_db),
 ):
     """
-    Regenerate an existing assignment using the same
-    document/content but different visual settings.
+    Regenerate an existing assignment.
 
-    This updates the existing Assignment record instead
-    of creating a new history entry.
+    The existing Assignment record is updated instead of
+    creating a new assignment history entry.
+
+    PDF flow:
+
+        AssignmentService
+              ↓
+        AssignmentPageLayout
+              ↓
+        AssignmentPDFRenderer
+              ↓
+        Temporary PDF
+              ↓
+        PDFValidationService
+              ↓
+        storage/pdf/final/
+              ↓
+        PdfDocument
+
+    Only the latest PdfDocument is retained.
     """
 
+    temporary_pdf_path = None
+    final_pdf_path = None
+
     try:
-        # -----------------------------------------------------
-        # 1. Find existing assignment
-        # -----------------------------------------------------
+
+        # =====================================================
+        # 1. FIND EXISTING ASSIGNMENT
+        # =====================================================
 
         assignment_record = (
             db.query(Assignment)
@@ -1537,9 +2056,9 @@ def regenerate_assignment(
                 detail="Assignment not found.",
             )
 
-        # -----------------------------------------------------
-        # 2. Load original structured document
-        # -----------------------------------------------------
+        # =====================================================
+        # 2. LOAD ORIGINAL STRUCTURED DOCUMENT
+        # =====================================================
 
         from app.api.documents import get_document
 
@@ -1553,9 +2072,9 @@ def regenerate_assignment(
                 detail="Source document not found.",
             )
 
-        # -----------------------------------------------------
-        # 3. Keep old values when no new value is supplied
-        # -----------------------------------------------------
+        # =====================================================
+        # 3. KEEP OLD VALUES WHEN NOT PROVIDED
+        # =====================================================
 
         new_paper = (
             request.paper
@@ -1575,19 +2094,47 @@ def regenerate_assignment(
             or "blue"
         )
 
-        # -----------------------------------------------------
-        # 4. Build assignment settings
-        # -----------------------------------------------------
+        # =====================================================
+        # 4. BUILD ASSIGNMENT SETTINGS
+        # =====================================================
 
         assignment_data = {
             "title": assignment_record.title,
-            "subject": assignment_record.subject or "",
-            "studentName": assignment_record.student_name or "",
-            "rollNumber": assignment_record.roll_number or "",
-            "className": assignment_record.class_name or "",
-            "section": assignment_record.section or "",
-            "teacherName": assignment_record.teacher_name or "",
-            "date": assignment_record.assignment_date or "",
+
+            "subject": (
+                assignment_record.subject
+                or ""
+            ),
+
+            "studentName": (
+                assignment_record.student_name
+                or ""
+            ),
+
+            "rollNumber": (
+                assignment_record.roll_number
+                or ""
+            ),
+
+            "className": (
+                assignment_record.class_name
+                or ""
+            ),
+
+            "section": (
+                assignment_record.section
+                or ""
+            ),
+
+            "teacherName": (
+                assignment_record.teacher_name
+                or ""
+            ),
+
+            "date": (
+                assignment_record.assignment_date
+                or ""
+            ),
 
             "template": (
                 assignment_record.template
@@ -1596,7 +2143,9 @@ def regenerate_assignment(
 
             "paperStyle": new_paper,
 
-            "handwritingStyle": new_handwriting_style,
+            "handwritingStyle": (
+                new_handwriting_style
+            ),
 
             "ink": new_ink,
 
@@ -1609,18 +2158,18 @@ def regenerate_assignment(
             **request.assignment,
         }
 
-        # -----------------------------------------------------
-        # 5. Build page configuration
-        # -----------------------------------------------------
+        # =====================================================
+        # 5. BUILD PAGE CONFIGURATION
+        # =====================================================
 
         page_config = build_page_config(
             page=assignment_data,
             assignment=assignment_data,
         )
 
-        # -----------------------------------------------------
-        # 6. Rebuild pagination
-        # -----------------------------------------------------
+        # =====================================================
+        # 6. REBUILD PAGINATION
+        # =====================================================
 
         service = AssignmentService(
             page_config=page_config
@@ -1636,25 +2185,37 @@ def regenerate_assignment(
             [],
         )
 
-        # -----------------------------------------------------
-        # 7. Create new PDF file
-        # -----------------------------------------------------
+        if not pages:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Unable to regenerate assignment: "
+                    "no pages were produced."
+                ),
+            )
 
-        output_directory = (
+        # =====================================================
+        # 7. CREATE TEMPORARY PDF
+        # =====================================================
+
+        temporary_directory = (
             Path("generated")
             / "assignments"
+            / "temporary"
         )
 
-        output_directory.mkdir(
+        temporary_directory.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        pdf_id = str(uuid4())
+        temporary_pdf_id = str(
+            uuid4()
+        )
 
-        output_path = (
-            output_directory
-            / f"{pdf_id}.pdf"
+        temporary_pdf_path = (
+            temporary_directory
+            / f"{temporary_pdf_id}.pdf"
         )
 
         renderer = AssignmentPDFRenderer(
@@ -1664,60 +2225,301 @@ def regenerate_assignment(
 
         renderer.render(
             pages=pages,
-            output_path=str(output_path),
+            output_path=str(
+                temporary_pdf_path
+            ),
+        )
+
+        # =====================================================
+        # 8. VALIDATE GENERATED PDF
+        # =====================================================
+
+        expected_page_size = (
+            get_expected_pdf_page_size(
+                page_config
+            )
+        )
+
+        validation_result = (
+            pdf_validation_service.validate(
+                pdf_path=temporary_pdf_path,
+                expected_page_count=len(
+                    pages
+                ),
+                expected_page_size=(
+                    expected_page_size
+                ),
+            )
         )
 
         # -----------------------------------------------------
-        # 8. Delete previous PDF
+        # Use the existing filename when available.
+        # Otherwise create a new human-readable filename.
         # -----------------------------------------------------
 
-        if assignment_record.pdf_path:
-            old_pdf = Path(
-                assignment_record.pdf_path
+        existing_pdf_document = (
+            db.query(PdfDocument)
+            .filter(
+                PdfDocument.assignment_id
+                == assignment_record.id,
+                PdfDocument.user_id
+                == TEMP_USER_ID,
+            )
+            .order_by(
+                PdfDocument.created_at.desc()
+            )
+            .first()
+        )
+
+        if (
+            existing_pdf_document
+            and existing_pdf_document.filename
+        ):
+            pdf_filename = (
+                existing_pdf_document.filename
+            )
+        else:
+            pdf_filename = build_assignment_filename(
+                title=assignment_record.title,
+                student_name=(
+                    assignment_record.student_name
+                    or ""
+                ),
+                db=db,
+            )
+
+        # =====================================================
+        # 10. STORE VALIDATED PDF
+        # =====================================================
+
+        final_pdf_path = (
+            pdf_storage_service.save_final_pdf(
+                source_path=temporary_pdf_path,
+                filename=pdf_filename,
+            )
+        )
+
+        # =====================================================
+        # 11. DELETE TEMPORARY PDF
+        # =====================================================
+
+        if temporary_pdf_path.exists():
+            temporary_pdf_path.unlink()
+
+        temporary_pdf_path = None
+
+        # =====================================================
+        # 12. FIND EXISTING PdfDocument RECORDS
+        # =====================================================
+
+        old_pdf_documents = (
+            db.query(PdfDocument)
+            .filter(
+                PdfDocument.assignment_id
+                == assignment_record.id,
+                PdfDocument.user_id
+                == TEMP_USER_ID,
+            )
+            .all()
+        )
+
+        # =====================================================
+        # 13. DELETE OLD PDF FILES
+        # =====================================================
+
+        deleted_paths = set()
+
+        for old_pdf_document in (
+            old_pdf_documents
+        ):
+
+            if not old_pdf_document.file_path:
+                continue
+
+            old_pdf_path = Path(
+                old_pdf_document.file_path
+            )
+
+            resolved_old_path = str(
+                old_pdf_path.resolve()
+            )
+
+            # Never accidentally delete the newly
+            # generated final PDF.
+            if (
+                resolved_old_path
+                == str(
+                    final_pdf_path.resolve()
+                )
+            ):
+                continue
+
+            if (
+                resolved_old_path
+                not in deleted_paths
+            ):
+
+                if old_pdf_path.exists():
+                    pdf_storage_service.delete_pdf(
+                        old_pdf_path
+                    )
+
+                deleted_paths.add(
+                    resolved_old_path
+                )
+
+        # =====================================================
+        # 14. DELETE OLD PdfDocument RECORDS
+        # =====================================================
+
+        for old_pdf_document in (
+            old_pdf_documents
+        ):
+            db.delete(
+                old_pdf_document
+            )
+
+        # =====================================================
+        # 15. DELETE OLD LEGACY PDF IF DIFFERENT
+        # =====================================================
+
+        old_assignment_pdf_path = (
+            assignment_record.pdf_path
+        )
+
+        if old_assignment_pdf_path:
+
+            old_assignment_pdf = Path(
+                old_assignment_pdf_path
+            )
+
+            old_assignment_resolved = str(
+                old_assignment_pdf.resolve()
+            )
+
+            new_pdf_resolved = str(
+                final_pdf_path.resolve()
             )
 
             if (
-                old_pdf.exists()
-                and old_pdf.resolve()
-                != output_path.resolve()
+                old_assignment_resolved
+                != new_pdf_resolved
+                and old_assignment_resolved
+                not in deleted_paths
             ):
-                old_pdf.unlink()
 
-        # -----------------------------------------------------
-        # 9. Update existing database record
-        # -----------------------------------------------------
+                if old_assignment_pdf.exists():
+                    pdf_storage_service.delete_pdf(
+                        old_assignment_pdf
+                    )
 
-        assignment_record.paper_style = new_paper
+        # =====================================================
+        # 16. UPDATE ASSIGNMENT RECORD
+        # =====================================================
+
+        assignment_record.paper_style = (
+            new_paper
+        )
 
         assignment_record.handwriting_style = (
             new_handwriting_style
         )
 
-        assignment_record.ink_color = new_ink
+        assignment_record.ink_color = (
+            new_ink
+        )
 
-        assignment_record.page_count = len(
-            pages
+        assignment_record.page_count = (
+            len(pages)
         )
 
         assignment_record.pdf_path = str(
-            output_path
+            final_pdf_path
         )
 
-        # -----------------------------------------------------
-        # 10. Save
-        # -----------------------------------------------------
+        # =====================================================
+        # 17. CREATE NEW PdfDocument RECORD
+        # =====================================================
+
+        pdf_document = PdfDocument(
+            user_id=TEMP_USER_ID,
+
+            document_id=(
+                assignment_record.document_id
+            ),
+
+            assignment_id=(
+                assignment_record.id
+            ),
+
+            filename=pdf_filename,
+
+            file_path=str(
+                final_pdf_path
+            ),
+
+            page_size=str(
+                assignment_data.get(
+                    "paperSize",
+                    "A4",
+                )
+                or "A4"
+            ),
+
+            page_count=len(
+                pages
+            ),
+        )
+
+        db.add(
+            pdf_document
+        )
+
+        # =====================================================
+        # 18. COMMIT DATABASE CHANGES
+        # =====================================================
 
         db.commit()
-        db.refresh(assignment_record)
 
-        # -----------------------------------------------------
-        # 11. Return result
-        # -----------------------------------------------------
+        db.refresh(
+            assignment_record
+        )
+
+        db.refresh(
+            pdf_document
+        )
+
+        # =====================================================
+        # 19. RETURN RESULT
+        # =====================================================
 
         return {
-            "assignment_id": assignment_record.id,
+            "assignment_id": (
+                assignment_record.id
+            ),
+
+            "pdf_id": (
+                pdf_document.id
+            ),
+
             "status": "regenerated",
-            "pages": len(pages),
+
+            "pages": len(
+                pages
+            ),
+
+            "filename": (
+                pdf_document.filename
+            ),
+
+            "file_path": (
+                pdf_document.file_path
+            ),
+
+            "validation": (
+                validation_result
+            ),
+
             "download_url": (
                 f"/api/assignments/"
                 f"{assignment_record.id}/download"
@@ -1727,7 +2529,55 @@ def regenerate_assignment(
     except HTTPException:
         raise
 
+    except PDFValidationError as error:
+
+        # -----------------------------------------------------
+        # Remove invalid temporary PDF
+        # -----------------------------------------------------
+
+        if (
+            temporary_pdf_path
+            and temporary_pdf_path.exists()
+        ):
+            temporary_pdf_path.unlink()
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Regenerated PDF failed validation: "
+                f"{error}"
+            ),
+        )
+
     except Exception as error:
+
+        # -----------------------------------------------------
+        # Remove temporary PDF
+        # -----------------------------------------------------
+
+        if (
+            temporary_pdf_path
+            and temporary_pdf_path.exists()
+        ):
+            temporary_pdf_path.unlink()
+
+        # -----------------------------------------------------
+        # Remove final PDF if database operation failed
+        # -----------------------------------------------------
+
+        if (
+            final_pdf_path
+            and final_pdf_path.exists()
+        ):
+            try:
+                pdf_storage_service.delete_pdf(
+                    final_pdf_path
+                )
+            except Exception:
+                pass
+
         db.rollback()
 
         raise HTTPException(
