@@ -1,33 +1,19 @@
 """
 AI provider abstraction for InkAI.
 
-The rest of the application should communicate with the
-AI provider through this module rather than calling the
-provider SDK directly.
+This module keeps provider-specific SDK code isolated from
+the API and AI service layers.
 """
-
-from __future__ import annotations
-
-from abc import ABC, abstractmethod
 
 from google import genai
 
 from app.config.settings import settings
 
 
-class AIProvider(ABC):
-    """Base interface for AI providers."""
+class AIProvider:
+    """Central AI provider for InkAI."""
 
-    @abstractmethod
-    def generate(self, prompt: str) -> str:
-        """Generate a response from the AI provider."""
-        raise NotImplementedError
-
-
-class GeminiProvider(AIProvider):
-    """Google Gemini implementation using the current GenAI SDK."""
-
-    def __init__(self) -> None:
+    def __init__(self):
         if not settings.AI_API_KEY:
             raise ValueError(
                 "AI_API_KEY is not configured."
@@ -42,13 +28,13 @@ class GeminiProvider(AIProvider):
             api_key=settings.AI_API_KEY
         )
 
-        self.model = settings.AI_MODEL
-
     def generate(self, prompt: str) -> str:
-        """Generate text using Gemini."""
+        """
+        Generate a response from the configured AI model.
+        """
 
         response = self.client.models.generate_content(
-            model=self.model,
+            model=settings.AI_MODEL,
             contents=prompt,
         )
 
@@ -57,21 +43,4 @@ class GeminiProvider(AIProvider):
                 "AI provider returned an empty response."
             )
 
-        return response.text
-
-
-def get_ai_provider() -> AIProvider:
-    """
-    Return the configured AI provider.
-
-    This keeps provider selection outside API routes.
-    """
-
-    provider = settings.AI_PROVIDER.lower()
-
-    if provider == "gemini":
-        return GeminiProvider()
-
-    raise ValueError(
-        f"Unsupported AI provider: {settings.AI_PROVIDER}"
-    )
+        return response.text.strip()

@@ -1,36 +1,38 @@
 """
 AI service layer for InkAI.
 
-API routes should call this service instead of interacting
-directly with an AI provider.
+The API layer communicates with this service instead of
+calling the AI provider directly.
 """
 
 from app.ai.parser import parse_ai_response
+from app.ai.provider import AIProvider
 from app.ai.prompts import build_ai_prompt
-from app.ai.provider import get_ai_provider
 
 
 class AIService:
     """Application-level AI service."""
 
-    def __init__(self) -> None:
-        self.provider = get_ai_provider()
+    def __init__(self):
+        self.provider = AIProvider()
 
     def generate(
         self,
         instruction: str,
         context: str | None = None,
     ) -> str:
-        """Generate an AI response."""
+        """
+        Generate an AI response.
+        """
 
         prompt = build_ai_prompt(
             instruction=instruction,
             context=context,
         )
 
-        raw_response = self.provider.generate(prompt)
+        response = self.provider.generate(prompt)
 
-        return parse_ai_response(raw_response)
+        return parse_ai_response(response)
 
 
 ai_service = AIService()
