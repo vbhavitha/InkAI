@@ -1,14 +1,19 @@
 """
 Pydantic schemas for InkAI AI features.
+
+These schemas validate both incoming requests and
+structured AI responses.
 """
 
+from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from enum import Enum
-from pydantic import BaseModel, Field
 
+# =============================================================
+# Shared Types
+# =============================================================
 
 RewriteStyle = Literal[
     "simple",
@@ -19,6 +24,10 @@ RewriteStyle = Literal[
     "concise",
 ]
 
+
+# =============================================================
+# Generic AI
+# =============================================================
 
 class AIRequest(BaseModel):
     """Generic AI request."""
@@ -35,6 +44,16 @@ class AIRequest(BaseModel):
     )
 
 
+class AIResponse(BaseModel):
+    """Generic AI response."""
+
+    response: str
+
+
+# =============================================================
+# Feature 1 — Grammar Correction
+# =============================================================
+
 class GrammarRequest(BaseModel):
     """Grammar correction request."""
 
@@ -44,6 +63,16 @@ class GrammarRequest(BaseModel):
         description="Text to correct.",
     )
 
+
+class GrammarResponse(BaseModel):
+    """Grammar correction response."""
+
+    result: str
+
+
+# =============================================================
+# Feature 2 — Rewrite
+# =============================================================
 
 class RewriteRequest(BaseModel):
     """Note rewriting request."""
@@ -60,24 +89,19 @@ class RewriteRequest(BaseModel):
     )
 
 
-class AIResponse(BaseModel):
-    """Generic AI response."""
-
-    response: str
-
-
-class GrammarResponse(BaseModel):
-    """Grammar correction response."""
-
-    result: str
-
-
 class RewriteResponse(BaseModel):
     """Rewrite response."""
 
     result: str
 
+
+# =============================================================
+# Feature 3 — Summarization
+# =============================================================
+
 class SummaryLength(str, Enum):
+    """Summary length modes."""
+
     ONE_SENTENCE = "one_sentence"
     SHORT = "short"
     MEDIUM = "medium"
@@ -86,68 +110,99 @@ class SummaryLength(str, Enum):
 
 
 class SummarizeRequest(BaseModel):
+    """Summarization request."""
+
     text: str = Field(
         ...,
         min_length=1,
-        description="Text to summarize",
+        description="Text to summarize.",
     )
 
     length: SummaryLength = Field(
         default=SummaryLength.SHORT,
-        description="Summary length/mode",
+        description="Summary length/mode.",
     )
 
 
 class SummarizeResponse(BaseModel):
+    """Structured summary response."""
+
     summary: str
 
     key_points: list[str]
 
 
+# =============================================================
+# Feature 4 — Flashcards
+# =============================================================
+
 class FlashcardsRequest(BaseModel):
+    """Flashcard generation request."""
+
     text: str = Field(
         ...,
         min_length=1,
-        description="Notes used to generate flashcards",
-    )
-
-
-class Flashcard(BaseModel):
-    question: str
-
-    answer: str
-
-
-class FlashcardsResponse(BaseModel):
-    flashcards: list[Flashcard]
-
-class MCQDifficulty(str, Enum):
-    EASY = "easy"
-    MEDIUM = "medium"
-    HARD = "hard"
-
-
-class MCQRequest(BaseModel):
-    text: str = Field(
-        ...,
-        min_length=1,
-        description="Notes used to generate MCQs",
+        description="Notes used to generate flashcards.",
     )
 
     count: int = Field(
         default=10,
         ge=1,
         le=50,
-        description="Number of MCQs to generate",
+        description="Number of flashcards to generate.",
+    )
+
+
+class Flashcard(BaseModel):
+    """Single flashcard."""
+
+    question: str
+    answer: str
+
+
+class FlashcardsResponse(BaseModel):
+    """Flashcard generation response."""
+
+    flashcards: list[Flashcard]
+
+
+# =============================================================
+# Feature 5 — MCQs
+# =============================================================
+
+class MCQDifficulty(str, Enum):
+    """MCQ difficulty levels."""
+
+    EASY = "easy"
+    MEDIUM = "medium"
+    HARD = "hard"
+
+
+class MCQRequest(BaseModel):
+    """MCQ generation request."""
+
+    text: str = Field(
+        ...,
+        min_length=1,
+        description="Notes used to generate MCQs.",
+    )
+
+    count: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Number of MCQs to generate.",
     )
 
     difficulty: MCQDifficulty = Field(
         default=MCQDifficulty.MEDIUM,
-        description="MCQ difficulty",
+        description="MCQ difficulty.",
     )
 
 
 class MCQQuestion(BaseModel):
+    """Single multiple-choice question."""
+
     question: str
 
     options: list[str] = Field(
@@ -162,9 +217,18 @@ class MCQQuestion(BaseModel):
 
 
 class MCQResponse(BaseModel):
+    """MCQ generation response."""
+
     questions: list[MCQQuestion]
 
+
+# =============================================================
+# Feature 6 — Question Generation
+# =============================================================
+
 class QuestionType(str, Enum):
+    """Question generation types."""
+
     VERY_SHORT = "very_short"
     SHORT = "short"
     LONG = "long"
@@ -174,37 +238,43 @@ class QuestionType(str, Enum):
 
 
 class QuestionDifficulty(str, Enum):
+    """Question difficulty levels."""
+
     EASY = "easy"
     MEDIUM = "medium"
     HARD = "hard"
 
 
 class QuestionGeneratorRequest(BaseModel):
+    """Question generation request."""
+
     text: str = Field(
         ...,
         min_length=1,
-        description="Notes used to generate questions",
+        description="Notes used to generate questions.",
     )
 
     type: QuestionType = Field(
         default=QuestionType.EXAM,
-        description="Type of question to generate",
+        description="Type of question to generate.",
     )
 
     difficulty: QuestionDifficulty = Field(
         default=QuestionDifficulty.MEDIUM,
-        description="Question difficulty",
+        description="Question difficulty.",
     )
 
     count: int = Field(
         default=10,
         ge=1,
         le=50,
-        description="Number of questions to generate",
+        description="Number of questions to generate.",
     )
 
 
 class GeneratedQuestion(BaseModel):
+    """Single generated question."""
+
     question: str
 
     difficulty: QuestionDifficulty
@@ -213,9 +283,18 @@ class GeneratedQuestion(BaseModel):
 
 
 class QuestionGeneratorResponse(BaseModel):
+    """Question generation response."""
+
     questions: list[GeneratedQuestion]
 
+
+# =============================================================
+# Feature 7 — Explain Difficult Topics
+# =============================================================
+
 class ExplanationLevel(str, Enum):
+    """Explanation audience levels."""
+
     BEGINNER = "beginner"
     SCHOOL_STUDENT = "school_student"
     COLLEGE_STUDENT = "college_student"
@@ -226,73 +305,109 @@ class ExplanationLevel(str, Enum):
 
 
 class ExplainTopicRequest(BaseModel):
+    """Difficult-topic explanation request."""
+
     text: str = Field(
         ...,
         min_length=1,
+        description="Topic or concept to explain.",
     )
 
-    level: ExplanationLevel = (
-        ExplanationLevel.BEGINNER
+    level: ExplanationLevel = Field(
+        default=ExplanationLevel.COLLEGE_STUDENT,
+        description="Target learner level.",
     )
 
 
 class ExplainTopicResponse(BaseModel):
-    title: str
+    """Structured topic explanation."""
+
+    topic: str
+
+    level: ExplanationLevel
 
     explanation: str
 
+    example: str
+
     key_points: list[str]
 
-    example: str = ""
 
-    analogy: str = ""
+# =============================================================
+# Feature 8 — Translation
+# =============================================================
 
 class TranslationRequest(BaseModel):
+    """Translation request."""
+
     text: str = Field(
         ...,
         min_length=1,
+        description="Text to translate.",
     )
 
     target_language: str = Field(
         ...,
         min_length=1,
-        max_length=50,
+        description="Target language.",
     )
 
 
 class TranslationResponse(BaseModel):
+    """Translation response."""
+
     source_language: str
 
     target_language: str
 
     translated_text: str
 
+
+# =============================================================
+# Feature 9 — Presentation
+# =============================================================
+
+class PresentationRequest(BaseModel):
+    """Presentation generation request."""
+
+    text: str = Field(
+        ...,
+        min_length=1,
+        description="Notes to convert into a presentation.",
+    )
+
+
 class PresentationSlide(BaseModel):
+    """Single presentation slide."""
+
     title: str
 
     content: list[str]
 
 
-class PresentationRequest(BaseModel):
-    text: str = Field(
-        ...,
-        min_length=1,
-    )
+class PresentationResponse(BaseModel):
+    """Structured presentation plan."""
 
-    title: str = ""
-
-
-class PresentationPlanResponse(BaseModel):
     title: str
 
     slides: list[PresentationSlide]
 
+
+# =============================================================
+# Feature 10 — Markdown
+# =============================================================
+
 class MarkdownRequest(BaseModel):
+    """Markdown conversion request."""
+
     text: str = Field(
         ...,
         min_length=1,
+        description="Notes to convert into Markdown.",
     )
 
 
 class MarkdownResponse(BaseModel):
+    """Markdown conversion response."""
+
     markdown: str
