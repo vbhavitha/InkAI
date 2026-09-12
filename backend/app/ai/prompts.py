@@ -310,3 +310,149 @@ EXPECTED FORMAT:
 NOTES:
 {text}
 """.strip()
+
+def mcq_prompt(
+    text: str,
+    count: int = 10,
+    difficulty: str = "medium",
+) -> str:
+    """
+    Generate multiple-choice questions from notes.
+    """
+
+    return f"""
+You are an expert exam question generator for InkAI.
+
+Generate {count} multiple-choice questions from the following notes.
+
+DIFFICULTY:
+{difficulty}
+
+IMPORTANT RULES:
+1. Use ONLY information present in the supplied notes.
+2. Do not invent facts.
+3. Questions must test understanding of the source material.
+4. Each question must have exactly 4 options.
+5. There must be exactly ONE correct answer.
+6. The correct answer must exactly match one of the options.
+7. Provide a short explanation for the correct answer.
+8. Avoid duplicate questions.
+9. Keep the questions clear and suitable for students.
+10. Return ONLY valid JSON.
+11. Do not use Markdown.
+12. Do not wrap the response in ```json or ```.
+
+EXPECTED FORMAT:
+
+{{
+    "questions": [
+        {{
+            "question": "Which protocol is connection-oriented?",
+            "options": [
+                "UDP",
+                "TCP",
+                "IP",
+                "ICMP"
+            ],
+            "answer": "TCP",
+            "explanation": "TCP establishes a connection before data transmission."
+        }}
+    ]
+}}
+
+NOTES:
+{text}
+""".strip()
+
+def question_generator_prompt(
+    text: str,
+    question_type: str = "exam",
+    difficulty: str = "medium",
+    count: int = 10,
+) -> str:
+    """
+    Generate non-MCQ questions from notes.
+    """
+
+    type_instructions = {
+        "very_short": (
+            "Generate very short-answer questions that can usually "
+            "be answered in one or two sentences."
+        ),
+
+        "short": (
+            "Generate short-answer questions that require concise "
+            "explanations or definitions."
+        ),
+
+        "long": (
+            "Generate long-answer questions requiring detailed "
+            "explanations, comparisons, processes, or examples."
+        ),
+
+        "important": (
+            "Generate the most important questions a student should "
+            "prepare from the supplied notes."
+        ),
+
+        "exam": (
+            "Generate exam-oriented questions that are likely to test "
+            "important concepts from the supplied notes."
+        ),
+
+        "viva": (
+            "Generate viva questions suitable for an oral examination. "
+            "Focus on concepts, definitions, reasoning, and understanding."
+        ),
+    }
+
+    instruction = type_instructions.get(
+        question_type,
+        type_instructions["exam"],
+    )
+
+    return f"""
+You are an expert academic question generator for InkAI.
+
+Generate {count} questions from the following notes.
+
+QUESTION TYPE:
+{question_type}
+
+DIFFICULTY:
+{difficulty}
+
+QUESTION STYLE:
+{instruction}
+
+IMPORTANT RULES:
+1. Use ONLY information present in the supplied notes.
+2. Do not invent facts.
+3. Do not generate multiple-choice questions.
+4. Questions should require the student to formulate their own answer.
+5. Avoid duplicate questions.
+6. Cover different important topics from the notes.
+7. Assign an appropriate topic to every question.
+8. The difficulty must be one of:
+   - easy
+   - medium
+   - hard
+9. Return ONLY valid JSON.
+10. Do not use Markdown.
+11. Do not wrap the response in ```json or ```.
+
+EXPECTED FORMAT:
+
+{{
+    "questions": [
+        {{
+            "question": "Explain the working of TCP.",
+            "difficulty": "medium",
+            "topic": "TCP"
+        }}
+    ]
+}}
+
+NOTES:
+{text}
+""".strip()

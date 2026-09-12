@@ -120,3 +120,97 @@ class Flashcard(BaseModel):
 
 class FlashcardsResponse(BaseModel):
     flashcards: list[Flashcard]
+
+class MCQDifficulty(str, Enum):
+    EASY = "easy"
+    MEDIUM = "medium"
+    HARD = "hard"
+
+
+class MCQRequest(BaseModel):
+    text: str = Field(
+        ...,
+        min_length=1,
+        description="Notes used to generate MCQs",
+    )
+
+    count: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Number of MCQs to generate",
+    )
+
+    difficulty: MCQDifficulty = Field(
+        default=MCQDifficulty.MEDIUM,
+        description="MCQ difficulty",
+    )
+
+
+class MCQQuestion(BaseModel):
+    question: str
+
+    options: list[str] = Field(
+        ...,
+        min_length=4,
+        max_length=4,
+    )
+
+    answer: str
+
+    explanation: str
+
+
+class MCQResponse(BaseModel):
+    questions: list[MCQQuestion]
+
+class QuestionType(str, Enum):
+    VERY_SHORT = "very_short"
+    SHORT = "short"
+    LONG = "long"
+    IMPORTANT = "important"
+    EXAM = "exam"
+    VIVA = "viva"
+
+
+class QuestionDifficulty(str, Enum):
+    EASY = "easy"
+    MEDIUM = "medium"
+    HARD = "hard"
+
+
+class QuestionGeneratorRequest(BaseModel):
+    text: str = Field(
+        ...,
+        min_length=1,
+        description="Notes used to generate questions",
+    )
+
+    type: QuestionType = Field(
+        default=QuestionType.EXAM,
+        description="Type of question to generate",
+    )
+
+    difficulty: QuestionDifficulty = Field(
+        default=QuestionDifficulty.MEDIUM,
+        description="Question difficulty",
+    )
+
+    count: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Number of questions to generate",
+    )
+
+
+class GeneratedQuestion(BaseModel):
+    question: str
+
+    difficulty: QuestionDifficulty
+
+    topic: str
+
+
+class QuestionGeneratorResponse(BaseModel):
+    questions: list[GeneratedQuestion]

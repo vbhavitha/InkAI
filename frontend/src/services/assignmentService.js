@@ -247,6 +247,124 @@ export async function generateFlashcards(text) {
 
 /*
  * ============================================================
+ * AI TOOLS — GENERATE MCQs
+ * ============================================================
+ */
+
+export async function generateMCQs(
+  text,
+  count = 10,
+  difficulty = "medium"
+) {
+  if (!text || !text.trim()) {
+    throw new Error("Text is required.");
+  }
+
+  const allowedDifficulties = [
+    "easy",
+    "medium",
+    "hard",
+  ];
+
+  const normalizedDifficulty =
+    allowedDifficulties.includes(difficulty)
+      ? difficulty
+      : "medium";
+
+  const normalizedCount = Math.min(
+    Math.max(Number(count) || 10, 1),
+    50
+  );
+
+  const response = await fetch(
+    buildUrl("/api/ai/mcqs"),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        text: text.trim(),
+        count: normalizedCount,
+        difficulty: normalizedDifficulty,
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
+/*
+ * ============================================================
+ * AI TOOLS — QUESTION GENERATOR
+ * ============================================================
+ */
+
+export async function generateQuestions(
+  text,
+  type = "exam",
+  difficulty = "medium",
+  count = 10
+) {
+  if (!text || !text.trim()) {
+    throw new Error("Text is required.");
+  }
+
+  const allowedTypes = [
+    "very_short",
+    "short",
+    "long",
+    "important",
+    "exam",
+    "viva",
+  ];
+
+  const allowedDifficulties = [
+    "easy",
+    "medium",
+    "hard",
+  ];
+
+  const normalizedType =
+    allowedTypes.includes(type)
+      ? type
+      : "exam";
+
+  const normalizedDifficulty =
+    allowedDifficulties.includes(difficulty)
+      ? difficulty
+      : "medium";
+
+  const normalizedCount = Math.min(
+    Math.max(Number(count) || 10, 1),
+    50
+  );
+
+  const response = await fetch(
+    buildUrl("/api/ai/questions"),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        text: text.trim(),
+        type: normalizedType,
+        difficulty: normalizedDifficulty,
+        count: normalizedCount,
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
+/*
+ * ============================================================
  * PHASE 6 DOCUMENT NORMALIZATION
  * ============================================================
  *
@@ -1170,8 +1288,12 @@ const assignmentService = {
   rewriteNotes,
 
   summarizeNotes,
-  
+
   generateFlashcards,
+
+  generateMCQs,
+  
+  generateQuestions,
 };
 
 export default assignmentService;

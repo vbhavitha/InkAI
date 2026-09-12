@@ -16,6 +16,10 @@ from app.ai.schemas import (
     SummarizeResponse,
     FlashcardsRequest,
     FlashcardsResponse,
+    MCQRequest,
+    MCQResponse,
+    QuestionGeneratorRequest,
+    QuestionGeneratorResponse,
 )
 
 
@@ -163,4 +167,45 @@ def generate_flashcards(
 
     return FlashcardsResponse(
         flashcards=result["flashcards"],
+    )
+
+@router.post(
+    "/mcqs",
+    response_model=MCQResponse,
+)
+def generate_mcqs(
+    request: MCQRequest,
+):
+    """
+    Generate multiple-choice questions.
+    """
+
+    result = ai_service.generate_mcqs(
+        text=request.text,
+        count=request.count,
+        difficulty=request.difficulty.value,
+    )
+
+    return MCQResponse(
+        questions=result["questions"],
+    )@router.post(
+    "/questions",
+    response_model=QuestionGeneratorResponse,
+)
+def generate_questions(
+    request: QuestionGeneratorRequest,
+):
+    """
+    Generate non-MCQ questions.
+    """
+
+    result = ai_service.generate_questions(
+        text=request.text,
+        question_type=request.type.value,
+        difficulty=request.difficulty.value,
+        count=request.count,
+    )
+
+    return QuestionGeneratorResponse(
+        questions=result["questions"],
     )

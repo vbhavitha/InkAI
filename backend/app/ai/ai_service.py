@@ -18,6 +18,8 @@ from .prompts import (
     rewrite_prompt,
     summarize_prompt,
     flashcards_prompt,
+    mcq_prompt,
+    question_generator_prompt,
 )
 
 
@@ -142,6 +144,76 @@ class AIService:
                 "flashcards",
                 [],
             ),
+        }
+
+    def generate_mcqs(
+        self,
+        text: str,
+        count: int = 10,
+        difficulty: str = "medium",
+    ):
+        """
+        Generate structured multiple-choice questions.
+        """
+
+        if not text or not text.strip():
+            raise ValueError("Text is required.")
+
+        prompt = mcq_prompt(
+            text=text.strip(),
+            count=count,
+            difficulty=difficulty,
+        )
+
+        raw_response = self.generate(prompt)
+
+        parsed_response = self.parse_ai_response(
+            raw_response
+        )
+
+        questions = parsed_response.get(
+            "questions",
+            [],
+        )
+
+        return {
+            "questions": questions,
+        }
+
+    def generate_questions(
+        self,
+        text: str,
+        question_type: str = "exam",
+        difficulty: str = "medium",
+        count: int = 10,
+    ):
+        """
+        Generate structured non-MCQ questions.
+        """
+
+        if not text or not text.strip():
+            raise ValueError("Text is required.")
+
+        prompt = question_generator_prompt(
+            text=text.strip(),
+            question_type=question_type,
+            difficulty=difficulty,
+            count=count,
+        )
+
+        raw_response = self.generate(prompt)
+
+        parsed_response = self.parse_ai_response(
+            raw_response
+        )
+
+        questions = parsed_response.get(
+            "questions",
+            [],
+        )
+
+        return {
+            "questions": questions,
         }
 
 
