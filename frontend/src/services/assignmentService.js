@@ -21,7 +21,8 @@ async function handleResponse(response) {
     : await response.text();
 
   if (!response.ok) {
-    let message = `Request failed with status ${response.status}`;
+    let message =
+      `Request failed with status ${response.status}`;
 
     if (
       typeof data === "object" &&
@@ -43,7 +44,10 @@ async function handleResponse(response) {
           })
           .join(", ");
       }
-    } else if (typeof data === "string" && data.trim()) {
+    } else if (
+      typeof data === "string" &&
+      data.trim()
+    ) {
       message = data;
     }
 
@@ -51,6 +55,118 @@ async function handleResponse(response) {
   }
 
   return data;
+}
+
+/*
+ * ============================================================
+ * AI TOOLS — GRAMMAR CORRECTION
+ * ============================================================
+ *
+ * Endpoint:
+ *   POST /api/ai/grammar
+ *
+ * Request:
+ *   {
+ *     text: "..."
+ *   }
+ *
+ * Response:
+ *   {
+ *     result: "..."
+ *   }
+ */
+
+export async function correctGrammar(text) {
+  if (!text || !text.trim()) {
+    throw new Error("Text is required.");
+  }
+
+  const response = await fetch(
+    buildUrl("/api/ai/grammar"),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        text: text.trim(),
+      }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
+/*
+ * ============================================================
+ * AI TOOLS — REWRITE NOTES
+ * ============================================================
+ *
+ * Endpoint:
+ *   POST /api/ai/rewrite
+ *
+ * Request:
+ *   {
+ *     text: "...",
+ *     style: "exam_notes"
+ *   }
+ *
+ * Response:
+ *   {
+ *     result: "..."
+ *   }
+ *
+ * Supported styles:
+ *
+ *   simple
+ *   professional
+ *   academic
+ *   exam_notes
+ *   detailed
+ *   concise
+ */
+
+export async function rewriteNotes(
+  text,
+  style = "simple"
+) {
+  if (!text || !text.trim()) {
+    throw new Error("Text is required.");
+  }
+
+  const allowedStyles = [
+    "simple",
+    "professional",
+    "academic",
+    "exam_notes",
+    "detailed",
+    "concise",
+  ];
+
+  const normalizedStyle =
+    allowedStyles.includes(style)
+      ? style
+      : "simple";
+
+  const response = await fetch(
+    buildUrl("/api/ai/rewrite"),
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+      },
+
+      body: JSON.stringify({
+        text: text.trim(),
+        style: normalizedStyle,
+      }),
+    }
+  );
+
+  return handleResponse(response);
 }
 
 /*
@@ -198,7 +314,8 @@ export async function getPhase6Document(documentId) {
     )
   );
 
-  const data = await handleResponse(response);
+  const data =
+    await handleResponse(response);
 
   return normalizePhase6Document(data);
 }
@@ -493,6 +610,7 @@ export async function paginateAssignment({
           nodes: [],
         },
       ],
+
       pageCount: 1,
     };
   }
@@ -518,9 +636,7 @@ export async function paginateAssignment({
 
       body: JSON.stringify({
         document,
-
         assignment,
-
         page: pageConfig,
       }),
     }
@@ -609,36 +725,34 @@ export async function generateAssignmentPDF({
         page_numbers:
           pageNumbers !== false,
 
-        assignment:
-          {
-            ...assignment,
+        assignment: {
+          ...assignment,
 
-            page:
-              assignment?.page ||
-              buildAssignmentPageConfig(
-                assignment
-              ),
-          },
+          page:
+            assignment?.page ||
+            buildAssignmentPageConfig(
+              assignment
+            ),
+        },
 
-        handwriting:
-          {
-            ...handwriting,
+        handwriting: {
+          ...handwriting,
 
-            style:
-              handwriting?.style ||
-              handwritingStyle ||
-              "school_notebook",
+          style:
+            handwriting?.style ||
+            handwritingStyle ||
+            "school_notebook",
 
-            ink:
-              handwriting?.ink ||
-              ink ||
-              "blue",
+          ink:
+            handwriting?.ink ||
+            ink ||
+            "blue",
 
-            paper:
-              handwriting?.paper ||
-              paper ||
-              "ruled",
-          },
+          paper:
+            handwriting?.paper ||
+            paper ||
+            "ruled",
+        },
       }),
     }
   );
@@ -948,23 +1062,6 @@ export async function deleteAssignment(
  * ============================================================
  * DEFAULT EXPORT
  * ============================================================
- *
- * Allows both:
- *
- * import {
- *   paginateAssignment
- * } from "../services/assignmentService";
- *
- * and:
- *
- * import assignmentService
- * from "../services/assignmentService";
- */
-
-/*
- * ============================================================
- * DEFAULT EXPORT
- * ============================================================
  */
 
 const assignmentService = {
@@ -991,6 +1088,10 @@ const assignmentService = {
   getAssignments,
 
   deleteAssignment,
+
+  correctGrammar,
+
+  rewriteNotes,
 };
 
 export default assignmentService;

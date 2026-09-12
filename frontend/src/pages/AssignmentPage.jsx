@@ -23,6 +23,8 @@ import {
   createHandwritingAssignmentPayload,
   paginateAssignment,
   saveAssignmentDraft,
+  correctGrammar,
+  rewriteNotes,
 } from "../services/assignmentService";
 
 import {
@@ -37,6 +39,26 @@ import {
 import {
   paginatePreviewDocument,
 } from "../utils/assignmentUtils";
+
+
+
+
+/*
+ * ============================================================
+ * AI TOOLS API INTEGRATION
+ * ============================================================
+ *
+ * correctGrammar() and rewriteNotes() are imported from
+ * assignmentService.js.
+ *
+ * This AssignmentPage does not own the TipTap editor instance.
+ * It works with the Phase 6 structured document and assignment
+ * generation UI, so selection/Accept/Reject editor commands are
+ * intentionally not invented here.
+ *
+ * The selected-text AI UI belongs in the component that owns the
+ * TipTap editor instance.
+ */
 
 const GENERATION_STAGES = [
   {
@@ -1386,6 +1408,8 @@ function AssignmentPage() {
       );
     }
   };
+
+  
 
   return (
     <>
