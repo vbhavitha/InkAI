@@ -745,6 +745,27 @@ function AssignmentPage() {
     }
   }, [location.state]);
 
+    /*
+    * ==========================================================
+    * STEP 25 — FAST LIVE PREVIEW
+    * ==========================================================
+    *
+    * The live preview NEVER generates the final PDF.
+    *
+    * Settings changes:
+    *
+    *     user changes setting
+    *             ↓
+    *       180ms debounce
+    *             ↓
+    *       /paginate
+    *             ↓
+    *       update preview
+    *
+    * The previous request is cancelled if the user changes
+    * another setting before the preview finishes.
+    */
+
     useEffect(() => {
       if (!phase6Document) {
         setPreviewPages([
@@ -755,79 +776,115 @@ function AssignmentPage() {
         ]);
 
         setPreviewTotalPages(1);
+        setIsPaginatingPreview(false);
 
         return;
       }
 
+      const controller =
+        new AbortController();
+
       let cancelled = false;
 
-      async function updatePreviewPagination() {
-        try {
-          setIsPaginatingPreview(true);
+      /*
+      * Small debounce prevents a request from being sent
+      * for every single rapid setting change.
+      */
+      const timer = setTimeout(
+        async () => {
+          try {
+            setIsPaginatingPreview(true);
 
-          const result =
-            await paginateAssignment({
-              document: phase6Document.content ||
-                phase6Document,
-              assignment,
-            });
+            const result =
+              await paginateAssignment({
+                document:
+                  phase6Document.content ||
+                  phase6Document,
 
-          if (cancelled) {
-            return;
+                assignment,
+
+                signal:
+                  controller.signal,
+              });
+
+            if (
+              cancelled ||
+              controller.signal.aborted
+            ) {
+              return;
+            }
+
+            const pages =
+              Array.isArray(result?.pages)
+                ? result.pages
+                : [];
+
+            setPreviewPages(
+              pages.length
+                ? pages
+                : [
+                    {
+                      pageNumber: 1,
+                      nodes: [],
+                    },
+                  ]
+            );
+
+            setPreviewTotalPages(
+              pages.length || 1
+            );
+
+          } catch (error) {
+            /*
+            * AbortError is expected when the user
+            * changes settings while a preview request
+            * is still running.
+            */
+            if (
+              error?.name ===
+              "AbortError"
+            ) {
+              return;
+            }
+
+            console.error(
+              "Failed to paginate live preview:",
+              error
+            );
+
+            if (!cancelled) {
+              setPreviewPages([
+                {
+                  pageNumber: 1,
+                  nodes:
+                    phase6Document?.content
+                      ?.content ||
+                    phase6Document?.blocks ||
+                    [],
+                },
+              ]);
+
+              setPreviewTotalPages(1);
+            }
+
+          } finally {
+            if (
+              !cancelled &&
+              !controller.signal.aborted
+            ) {
+              setIsPaginatingPreview(false);
+            }
           }
-
-          const pages =
-            Array.isArray(result?.pages)
-              ? result.pages
-              : [];
-
-          setPreviewPages(
-            pages.length
-              ? pages
-              : [
-                  {
-                    pageNumber: 1,
-                    nodes: [],
-                  },
-                ]
-          );
-
-          setPreviewTotalPages(
-            pages.length || 1
-          );
-
-        } catch (error) {
-          console.error(
-            "Failed to paginate live preview:",
-            error
-          );
-
-          if (!cancelled) {
-            setPreviewPages([
-              {
-                pageNumber: 1,
-                nodes:
-                  phase6Document?.content
-                    ?.content ||
-                  phase6Document?.blocks ||
-                  [],
-              },
-            ]);
-
-            setPreviewTotalPages(1);
-          }
-
-        } finally {
-          if (!cancelled) {
-            setIsPaginatingPreview(false);
-          }
-        }
-      }
-
-      updatePreviewPagination();
+        },
+        180
+      );
 
       return () => {
         cancelled = true;
+
+        clearTimeout(timer);
+
+        controller.abort();
       };
 
     }, [
@@ -847,6 +904,27 @@ function AssignmentPage() {
     );
   };
 
+  /*
+  * ==========================================================
+  * STEP 26 — DOWNLOAD FINAL PDF
+  * ==========================================================
+  *
+  * IMPORTANT:
+  *
+  * This function downloads the FINAL high-quality PDF.
+  *
+  * Preview:
+  *     /paginate
+  *
+  * Download:
+  *     /generate
+  *          ↓
+  *     final PDF
+  *
+  * The backend supplies the human-readable filename through
+  * Content-Disposition.
+  */
+
   const handleDownloadPDF = async () => {
     if (!generationResult?.download_url) {
       return;
@@ -863,29 +941,165 @@ function AssignmentPage() {
         );
       }
 
+      /*
+      * ------------------------------------------------------
+      * Resolve filename
+      * ------------------------------------------------------
+      *
+      * Preferred:
+      *     Content-Disposition header
+      *
+      * Fallback:
+      *     generationResult.filename
+      *
+      * Final fallback:
+      *     Assignment title + student name
+      */
+
+      let filename = "";
+
+      const contentDisposition =
+        response.headers.get(
+          "content-disposition"
+        );
+
+      if (contentDisposition) {
+        /*
+        * Supports:
+        *
+        * filename="Computer_Networks_Assignment_Bhavitha.pdf"
+        *
+        * and:
+        *
+        * filename*=UTF-8''Computer_Networks_Assignment_Bhavitha.pdf
+        */
+
+        const utf8Match =
+          contentDisposition.match(
+            /filename\*=UTF-8''([^;]+)/i
+          );
+
+        const normalMatch =
+          contentDisposition.match(
+            /filename="?([^"]+)"?/i
+          );
+
+        if (utf8Match?.[1]) {
+          try {
+            filename =
+              decodeURIComponent(
+                utf8Match[1]
+              );
+          } catch {
+            filename =
+              utf8Match[1];
+          }
+        } else if (normalMatch?.[1]) {
+          filename =
+            normalMatch[1];
+        }
+      }
+
+      /*
+      * Backend response fallback.
+      */
+      if (!filename) {
+        filename =
+          generationResult?.filename ||
+          "";
+      }
+
+      /*
+      * ------------------------------------------------------
+      * Local filename fallback
+      * ------------------------------------------------------
+      */
+
+      if (!filename) {
+        const cleanPart = (value) =>
+          String(value || "")
+            .trim()
+            .replace(/[^\w\s-]/g, "")
+            .replace(/[\s-]+/g, "_")
+            .replace(/^_+|_+$/g, "");
+
+        const title =
+          cleanPart(
+            assignment?.title
+          ) ||
+          "InkAI_Assignment";
+
+        const student =
+          cleanPart(
+            assignment?.studentName
+          );
+
+        filename = student
+          ? `${title}_${student}.pdf`
+          : `${title}.pdf`;
+      }
+
+      /*
+      * Always ensure PDF extension.
+      */
+      if (
+        !filename
+          .toLowerCase()
+          .endsWith(".pdf")
+      ) {
+        filename += ".pdf";
+      }
+
+      /*
+      * ------------------------------------------------------
+      * Download blob
+      * ------------------------------------------------------
+      */
+
       const blob =
         await response.blob();
 
       const url =
-        window.URL.createObjectURL(blob);
+        window.URL.createObjectURL(
+          blob
+        );
 
       const link =
         document.createElement("a");
 
       link.href = url;
 
-      document.body.appendChild(link);
+      link.download = filename;
+
+      link.style.display = "none";
+
+      document.body.appendChild(
+        link
+      );
 
       link.click();
 
       link.remove();
 
-      window.URL.revokeObjectURL(url);
+      /*
+      * Give the browser a moment before
+      * releasing the object URL.
+      */
+      setTimeout(() => {
+        window.URL.revokeObjectURL(
+          url
+        );
+      }, 1000);
 
     } catch (error) {
       console.error(
         "PDF download failed:",
         error
+      );
+
+      setDocumentError(
+        error?.message ||
+          "Unable to download the PDF."
       );
     }
   };

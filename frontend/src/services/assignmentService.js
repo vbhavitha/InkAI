@@ -456,23 +456,34 @@ function buildAssignmentPageConfig(
 
 /*
  * ============================================================
- * STEP 17 / 18
- * PAGINATE ASSIGNMENT
+ * STEP 25 — FAST PREVIEW PAGINATION
  * ============================================================
- *
- * Used by the live assignment preview.
  *
  * IMPORTANT:
  *
- * This endpoint uses the backend AssignmentService
- * pagination algorithm.
+ * This function is ONLY for the live preview.
  *
- * We do NOT implement pagination in the frontend.
+ * It does NOT generate a PDF.
+ * It does NOT invoke the high-quality renderer.
+ *
+ * Preview:
+ *     settings change
+ *          ↓
+ *     /api/assignments/paginate
+ *
+ * Final PDF:
+ *     Download
+ *          ↓
+ *     /api/assignments/generate
+ *
+ * An AbortSignal can be supplied so an outdated preview
+ * request can be cancelled when the user changes settings again.
  */
 
 export async function paginateAssignment({
   document,
   assignment = {},
+  signal,
 }) {
   if (!document) {
     return {
@@ -482,7 +493,6 @@ export async function paginateAssignment({
           nodes: [],
         },
       ],
-
       pageCount: 1,
     };
   }
@@ -503,6 +513,8 @@ export async function paginateAssignment({
         "Content-Type":
           "application/json",
       },
+
+      signal,
 
       body: JSON.stringify({
         document,
