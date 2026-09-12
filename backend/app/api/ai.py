@@ -1,8 +1,24 @@
 """
 AI API routes for InkAI.
+
+All AI requests flow through:
+
+API Route
+    ↓
+AIService
+    ↓
+AIProvider
+    ↓
+Parser
+    ↓
+Pydantic response validation
 """
 
+from pathlib import Path
+from uuid import uuid4
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 
 from app.ai.ai_service import ai_service
 from app.ai.schemas import (
@@ -30,14 +46,7 @@ from app.ai.schemas import (
     MarkdownResponse,
 )
 
-from pathlib import Path
-from uuid import uuid4
-
-from fastapi.responses import FileResponse
-
-from app.presentation.generator import (
-    generate_presentation,
-)
+from app.presentation.generator import generate_presentation
 
 
 router = APIRouter(
@@ -46,6 +55,10 @@ router = APIRouter(
 )
 
 
+# =============================================================
+# Generic AI
+# =============================================================
+
 @router.post(
     "/generate",
     response_model=AIResponse,
@@ -53,18 +66,15 @@ router = APIRouter(
 def generate_ai_response(
     request: AIRequest,
 ) -> AIResponse:
-    """
-    General-purpose AI endpoint.
-    """
 
     try:
-        response = ai_service.generate(
+        result = ai_service.generate(
             instruction=request.instruction,
             context=request.context,
         )
 
         return AIResponse(
-            response=response,
+            response=result,
         )
 
     except ValueError as exc:
@@ -80,6 +90,10 @@ def generate_ai_response(
         ) from exc
 
 
+# =============================================================
+# Feature 1 — Grammar Correction
+# =============================================================
+
 @router.post(
     "/grammar",
     response_model=GrammarResponse,
@@ -87,12 +101,9 @@ def generate_ai_response(
 def correct_grammar(
     request: GrammarRequest,
 ) -> GrammarResponse:
-    """
-    Correct grammar in the supplied text.
-    """
 
     try:
-        result = ai_service.correct_grammar(
+        result = ai_service.grammar_correct(
             text=request.text,
         )
 
@@ -113,6 +124,10 @@ def correct_grammar(
         ) from exc
 
 
+# =============================================================
+# Feature 2 — Rewrite
+# =============================================================
+
 @router.post(
     "/rewrite",
     response_model=RewriteResponse,
@@ -120,12 +135,9 @@ def correct_grammar(
 def rewrite_notes(
     request: RewriteRequest,
 ) -> RewriteResponse:
-    """
-    Rewrite notes using the selected style.
-    """
 
     try:
-        result = ai_service.rewrite_notes(
+        result = ai_service.rewrite(
             text=request.text,
             style=request.style,
         )
@@ -146,26 +158,46 @@ def rewrite_notes(
             detail="Note rewriting failed.",
         ) from exc
 
+
+# =============================================================
+# Feature 3 — Summarization
+# =============================================================
+
 @router.post(
     "/summarize",
     response_model=SummarizeResponse,
 )
 def summarize_notes(
     request: SummarizeRequest,
-):
-    """
-    Summarize notes and return structured key points.
-    """
+) -> SummarizeResponse:
 
-    result = ai_service.summarize_notes(
-        text=request.text,
-        length=request.length.value,
-    )
+    try:
+        result = ai_service.summarize(
+            text=request.text,
+            length=request.length.value,
+        )
 
-    return SummarizeResponse(
-        summary=result["summary"],
-        key_points=result["key_points"],
-    )
+        return SummarizeResponse(
+            summary=result["summary"],
+            key_points=result["key_points"],
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Summarization failed.",
+        ) from exc
+
+
+# =============================================================
+# Feature 4 — Flashcards
+# =============================================================
 
 @router.post(
     "/flashcards",
@@ -173,18 +205,34 @@ def summarize_notes(
 )
 def generate_flashcards(
     request: FlashcardsRequest,
-):
-    """
-    Generate structured flashcards from notes.
-    """
+) -> FlashcardsResponse:
 
-    result = ai_service.generate_flashcards(
-        text=request.text,
-    )
+    try:
+        result = ai_service.generate_flashcards(
+            text=request.text,
+            count=request.count,
+        )
 
-    return FlashcardsResponse(
-        flashcards=result["flashcards"],
-    )
+        return FlashcardsResponse(
+            flashcards=result["flashcards"],
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Flashcard generation failed.",
+        ) from exc
+
+
+# =============================================================
+# Feature 5 — MCQs
+# =============================================================
 
 @router.post(
     "/mcqs",
@@ -192,40 +240,72 @@ def generate_flashcards(
 )
 def generate_mcqs(
     request: MCQRequest,
-):
-    """
-    Generate multiple-choice questions.
-    """
+) -> MCQResponse:
 
-    result = ai_service.generate_mcqs(
-        text=request.text,
-        count=request.count,
-        difficulty=request.difficulty.value,
-    )
+    try:
+        result = ai_service.generate_mcqs(
+            text=request.text,
+            count=request.count,
+            difficulty=request.difficulty.value,
+        )
 
-    return MCQResponse(
-        questions=result["questions"],
-    )@router.post(
+        return MCQResponse(
+            questions=result["questions"],
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="MCQ generation failed.",
+        ) from exc
+
+
+# =============================================================
+# Feature 6 — Question Generation
+# =============================================================
+
+@router.post(
     "/questions",
     response_model=QuestionGeneratorResponse,
 )
 def generate_questions(
     request: QuestionGeneratorRequest,
-):
-    """
-    Generate non-MCQ questions.
-    """
+) -> QuestionGeneratorResponse:
 
-    result = ai_service.generate_questions(
-        text=request.text,
-        question_type=request.type.value,
-        difficulty=request.difficulty.value,
-        count=request.count,
-    )
+    try:
+        result = ai_service.generate_questions(
+            text=request.text,
+            question_type=request.type.value,
+            difficulty=request.difficulty.value,
+            count=request.count,
+        )
 
-    return QuestionGeneratorResponse(
-        questions=result["questions"],
-    )
+        return QuestionGeneratorResponse(
+            questions=result["questions"],
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Question generation failed.",
+        ) from exc
+
+
+# =============================================================
+# Feature 7 — Explain Difficult Topics
+# =============================================================
 
 @router.post(
     "/explain",
@@ -233,7 +313,8 @@ def generate_questions(
 )
 def explain_topic(
     request: ExplainTopicRequest,
-):
+) -> ExplainTopicResponse:
+
     try:
         result = ai_service.explain_topic(
             text=request.text,
@@ -241,27 +322,29 @@ def explain_topic(
         )
 
         return ExplainTopicResponse(
-            title=result["title"],
+            topic=result["topic"],
+            level=result["level"],
             explanation=result["explanation"],
-            key_points=result["key_points"],
             example=result["example"],
-            analogy=result["analogy"],
+            key_points=result["key_points"],
         )
 
-    except ValueError as error:
+    except ValueError as exc:
         raise HTTPException(
             status_code=400,
-            detail=str(error),
-        )
+            detail=str(exc),
+        ) from exc
 
-    except Exception as error:
+    except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=(
-                "Failed to explain topic: "
-                f"{error}"
-            ),
-        )
+            detail="Topic explanation failed.",
+        ) from exc
+
+
+# =============================================================
+# Feature 8 — Translation
+# =============================================================
 
 @router.post(
     "/translate",
@@ -269,152 +352,135 @@ def explain_topic(
 )
 def translate_text(
     request: TranslationRequest,
-):
+) -> TranslationResponse:
+
     try:
-        result = ai_service.translate_text(
+        result = ai_service.translate(
             text=request.text,
-            target_language=request.target_language,
+            language=request.target_language,
         )
 
         return TranslationResponse(
-            source_language=result[
-                "source_language"
-            ],
-            target_language=result[
-                "target_language"
-            ],
-            translated_text=result[
-                "translated_text"
-            ],
+            source_language=result["source_language"],
+            target_language=result["target_language"],
+            translated_text=result["translated_text"],
         )
 
-    except ValueError as error:
+    except ValueError as exc:
         raise HTTPException(
             status_code=400,
-            detail=str(error),
-        )
+            detail=str(exc),
+        ) from exc
 
-    except Exception as error:
+    except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=(
-                "Failed to translate text: "
-                f"{error}"
-            ),
-        )
+            detail="Translation failed.",
+        ) from exc
 
-@router.post(
-    "/translate",
-    response_model=TranslationResponse,
-)
-def translate_text(
-    request: TranslationRequest,
-):
-    try:
-        result = ai_service.translate_text(
-            text=request.text,
-            target_language=request.target_language,
-        )
 
-        return TranslationResponse(
-            source_language=result[
-                "source_language"
-            ],
-            target_language=result[
-                "target_language"
-            ],
-            translated_text=result[
-                "translated_text"
-            ],
-        )
-
-    except ValueError as error:
-        raise HTTPException(
-            status_code=400,
-            detail=str(error),
-        )
-
-    except Exception as error:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Failed to translate text: "
-                f"{error}"
-            ),
-        )
+# =============================================================
+# Feature 9 — Presentation
+# =============================================================
 
 @router.post(
     "/presentation",
+    response_model=None,
 )
-def create_presentation(
+def generate_presentation_file(
     request: PresentationRequest,
 ):
+    """
+    Generate a PowerPoint presentation.
+
+    Flow:
+
+    Notes
+       ↓
+    AI presentation planner
+       ↓
+    Presentation plan
+       ↓
+    PPT renderer
+       ↓
+    .pptx
+    """
+
     try:
-        # ------------------------------------------------------
-        # 1. Ask AI to plan the presentation
-        # ------------------------------------------------------
+        # -----------------------------------------------------
+        # Step 1 — Ask AIService to create the slide plan
+        # -----------------------------------------------------
 
-        plan = ai_service.create_presentation_plan(
+        plan = ai_service.generate_presentation(
             text=request.text,
-            title=request.title,
         )
 
-        # ------------------------------------------------------
-        # 2. Generate actual PPTX
-        # ------------------------------------------------------
+        # -----------------------------------------------------
+        # Step 2 — Validate the generated plan
+        # -----------------------------------------------------
 
-        output_directory = (
-            Path("generated")
-            / "presentations"
+        validated_plan = PresentationPlanResponse(
+            title=plan["title"],
+            slides=plan["slides"],
         )
 
-        output_directory.mkdir(
+        # -----------------------------------------------------
+        # Step 3 — Create temporary output directory
+        # -----------------------------------------------------
+
+        output_dir = Path("generated_presentations")
+        output_dir.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        file_id = str(uuid4())
-
         output_path = (
-            output_directory
-            / f"{file_id}.pptx"
+            output_dir
+            / f"presentation_{uuid4().hex}.pptx"
         )
 
+        # -----------------------------------------------------
+        # Step 4 — Render actual PPTX
+        # -----------------------------------------------------
+
         generate_presentation(
-            title=plan["title"],
-            slides=plan["slides"],
+            title=validated_plan.title,
+            slides=[
+                slide.model_dump()
+                for slide in validated_plan.slides
+            ],
             output_path=output_path,
         )
 
-        # ------------------------------------------------------
-        # 3. Return file
-        # ------------------------------------------------------
+        # -----------------------------------------------------
+        # Step 5 — Return downloadable file
+        # -----------------------------------------------------
 
         return FileResponse(
             path=str(output_path),
+            filename="InkAI_Presentation.pptx",
             media_type=(
-                "application/vnd.openxmlformats-"
-                "officedocument.presentationml.presentation"
-            ),
-            filename=(
-                f"{plan['title']}.pptx"
+                "application/vnd.openxmlformats-officedocument."
+                "presentationml.presentation"
             ),
         )
 
-    except ValueError as error:
+    except ValueError as exc:
         raise HTTPException(
             status_code=400,
-            detail=str(error),
-        )
+            detail=str(exc),
+        ) from exc
 
-    except Exception as error:
+    except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=(
-                "Failed to generate presentation: "
-                f"{error}"
-            ),
-        )
+            detail="Presentation generation failed.",
+        ) from exc
+
+
+# =============================================================
+# Feature 10 — Markdown
+# =============================================================
 
 @router.post(
     "/markdown",
@@ -422,27 +488,25 @@ def create_presentation(
 )
 def convert_to_markdown(
     request: MarkdownRequest,
-):
+) -> MarkdownResponse:
+
     try:
         result = ai_service.convert_to_markdown(
             text=request.text,
         )
 
         return MarkdownResponse(
-            markdown=result["markdown"]
+            markdown=result,
         )
 
-    except ValueError as error:
+    except ValueError as exc:
         raise HTTPException(
             status_code=400,
-            detail=str(error),
-        )
+            detail=str(exc),
+        ) from exc
 
-    except Exception as error:
+    except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=(
-                "Failed to convert notes to Markdown: "
-                f"{error}"
-            ),
-        )
+            detail="Markdown conversion failed.",
+        ) from exc

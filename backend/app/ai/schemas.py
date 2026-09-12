@@ -385,7 +385,7 @@ class PresentationSlide(BaseModel):
     content: list[str]
 
 
-class PresentationResponse(BaseModel):
+class PresentationPlanResponse(BaseModel):
     """Structured presentation plan."""
 
     title: str
